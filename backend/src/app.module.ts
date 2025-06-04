@@ -4,7 +4,11 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MaskingModule } from './common/masking/masking.module';
-import { MaskingInterceptor, LoggingMaskingInterceptor } from './common/interceptors/masking.interceptor';
+import {
+  MaskingInterceptor,
+  LoggingMaskingInterceptor,
+} from './common/interceptors/masking.interceptor';
+import { RecoveryModule } from './recovery/recovery.module';
 
 @Module({
   imports: [
@@ -12,6 +16,7 @@ import { MaskingInterceptor, LoggingMaskingInterceptor } from './common/intercep
       isGlobal: true,
     }),
     MaskingModule,
+    RecoveryModule,
   ],
   controllers: [AppController],
   providers: [
