@@ -10,6 +10,7 @@ import {
 } from './common/interceptors/masking.interceptor';
 import { RecoveryModule } from './recovery/recovery.module';
 import { SecurityHeaderModule } from './security-header/security-header.module';
+import { FileUploadModule } from './file-upload/file-upload.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { SecurityHeaderModule } from './security-header/security-header.module';
     MaskingModule,
     RecoveryModule,
     SecurityHeaderModule,
+    FileUploadModule,
   ],
   controllers: [AppController],
   providers: [
