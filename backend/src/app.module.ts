@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MaskingModule } from './common/masking/masking.module';
 import { CspModule } from './csp/csp.module';
+import { CsrfModule } from './csrf/csrf.module';
 import { ValidationModule } from './validation/validation.module';
 import {
   MaskingInterceptor,
@@ -25,6 +26,7 @@ import { FileUploadModule } from './file-upload/file-upload.module';
     ValidationModule,
     FileUploadModule,
     CspModule,
+    CsrfModule,
   ],
   controllers: [AppController],
   providers: [
