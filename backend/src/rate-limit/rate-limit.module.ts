@@ -1,36 +1,32 @@
-import { Module } from '@nestjs/common';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
-import { RateLimitGuard } from './rate-limit.guard';
+import { Module } from "@nestjs/common"
+import { ConfigModule } from "@nestjs/config"
+import { RateLimitGuard } from "./guards/rate-limit.guard"
+import { RateLimitService } from "./rate-limit.service"
+import { RateLimitController } from "./rate-limit.controller"
+import { RateLimitStorage } from "./storage/rate-limit.storage"
+import { MemoryRateLimitStorage } from "./storage/memory-rate-limit.storage"
+import { RedisRateLimitStorage } from "./storage/redis-rate-limit.storage"
 
 @Module({
-  imports: [
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 1000, // 1 second
-        limit: 3, // 3 requests per second
-      },
-      {
-        name: 'medium', 
-        ttl: 10000, // 10 seconds
-        limit: 20, // 20 requests per 10 seconds
-      },
-      {
-        name: 'long',
-        ttl: 60000, // 1 minute
-        limit: 100, // 100 requests per minute
-      },
-    ]),
-  ],
+  imports: [ConfigModule],
   providers: [
-    // Global rate limiting
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
+    RateLimitService,
     RateLimitGuard,
+    {
+      provide: RateLimitStorage,
+      useFactory: (configService) => {
+        const storageType = configService.get<string>("RATE_LIMIT_STORAGE", "memory")
+
+        if (storageType === "redis") {
+          return new RedisRateLimitStorage(configService)
+        }
+
+        return new MemoryRateLimitStorage()
+      },
+      inject: ["ConfigService"],
+    },
   ],
-  exports: [RateLimitGuard],
+  controllers: [RateLimitController],
+  exports: [RateLimitService, RateLimitGuard],
 })
 export class RateLimitModule {}
