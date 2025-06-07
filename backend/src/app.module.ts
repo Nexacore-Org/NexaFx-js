@@ -10,6 +10,7 @@ import {
   LoggingMaskingInterceptor,
 } from './common/interceptors/masking.interceptor';
 import { RecoveryModule } from './recovery/recovery.module';
+import { SecurityHeaderModule } from './security-header/security-header.module';
 import { FileUploadModule } from './file-upload/file-upload.module';
 
 @Module({
@@ -19,6 +20,7 @@ import { FileUploadModule } from './file-upload/file-upload.module';
     }),
     MaskingModule,
     RecoveryModule,
+    SecurityHeaderModule,
     ValidationModule,
     FileUploadModule,
   ],
