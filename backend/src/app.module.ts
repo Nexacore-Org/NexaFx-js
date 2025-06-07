@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MaskingModule } from './common/masking/masking.module';
+import { ValidationModule } from './validation/validation.module';
 import {
   MaskingInterceptor,
   LoggingMaskingInterceptor,
@@ -17,6 +18,7 @@ import { RecoveryModule } from './recovery/recovery.module';
     }),
     MaskingModule,
     RecoveryModule,
+    ValidationModule,
   ],
   controllers: [AppController],
   providers: [
