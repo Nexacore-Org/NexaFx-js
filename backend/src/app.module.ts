@@ -9,6 +9,7 @@ import {
   LoggingMaskingInterceptor,
 } from './common/interceptors/masking.interceptor';
 import { RecoveryModule } from './recovery/recovery.module';
+import { SecurityHeaderModule } from './security-header/security-header.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { RecoveryModule } from './recovery/recovery.module';
     }),
     MaskingModule,
     RecoveryModule,
+    SecurityHeaderModule,
   ],
   controllers: [AppController],
   providers: [
