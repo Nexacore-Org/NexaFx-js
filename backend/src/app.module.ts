@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MaskingModule } from './common/masking/masking.module';
+import { CspModule } from './csp/csp.module';
 import { ValidationModule } from './validation/validation.module';
 import {
   MaskingInterceptor,
@@ -23,6 +24,7 @@ import { FileUploadModule } from './file-upload/file-upload.module';
     SecurityHeaderModule,
     ValidationModule,
     FileUploadModule,
+    CspModule,
   ],
   controllers: [AppController],
   providers: [
