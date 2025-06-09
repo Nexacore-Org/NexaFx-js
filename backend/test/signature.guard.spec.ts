@@ -26,3 +26,13 @@ describe('SignatureGuard', () => {
     guard = module.get<SignatureGuard>(SignatureGuard);
     configService = module.get<ConfigService>(ConfigService);
   });
+  const createMockContext = (headers: any, rawBody: Buffer): ExecutionContext => {
+    return {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          headers,
+          rawBody,
+        }),
+      }),
+    } as ExecutionContext;
+  };
