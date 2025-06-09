@@ -36,3 +36,19 @@ describe('SignatureGuard', () => {
       }),
     } as ExecutionContext;
   };
+  const generateSignature = (body: string, secret: string): string => {
+    return crypto.createHmac('sha256', secret).update(body).digest('hex');
+  };
+
+  describe('canActivate', () => {
+    it('should allow requests with valid signatures', async () => {
+      const secret = 'test-secret';
+      const body = JSON.stringify({ test: 'data' });
+      const signature = generateSignature(body, secret);
+
+      mockConfigService.get.mockReturnValue(secret);
+
+      const context = createMockContext(
+        { 'x-signature': signature },
+        Buffer.from(body)
+      );
