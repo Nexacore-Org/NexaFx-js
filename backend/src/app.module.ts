@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -15,12 +16,18 @@ import { RecoveryModule } from './recovery/recovery.module';
 import { SecurityHeaderModule } from './security-header/security-header.module';
 import { FileUploadModule } from './file-upload/file-upload.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { RedisModule } from './common/redis/redis.module';
+import { CurrenciesModule } from './currencies/currencies.module';
+import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { MultiCurrencyWalletModule } from './wallets/multi-currency-wallet.module';
+import { ConversionsModule } from './conversions/conversions.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     MaskingModule,
     RecoveryModule,
     SecurityHeaderModule,
@@ -29,6 +36,11 @@ import { NotificationsModule } from './notifications/notifications.module';
     CspModule,
     CsrfModule,
     NotificationsModule,
+    RedisModule,
+    CurrenciesModule,
+    ExchangeRatesModule,
+    MultiCurrencyWalletModule,
+    ConversionsModule,
   ],
   controllers: [AppController],
   providers: [
