@@ -7,9 +7,13 @@
     "@nestjs/swagger": "^11.2.0",
     "@nestjs/throttler": "^6.4.0",
     "cache-manager-redis-store": "^3.0.1",
+    "@types/express": "^5.0.3",
+    "@types/helmet": "^0.0.48",
     "class-sanitizer": "^1.0.1",
     "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.2"
+    "class-validator": "^0.14.2",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.29",
