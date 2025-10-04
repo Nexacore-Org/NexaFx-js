@@ -15,11 +15,17 @@ import { RecoveryModule } from './recovery/recovery.module';
 import { SecurityHeaderModule } from './security-header/security-header.module';
 import { FileUploadModule } from './file-upload/file-upload.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SecurityModule } from './security/security.module';
+
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+    }),
+    SecurityModule.forRoot({
+      windowMs: 60 * 1000, // 1 minute
+      max: 100, // limit each IP to 100 requests per windowMs
     }),
     MaskingModule,
     RecoveryModule,
@@ -42,5 +48,6 @@ import { NotificationsModule } from './notifications/notifications.module';
       useClass: LoggingMaskingInterceptor,
     },
   ],
+  
 })
 export class AppModule {}
