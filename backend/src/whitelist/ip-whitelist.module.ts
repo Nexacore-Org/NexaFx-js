@@ -12,12 +12,10 @@ export class IpWhitelistModule {}
 
 // ===== 7. admin.controller.ts (Example Protected Controller) =====
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { IpWhitelistGuard } from '../ip-whitelist/ip-whitelist.guard';
 
 @Controller('admin')
 @UseGuards(IpWhitelistGuard)
 export class AdminController {
-  
   @Get('dashboard')
   getDashboard() {
     return {

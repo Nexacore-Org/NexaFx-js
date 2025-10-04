@@ -8,8 +8,10 @@ import { NotificationPreference } from './schemas/notification-preference.schema
 @Injectable()
 export class NotificationsService {
   constructor(
-    @InjectQueue('notification-queue') private readonly notificationQueue: Queue,
-    @InjectModel(NotificationPreference.name) private readonly prefModel: Model<NotificationPreference>,
+    @InjectQueue('notification-queue')
+    private readonly notificationQueue: Queue,
+    @InjectModel(NotificationPreference.name)
+    private readonly prefModel: Model<NotificationPreference>,
   ) {}
 
   // This is called by your blockchain listener or other parts of your app
@@ -17,7 +19,9 @@ export class NotificationsService {
     const preferences = await this.prefModel.findOne({ userId });
 
     if (!preferences || !preferences.eventTypes[eventType]) {
-      console.log(`Notifications for event ${eventType} are disabled for user ${userId}.`);
+      console.log(
+        `Notifications for event ${eventType} are disabled for user ${userId}.`,
+      );
       return;
     }
 
@@ -33,5 +37,4 @@ export class NotificationsService {
       }
     }
   }
-
 }
