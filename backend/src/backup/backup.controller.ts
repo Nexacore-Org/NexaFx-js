@@ -1,269 +1,121 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Param,
-  Body,
-  Query,
-  UseGuards,
-  HttpCode,
-  HttpStatus,
-  BadRequestException,
-} from "@nestjs/common"
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiSecurity } from "@nestjs/swagger"
-import type { BackupService, BackupOptions, RestoreOptions } from "./backup.service"
-import { SessionGuard } from "../session/guards/session.guard"
-import { CurrentSession } from "../session/decorators/current-session.decorator"
-import type { SessionData } from "../session/session.service"
-import { AdminGuard } from "./guards/admin.guard"
+import { Controller, Post, Get, Delete } from "@nestjs/common"
+import type { BackupService } from "./services/backup.service"
+import type { RestoreService } from "./services/restore.service"
+import type { VerificationService } from "./services/verification.service"
+import type { RetentionService } from "./services/retention.service"
+import type { DisasterRecoveryService } from "./services/disaster-recovery.service"
+import type { BackupSchedulerService } from "./services/backup-scheduler.service"
+import type { StorageService } from "./services/storage.service"
+import type { TriggerBackupDto } from "./dto/trigger-backup.dto"
+import type { RestoreBackupDto } from "./dto/restore-backup.dto"
+import type { ConfigureRetentionDto } from "./dto/configure-retention.dto"
+import type { ConfigureScheduleDto } from "./dto/configure-schedule.dto"
+import type { ExportBackupDto } from "./dto/export-backup.dto"
+import type { TestRestoreDto } from "./dto/test-restore.dto"
+import type { VerifyBackupDto } from "./dto/verify-backup.dto"
 
-@ApiTags("Backup & Restore")
-@Controller("backup")
-@UseGuards(SessionGuard, AdminGuard)
-@ApiBearerAuth()
-@ApiSecurity("api-key")
+@Controller("backup/admin")
+
 export class BackupController {
-  constructor(private readonly backupService: BackupService) {}
+  constructor(
+    private readonly backupService: BackupService,
+    private readonly restoreService: RestoreService,
+    private readonly verificationService: VerificationService,
+    private readonly retentionService: RetentionService,
+    private readonly disasterRecoveryService: DisasterRecoveryService,
+    private readonly schedulerService: BackupSchedulerService,
+    private readonly storageService: StorageService,
+  ) {}
 
-  @Post("create")
-  @ApiOperation({ summary: "Create a new backup" })
-  @ApiResponse({ status: 201, description: "Backup created successfully" })
-  @ApiResponse({ status: 400, description: "Invalid backup options" })
-  @ApiResponse({ status: 403, description: "Insufficient permissions" })
-  async createBackup(@Body() options: BackupOptions, @CurrentSession() session: SessionData) {
-    // Validate backup options
-    if (!["database", "files", "full"].includes((options as any).type)) {
-      throw new BadRequestException("Invalid backup type. Must be 'database', 'files', or 'full'")
-    }
-
-    if (options.retention && (options.retention < 1 || options.retention > 365)) {
-      throw new BadRequestException("Retention period must be between 1 and 365 days")
-    }
-
-    const metadata = await this.backupService.createBackup(options)
-
-    return {
-      message: "Backup created successfully",
-      backup: {
-        id: metadata.id,
-        type: metadata.type,
-        filename: metadata.filename,
-        size: metadata.size,
-        compressed: metadata.compressed,
-        encrypted: metadata.encrypted,
-        createdAt: metadata.createdAt,
-        expiresAt: metadata.expiresAt,
-        description: metadata.description,
-        tags: metadata.tags,
-      },
-      createdBy: session.username,
-      timestamp: new Date().toISOString(),
-    }
+  @Post("trigger")
+  async triggerBackup(dto: TriggerBackupDto) {
+    return this.backupService.triggerManualBackup(dto)
   }
 
-  @Post("restore")
-  @ApiOperation({ summary: "Restore from a backup" })
-  @ApiResponse({ status: 200, description: "Backup restored successfully" })
-  @ApiResponse({ status: 400, description: "Invalid restore options" })
-  @ApiResponse({ status: 404, description: "Backup not found" })
-  async restoreBackup(@Body() options: RestoreOptions, @CurrentSession() session: SessionData) {
-    if (!options.backupId) {
-      throw new BadRequestException("Backup ID is required")
-    }
+  @Get("status")
+  async getStatus() {
+    return this.backupService.getCurrentStatus()
+  }
 
-    const result = await this.backupService.restoreBackup(options)
-
-    return {
-      ...result,
-      restoredBy: session.username,
-      timestamp: new Date().toISOString(),
-    }
+  @Get("history")
+  async getHistory(pageParam?: string, limitParam?: string) {
+    const page = pageParam ? Number.parseInt(pageParam, 10) : 1
+    const limit = limitParam ? Number.parseInt(limitParam, 10) : 50
+    return this.backupService.getBackupHistory(page, limit)
   }
 
   @Get("list")
-  @ApiOperation({ summary: "List all backups" })
-  @ApiResponse({ status: 200, description: "Backups retrieved successfully" })
-  @ApiQuery({ name: "type", required: false, description: "Filter by backup type" })
-  @ApiQuery({ name: "tags", required: false, description: "Filter by tags (comma-separated)" })
-  @ApiQuery({ name: "dateFrom", required: false, description: "Filter from date (ISO string)" })
-  @ApiQuery({ name: "dateTo", required: false, description: "Filter to date (ISO string)" })
-  @ApiQuery({ name: "limit", required: false, description: "Limit number of results" })
-  async listBackups(
-    @Query("type") type?: string,
-    @Query("tags") tags?: string,
-    @Query("dateFrom") dateFrom?: string,
-    @Query("dateTo") dateTo?: string,
-    @Query("limit") limit?: string,
-  ) {
-    const filters: any = {}
-
-    if (type) {
-      filters.type = type
-    }
-
-    if (tags) {
-      filters.tags = tags.split(",").map((tag) => tag.trim())
-    }
-
-    if (dateFrom) {
-      filters.dateFrom = new Date(dateFrom)
-    }
-
-    if (dateTo) {
-      filters.dateTo = new Date(dateTo)
-    }
-
-    if (limit) {
-      const limitNum = Number.parseInt(limit)
-      if (limitNum > 0 && limitNum <= 100) {
-        filters.limit = limitNum
-      }
-    }
-
-    const backups = await this.backupService.listBackups(filters)
-
-    return {
-      backups: backups.map((backup) => ({
-        id: backup.id,
-        type: backup.type,
-        filename: backup.filename,
-        size: backup.size,
-        compressed: backup.compressed,
-        encrypted: backup.encrypted,
-        createdAt: backup.createdAt,
-        expiresAt: backup.expiresAt,
-        description: backup.description,
-        tags: backup.tags,
-        version: backup.version,
-        source: backup.source,
-      })),
-      total: backups.length,
-      filters,
-      timestamp: new Date().toISOString(),
-    }
+  async listBackups(type?: string, status?: string) {
+    return this.backupService.listAvailableBackups(type, status)
   }
 
-  @Get(":backupId")
-  @ApiOperation({ summary: "Get backup details" })
-  @ApiResponse({ status: 200, description: "Backup details retrieved" })
-  @ApiResponse({ status: 404, description: "Backup not found" })
-  async getBackup(@Param("backupId") backupId: string) {
-    const backup = await this.backupService.getBackupById(backupId)
+  @Post("restore")
+  async initiateRestore(dto: RestoreBackupDto) {
+    return this.restoreService.initiateRestore(dto)
+  }
 
-    if (!backup) {
-      throw new BadRequestException("Backup not found")
-    }
+  @Get("restore/:jobId/status")
+  async getRestoreStatus(jobId: string) {
+    return this.restoreService.getRestoreJobStatus(jobId)
+  }
 
-    return {
-      backup: {
-        id: backup.id,
-        type: backup.type,
-        filename: backup.filename,
-        size: backup.size,
-        compressed: backup.compressed,
-        encrypted: backup.encrypted,
-        checksum: backup.checksum,
-        createdAt: backup.createdAt,
-        expiresAt: backup.expiresAt,
-        description: backup.description,
-        tags: backup.tags,
-        version: backup.version,
-        source: backup.source,
-      },
-      timestamp: new Date().toISOString(),
-    }
+  @Post("verify")
+  async verifyBackup(dto: VerifyBackupDto) {
+    return this.verificationService.verifyBackupIntegrity(dto.backupId)
+  }
+
+  @Get("storage-usage")
+  async getStorageUsage() {
+    return this.storageService.getStorageStatistics()
+  }
+
+  @Post("retention/configure")
+  async configureRetention(dto: ConfigureRetentionDto) {
+    return this.retentionService.configureRetentionPolicy(dto)
+  }
+
+  @Get("retention/policy")
+  async getRetentionPolicy() {
+    return this.retentionService.getCurrentRetentionPolicy()
   }
 
   @Delete(":backupId")
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Delete a backup" })
-  @ApiResponse({ status: 204, description: "Backup deleted successfully" })
-  @ApiResponse({ status: 404, description: "Backup not found" })
-  async deleteBackup(@Param("backupId") backupId: string, @CurrentSession() session: SessionData) {
-    await this.backupService.deleteBackup(backupId)
-
-    return {
-      message: "Backup deleted successfully",
-      backupId,
-      deletedBy: session.username,
-      timestamp: new Date().toISOString(),
-    }
+  async deleteBackup(backupId: string) {
+    return this.backupService.deleteBackup(backupId)
   }
 
-  @Get("statistics/overview")
-  @ApiOperation({ summary: "Get backup statistics" })
-  @ApiResponse({ status: 200, description: "Backup statistics retrieved" })
-  async getStatistics() {
-    const statistics = await this.backupService.getBackupStatistics()
-
-    return {
-      statistics,
-      timestamp: new Date().toISOString(),
-    }
+  @Post("schedule")
+  async configureSchedule(dto: ConfigureScheduleDto) {
+    return this.schedulerService.configureSchedule(dto)
   }
 
-  @Post("validate/:backupId")
-  @ApiOperation({ summary: "Validate backup integrity" })
-  @ApiResponse({ status: 200, description: "Backup validation completed" })
-  @ApiResponse({ status: 404, description: "Backup not found" })
-  async validateBackup(@Param("backupId") backupId: string) {
-    const validation = await this.backupService.validateBackup(backupId)
-
-    return {
-      backupId,
-      validation,
-      timestamp: new Date().toISOString(),
-    }
+  @Get("schedule")
+  async getSchedule() {
+    return this.schedulerService.getScheduleConfiguration()
   }
 
-  @Post("cleanup/expired")
-  @ApiOperation({ summary: "Cleanup expired backups" })
-  @ApiResponse({ status: 200, description: "Cleanup completed" })
-  async cleanupExpiredBackups(@CurrentSession() session: SessionData) {
-    const cleanedCount = await this.backupService.cleanupExpiredBackups()
-
-    return {
-      message: `Cleaned up ${cleanedCount} expired backups`,
-      cleanedCount,
-      triggeredBy: session.username,
-      timestamp: new Date().toISOString(),
-    }
+  @Post("test-restore")
+  async testRestore(dto: TestRestoreDto) {
+    return this.restoreService.testRestoreInIsolation(dto)
   }
 
-  @Post("schedule/database")
-  @ApiOperation({ summary: "Trigger scheduled database backup" })
-  @ApiResponse({ status: 200, description: "Scheduled backup triggered" })
-  async triggerDatabaseBackup(@CurrentSession() session: SessionData) {
-    await this.backupService.scheduledDatabaseBackup()
-
-    return {
-      message: "Database backup triggered successfully",
-      triggeredBy: session.username,
-      timestamp: new Date().toISOString(),
-    }
+  @Get("disaster-recovery/plan")
+  async getDRPlan() {
+    return this.disasterRecoveryService.getDRPlanDocumentation()
   }
 
-  @Post("schedule/full")
-  @ApiOperation({ summary: "Trigger scheduled full backup" })
-  @ApiResponse({ status: 200, description: "Scheduled full backup triggered" })
-  async triggerFullBackup(@CurrentSession() session: SessionData) {
-    await this.backupService.scheduledFullBackup()
-
-    return {
-      message: "Full backup triggered successfully",
-      triggeredBy: session.username,
-      timestamp: new Date().toISOString(),
-    }
+  @Post("disaster-recovery/test")
+  async testDR() {
+    return this.disasterRecoveryService.runDRTestDrill()
   }
 
-  @Get("health")
-  @ApiOperation({ summary: "Health check for backup service" })
-  healthCheck() {
-    return {
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      service: "backup-restore",
-    }
+  @Get("encryption/status")
+  async getEncryptionStatus() {
+    return this.backupService.getEncryptionStatus()
+  }
+
+  @Post("export")
+  async exportBackup(dto: ExportBackupDto) {
+    return this.storageService.exportToExternalStorage(dto)
   }
 }
