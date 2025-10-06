@@ -1,10 +1,12 @@
 {
   "dependencies": {
+    "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^11.1.2",
     "@nestjs/config": "^4.0.2",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/swagger": "^11.2.0",
     "@nestjs/throttler": "^6.4.0",
+    "cache-manager-redis-store": "^3.0.1",
     "@types/express": "^5.0.3",
     "@types/helmet": "^0.0.48",
     "class-sanitizer": "^1.0.1",
