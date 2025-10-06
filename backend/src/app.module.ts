@@ -23,6 +23,7 @@ import { CurrenciesModule } from './currencies/currencies.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { MultiCurrencyWalletModule } from './wallets/multi-currency-wallet.module';
 import { ConversionsModule } from './conversions/conversions.module';
+import { DisputeModule } from './disputes/dispute.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ConversionsModule } from './conversions/conversions.module';
     SecurityHeaderModule,
     ValidationModule,
     FileUploadModule,
+    DisputeModule,
     CspModule,
     CsrfModule,
     NotificationsModule,
@@ -60,6 +62,5 @@ import { ConversionsModule } from './conversions/conversions.module';
       useClass: LoggingMaskingInterceptor,
     },
   ],
-  
 })
 export class AppModule {}
