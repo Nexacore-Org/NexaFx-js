@@ -14,6 +14,7 @@ import {
 import { RecoveryModule } from './recovery/recovery.module';
 import { SecurityHeaderModule } from './security-header/security-header.module';
 import { FileUploadModule } from './file-upload/file-upload.module';
+import { DisputeModule } from './disputes/dispute.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { FileUploadModule } from './file-upload/file-upload.module';
     SecurityHeaderModule,
     ValidationModule,
     FileUploadModule,
+    DisputeModule,
     CspModule,
     CsrfModule,
   ],
