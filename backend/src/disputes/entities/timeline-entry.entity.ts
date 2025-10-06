@@ -7,7 +7,9 @@ import {
   JoinColumn,
   Index,
   Unique,
+  BeforeInsert,
 } from 'typeorm';
+import { createHash } from 'crypto';
 import { Dispute } from './dispute.entity';
 import {
   CreatedPayload,
@@ -41,7 +43,8 @@ export enum TimelineEntryType {
 @Index(['disputeId'])
 @Index(['type'])
 @Index(['createdAt'])
-@Unique(['disputeId', 'type', 'payload']) // Prevent duplicate entries for same dispute, type, and payload
+@Index(['payloadHash'])
+@Unique(['disputeId', 'type', 'payloadHash']) // Prevent duplicate entries for same dispute, type, and payload content
 export class TimelineEntry {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -79,9 +82,25 @@ export class TimelineEntry {
     | SlaViolationPayload
     | AutoResolutionPayload;
 
+  @Column({ type: 'varchar', length: 64 })
+  payloadHash: string;
+
   @Column({ type: 'text', nullable: true })
   description: string;
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @BeforeInsert()
+  generatePayloadHash() {
+    if (this.payload) {
+      const payloadString = JSON.stringify(
+        this.payload,
+        Object.keys(this.payload).sort(),
+      );
+      this.payloadHash = createHash('sha256')
+        .update(payloadString)
+        .digest('hex');
+    }
+  }
 }

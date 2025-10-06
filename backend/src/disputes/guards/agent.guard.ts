@@ -6,10 +6,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 
+interface RequestWithUser {
+  user?: { id?: string; isAgent?: boolean; isAdmin?: boolean };
+}
+
 @Injectable()
 export class AgentGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
     const user = request.user;
 
     if (!user) {

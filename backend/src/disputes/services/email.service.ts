@@ -31,6 +31,19 @@ export class EmailService {
   private readonly fromEmail: string;
   private readonly isEnabled: boolean;
 
+  // Escape HTML special characters to prevent XSS in email templates
+  private escapeHtml(unsafe: string): string {
+    if (unsafe === undefined || unsafe === null) {
+      return '';
+    }
+    return String(unsafe)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   constructor(private configService: ConfigService) {
     this.isEnabled = this.configService.get('EMAIL_ENABLED', 'true') === 'true';
     this.fromEmail = this.configService.get(
@@ -96,10 +109,10 @@ export class EmailService {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #333;">Dispute Created Successfully</h2>
-        <p>Dear ${userName},</p>
+        <p>Dear ${this.escapeHtml(userName)},</p>
         <p>We have received your dispute request and are reviewing it. Here are the details:</p>
         <ul>
-          <li><strong>Dispute ID:</strong> ${disputeId}</li>
+          <li><strong>Dispute ID:</strong> ${this.escapeHtml(disputeId)}</li>
           <li><strong>Category:</strong> ${this.formatCategory(category)}</li>
           <li><strong>Status:</strong> Under Review</li>
         </ul>
@@ -134,14 +147,14 @@ export class EmailService {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #28a745;">Dispute Resolved</h2>
-        <p>Dear ${userName},</p>
+        <p>Dear ${this.escapeHtml(userName)},</p>
         <p>Your dispute has been resolved. Here are the details:</p>
         <ul>
-          <li><strong>Dispute ID:</strong> ${disputeId}</li>
+          <li><strong>Dispute ID:</strong> ${this.escapeHtml(disputeId)}</li>
           <li><strong>Outcome:</strong> ${this.formatOutcome(outcome)}</li>
           ${refundAmount ? `<li><strong>Refund Amount:</strong> ₦${refundAmount.toLocaleString()}</li>` : ''}
         </ul>
-        ${refundText ? `<p>${refundText}</p>` : ''}
+        ${refundText ? `<p>${this.escapeHtml(refundText)}</p>` : ''}
         <p>Thank you for using NexaFx. If you have any questions about this resolution, please contact our support team.</p>
         <br>
         <p>Best regards,<br>The NexaFx Team</p>
@@ -166,15 +179,15 @@ export class EmailService {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #007bff;">New Dispute Assignment</h2>
-        <p>Dear ${agentName},</p>
+        <p>Dear ${this.escapeHtml(agentName)},</p>
         <p>A new dispute has been assigned to you:</p>
         <ul>
-          <li><strong>Dispute ID:</strong> ${disputeId}</li>
-          <li><strong>Priority:</strong> ${priority}</li>
+          <li><strong>Dispute ID:</strong> ${this.escapeHtml(disputeId)}</li>
+          <li><strong>Priority:</strong> ${this.escapeHtml(priority)}</li>
           <li><strong>Assignment Time:</strong> ${new Date().toLocaleString()}</li>
         </ul>
         <p>Please review and take appropriate action as soon as possible.</p>
-        <p><a href="${process.env.FRONTEND_URL}/admin/disputes/${disputeId}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dispute</a></p>
+        <p><a href="${process.env.FRONTEND_URL}/admin/disputes/${this.escapeHtml(disputeId)}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dispute</a></p>
         <br>
         <p>Best regards,<br>The NexaFx Team</p>
       </div>
@@ -197,13 +210,13 @@ export class EmailService {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #007bff;">New Comment Added</h2>
-        <p>Dear ${userName},</p>
+        <p>Dear ${this.escapeHtml(userName)},</p>
         <p>There is a new comment on your dispute:</p>
         <ul>
-          <li><strong>Dispute ID:</strong> ${disputeId}</li>
+          <li><strong>Dispute ID:</strong> ${this.escapeHtml(disputeId)}</li>
         </ul>
         <p>You can reply or view details in your dashboard.</p>
-        <p><a href="${process.env.FRONTEND_URL}/disputes/${disputeId}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dispute</a></p>
+        <p><a href="${process.env.FRONTEND_URL}/disputes/${this.escapeHtml(disputeId)}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dispute</a></p>
         <br>
         <p>Best regards,<br>The NexaFx Team</p>
       </div>
@@ -226,14 +239,14 @@ export class EmailService {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #fd7e14;">Dispute Escalated</h2>
-        <p>Dear ${userName},</p>
+        <p>Dear ${this.escapeHtml(userName)},</p>
         <p>Your dispute has been escalated for further review by a senior agent.</p>
         <ul>
-          <li><strong>Dispute ID:</strong> ${disputeId}</li>
+          <li><strong>Dispute ID:</strong> ${this.escapeHtml(disputeId)}</li>
           <li><strong>Status:</strong> Escalated</li>
         </ul>
         <p>We will keep you updated on any progress.</p>
-        <p><a href="${process.env.FRONTEND_URL}/disputes/${disputeId}" style="background-color: #fd7e14; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dispute</a></p>
+        <p><a href="${process.env.FRONTEND_URL}/disputes/${this.escapeHtml(disputeId)}" style="background-color: #fd7e14; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dispute</a></p>
         <br>
         <p>Best regards,<br>The NexaFx Team</p>
       </div>
@@ -257,15 +270,15 @@ export class EmailService {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #dc3545;">SLA Violation Alert</h2>
-        <p>Dear ${managerName},</p>
+        <p>Dear ${this.escapeHtml(managerName)},</p>
         <p>A dispute has violated its SLA deadline:</p>
         <ul>
-          <li><strong>Dispute ID:</strong> ${disputeId}</li>
+          <li><strong>Dispute ID:</strong> ${this.escapeHtml(disputeId)}</li>
           <li><strong>SLA Deadline:</strong> ${slaDeadline.toLocaleString()}</li>
           <li><strong>Violation Time:</strong> ${new Date().toLocaleString()}</li>
         </ul>
         <p>Please review and escalate this dispute immediately.</p>
-        <p><a href="${process.env.FRONTEND_URL}/admin/disputes/${disputeId}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dispute</a></p>
+        <p><a href="${process.env.FRONTEND_URL}/admin/disputes/${this.escapeHtml(disputeId)}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dispute</a></p>
         <br>
         <p>Best regards,<br>The NexaFx Team</p>
       </div>
@@ -290,7 +303,8 @@ export class EmailService {
       fraud_suspected: 'Fraud Suspected',
       other: 'Other',
     };
-    return categoryMap[category] || category;
+    const value = categoryMap[category] || category;
+    return this.escapeHtml(value);
   }
 
   private formatOutcome(outcome: string): string {
@@ -299,6 +313,7 @@ export class EmailService {
       merchant_favor: 'Resolved in Merchant Favor',
       split: 'Split Decision',
     };
-    return outcomeMap[outcome] || outcome;
+    const value = outcomeMap[outcome] || outcome;
+    return this.escapeHtml(value);
   }
 }

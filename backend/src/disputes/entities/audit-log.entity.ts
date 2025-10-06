@@ -6,8 +6,10 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  BeforeInsert,
 } from 'typeorm';
 import { Dispute } from './dispute.entity';
+import { createHash } from 'crypto';
 
 // Actor type enumeration
 export enum ActorType {
@@ -86,17 +88,15 @@ interface OcrProcessedMetadata extends BaseAuditMetadata {
 
 // Discriminated union type for all possible audit metadata
 export type AuditMetadata =
-  | ({ action: AuditAction.CREATE_DISPUTE } & CreateDisputeMetadata)
-  | ({ action: AuditAction.UPDATE_DISPUTE } & UpdateDisputeMetadata)
-  | ({ action: AuditAction.ASSIGN_DISPUTE } & AssignDisputeMetadata)
-  | ({ action: AuditAction.RESOLVE_DISPUTE } & ResolveDisputeMetadata)
-  | ({ action: AuditAction.ESCALATE_DISPUTE } & EscalateDisputeMetadata)
-  | ({ action: AuditAction.REFUND_INITIATED } & RefundInitiatedMetadata)
-  | ({
-      action: AuditAction.CREATE_DISPUTE_WITH_EVIDENCE;
-    } & CreateDisputeWithEvidenceMetadata)
-  | ({ action: AuditAction.OCR_PROCESSED } & OcrProcessedMetadata)
-  | ({ action: string } & BaseAuditMetadata); // Fallback for unknown actions
+  | CreateDisputeMetadata
+  | UpdateDisputeMetadata
+  | AssignDisputeMetadata
+  | ResolveDisputeMetadata
+  | EscalateDisputeMetadata
+  | RefundInitiatedMetadata
+  | CreateDisputeWithEvidenceMetadata
+  | OcrProcessedMetadata
+  | BaseAuditMetadata; // Fallback for unknown actions
 
 @Entity('audit_logs')
 @Index(['disputeId'])
@@ -133,12 +133,81 @@ export class AuditLog {
   @Column({ type: 'jsonb', nullable: true })
   meta: AuditMetadata | null;
 
+  // Stores an anonymized IP by default. If SECURITY_FULL_IP=true, stores raw IP for
+  // narrowly scoped security investigations. Access must be restricted via RBAC.
+  // IPv4: masks last octet (e.g., 192.168.1.123 -> 192.168.1.0)
+  // IPv6: truncates to /64 (first 4 hextets), e.g., 2001:db8:85a3:8d3:1319:8a2e:370:7348 -> 2001:db8:85a3:8d3::
   @Column({ nullable: true })
-  ipAddress: string;
+  ipAddress: string | null;
 
+  // Stores a minimal user agent by default. If SECURITY_HASH_UA=true, stores SHA-256 hash
+  // of the user agent to avoid persisting the raw string. Access must be restricted via RBAC.
   @Column({ nullable: true })
-  userAgent: string;
+  userAgent: string | null;
+
+  // Indicates whether the user provided consent to store network and device identifiers.
+  // When SECURITY_REQUIRE_CONSENT=true and this is false, ipAddress and userAgent are nulled.
+  @Column({ type: 'boolean', default: false })
+  consentProvided: boolean;
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @BeforeInsert()
+  private applyPrivacyControls(): void {
+    const requireConsent =
+      (process.env.SECURITY_REQUIRE_CONSENT || 'true') === 'true';
+    const fullIpEnabled = (process.env.SECURITY_FULL_IP || 'false') === 'true';
+    const hashUaEnabled = (process.env.SECURITY_HASH_UA || 'true') === 'true';
+
+    // If consent is required and not provided, do not persist these fields
+    if (requireConsent && !this.consentProvided) {
+      this.ipAddress = null;
+      this.userAgent = null;
+      return;
+    }
+
+    // Process IP address
+    if (this.ipAddress && !fullIpEnabled) {
+      this.ipAddress = anonymizeIp(this.ipAddress);
+    }
+
+    // Process user agent
+    if (this.userAgent) {
+      if (hashUaEnabled) {
+        this.userAgent = hashString(this.userAgent);
+      } else {
+        this.userAgent = minimalUserAgent(this.userAgent);
+      }
+    }
+  }
+}
+
+// IPv4: mask last octet; IPv6: keep first 4 hextets (approx /64), then ::
+function anonymizeIp(ip: string): string {
+  // Simple detection; does not validate CIDR correctness
+  if (ip.includes('.')) {
+    const parts = ip.split('.');
+    if (parts.length === 4) {
+      parts[3] = '0';
+      return parts.join('.');
+    }
+    return ip;
+  }
+  if (ip.includes(':')) {
+    const parts = ip.split(':');
+    const first = parts.slice(0, 4).join(':');
+    return first + '::';
+  }
+  return ip;
+}
+
+function hashString(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+// Keep only a minimal, non-identifying portion (first token and up to 32 chars)
+function minimalUserAgent(ua: string): string {
+  const token = ua.split(' ')[0] || ua;
+  return token.substring(0, 32);
 }

@@ -148,6 +148,12 @@ A comprehensive dispute and resolution system for handling transaction-related i
 - **Notification Service**: Multi-channel messaging
 - **Audit Service**: Compliance logging
 
+### Privacy & Data Protection
+- IP addresses are anonymized by default (IPv4 last octet masked; IPv6 truncated to /64). Set `SECURITY_FULL_IP=true` only for tightly controlled security investigations.
+- User agent strings are hashed by default (`SECURITY_HASH_UA=true`). When hashing is disabled, only a minimal tokenized UA is stored.
+- Consent is required by default to store network/device identifiers (`SECURITY_REQUIRE_CONSENT=true`). Without consent, `ipAddress` and `userAgent` are not persisted.
+- Audit log retention is configurable via days using `AUDIT_RETENTION_DAYS`; an automated weekly purge enforces the retention window.
+
 ## Monitoring and Metrics
 
 ### Key Performance Indicators
@@ -193,6 +199,16 @@ EMAIL_FROM=noreply@nexafx.com
 
 # Application
 FRONTEND_URL=https://app.nexafx.com
+
+# Privacy & Security Controls
+# Require user consent to store IP/UA; if false, store regardless
+SECURITY_REQUIRE_CONSENT=true
+# Allow storing full/raw IP for security investigations; otherwise anonymize
+SECURITY_FULL_IP=false
+# Hash user agent string before storage; otherwise store minimal token
+SECURITY_HASH_UA=true
+# Number of days to retain audit logs; default ~6 years if unset/invalid
+AUDIT_RETENTION_DAYS=2190
 ```
 
 ### Installation

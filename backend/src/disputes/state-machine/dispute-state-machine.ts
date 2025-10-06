@@ -19,6 +19,21 @@ export interface DisputeContext {
   refundAmount?: number;
 }
 
+// Event union with strict typing for payloads to ensure property presence
+type DisputeEvent =
+  | { type: 'SUBMIT' }
+  | { type: 'CANCEL' }
+  | { type: 'ASSIGN'; agentId: string }
+  | { type: 'AUTO_RESOLVE' }
+  | { type: 'ESCALATE' }
+  | { type: 'RESOLVE'; outcome: string; refundAmount?: number }
+  | { type: 'REQUEST_MORE_INFO' }
+  | { type: 'AUTO_RESOLVED'; outcome: string; refundAmount?: number }
+  | { type: 'AUTO_FAILED' }
+  | { type: 'CLOSE' }
+  | { type: 'REOPEN' }
+  | { type: 'APPEAL' };
+
 // Computes a numeric priority score based on dispute attributes
 function computePriorityScore(context: DisputeContext): number {
   let score = 0;
@@ -110,7 +125,7 @@ export const disputeStateMachine = createMachine(
         on: {
           SUBMIT: {
             target: 'open',
-            actions: ['setSlaDeadline', 'calculatePriority'],
+            actions: ['calculatePriority', 'setSlaDeadline'],
           },
           CANCEL: 'cancelled',
         },
@@ -235,10 +250,10 @@ export const disputeStateMachine = createMachine(
   },
   {
     actions: {
-      setSlaDeadline: assign({
-        slaDeadline: ({ context }) => {
+      setSlaDeadline: assign<DisputeContext, DisputeEvent>({
+        slaDeadline: (context) => {
           const now = new Date();
-          switch (context.priority) {
+          switch ((context as DisputeContext).priority) {
             case DisputePriority.CRITICAL:
               return new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
             case DisputePriority.HIGH:
@@ -252,53 +267,68 @@ export const disputeStateMachine = createMachine(
           }
         },
       }),
-      calculatePriority: assign({
-        priority: ({ context }) => {
-          const score = computePriorityScore(context);
+      calculatePriority: assign<DisputeContext, DisputeEvent>({
+        priority: (context) => {
+          const score = computePriorityScore(context as DisputeContext);
           return mapScoreToPriority(score);
         },
       }),
-      assignAgent: assign({
-        agentId: ({ event }) =>
-          event.type === 'ASSIGN' ? event.agentId : undefined,
+      assignAgent: assign<DisputeContext, DisputeEvent>({
+        agentId: (_context, event) =>
+          (event as DisputeEvent).type === 'ASSIGN'
+            ? (event as Extract<DisputeEvent, { type: 'ASSIGN' }>).agentId
+            : undefined,
       }),
-      incrementEscalation: assign({
-        escalationLevel: ({ context }) => context.escalationLevel + 1,
+      incrementEscalation: assign<DisputeContext, DisputeEvent>({
+        escalationLevel: (context) =>
+          (context as DisputeContext).escalationLevel + 1,
       }),
-      escalateDueToSla: assign({
-        escalationLevel: ({ context }) => context.escalationLevel + 1,
+      escalateDueToSla: assign<DisputeContext, DisputeEvent>({
+        escalationLevel: (context) =>
+          (context as DisputeContext).escalationLevel + 1,
       }),
-      setOutcome: assign({
-        outcome: ({ event }) =>
-          event.type === 'RESOLVE' ? event.outcome : undefined,
-        refundAmount: ({ event }) =>
-          event.type === 'RESOLVE' ? event.refundAmount : undefined,
+      setOutcome: assign<DisputeContext, DisputeEvent>({
+        outcome: (_context, event) =>
+          (event as DisputeEvent).type === 'RESOLVE'
+            ? (event as Extract<DisputeEvent, { type: 'RESOLVE' }>).outcome
+            : undefined,
+        refundAmount: (_context, event) =>
+          (event as DisputeEvent).type === 'RESOLVE'
+            ? (event as Extract<DisputeEvent, { type: 'RESOLVE' }>).refundAmount
+            : undefined,
       }),
-      setAutoOutcome: assign({
-        outcome: ({ event }) =>
-          event.type === 'AUTO_RESOLVED' ? event.outcome : undefined,
-        refundAmount: ({ event }) =>
-          event.type === 'AUTO_RESOLVED' ? event.refundAmount : undefined,
+      setAutoOutcome: assign<DisputeContext, DisputeEvent>({
+        outcome: (_context, event) =>
+          (event as DisputeEvent).type === 'AUTO_RESOLVED'
+            ? (event as Extract<DisputeEvent, { type: 'AUTO_RESOLVED' }>)
+                .outcome
+            : undefined,
+        refundAmount: (_context, event) =>
+          (event as DisputeEvent).type === 'AUTO_RESOLVED'
+            ? (event as Extract<DisputeEvent, { type: 'AUTO_RESOLVED' }>)
+                .refundAmount
+            : undefined,
       }),
-      logMaxEscalationReached: assign({
-        escalationLevel: ({ context }) => {
+      logMaxEscalationReached: assign<DisputeContext, DisputeEvent>({
+        escalationLevel: (context) => {
           // Log that max escalation has been reached without incrementing
           console.warn(
-            `Dispute ${context.disputeId} has reached maximum escalation level`,
+            `Dispute ${(context as DisputeContext).disputeId} has reached maximum escalation level`,
           );
-          return context.escalationLevel;
+          return (context as DisputeContext).escalationLevel;
         },
       }),
     },
     guards: {
-      hasAgent: ({ context }) => !!context.agentId,
-      isAutoResolvable: ({ context }) =>
+      hasAgent: ({ context }: { context: DisputeContext }) => !!context.agentId,
+      isAutoResolvable: ({ context }: { context: DisputeContext }) =>
         context.isAutoResolvable &&
         context.fraudScore <= disputeConfig.autoResolution.fraudScoreThreshold,
-      canEscalateFurther: ({ context }) => context.escalationLevel < 2,
+      canEscalateFurther: ({ context }: { context: DisputeContext }) =>
+        context.escalationLevel < 2,
     },
     delays: {
-      SLA_ESCALATION: ({ context }) => {
+      SLA_ESCALATION: ({ context }: { context: DisputeContext }) => {
         const now = Date.now();
         const deadlineMs =
           context.slaDeadline instanceof Date

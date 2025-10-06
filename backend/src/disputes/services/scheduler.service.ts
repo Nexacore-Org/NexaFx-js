@@ -2,10 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SlaMonitorService } from './sla-monitor.service';
 import { DisputeService } from './dispute.service';
+import { disputeConfig } from '../config/dispute.config';
 
 @Injectable()
 export class SchedulerService {
   private readonly logger = new Logger(SchedulerService.name);
+  private readonly isRunning = {
+    slaMonitoring: false,
+    staleDisputeCheck: false,
+    dailySlaReport: false,
+    autoResolutionCheck: false,
+    weeklyCleanup: false,
+  };
 
   constructor(
     private slaMonitorService: SlaMonitorService,
@@ -19,11 +27,22 @@ export class SchedulerService {
   })
   async handleSlaMonitoring() {
     this.logger.log('Running SLA monitoring cron job...');
+    if (this.isRunning.slaMonitoring) {
+      this.logger.warn(
+        'Skipping SLA monitoring cron job: previous run still in progress',
+      );
+      return;
+    }
 
+    this.isRunning.slaMonitoring = true;
     try {
       await this.slaMonitorService.checkSlaViolations();
-    } catch (error) {
-      this.logger.error('Error in SLA monitoring cron job:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Error in SLA monitoring cron job: ${message}`, stack);
+    } finally {
+      this.isRunning.slaMonitoring = false;
     }
   }
 
@@ -34,11 +53,25 @@ export class SchedulerService {
   })
   async handleStaleDisputeCheck() {
     this.logger.log('Running stale dispute check cron job...');
+    if (this.isRunning.staleDisputeCheck) {
+      this.logger.warn(
+        'Skipping stale dispute check cron job: previous run still in progress',
+      );
+      return;
+    }
 
+    this.isRunning.staleDisputeCheck = true;
     try {
       await this.slaMonitorService.checkStaleDisputes();
-    } catch (error) {
-      this.logger.error('Error in stale dispute check cron job:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(
+        `Error in stale dispute check cron job: ${message}`,
+        stack,
+      );
+    } finally {
+      this.isRunning.staleDisputeCheck = false;
     }
   }
 
@@ -49,11 +82,25 @@ export class SchedulerService {
   })
   async handleDailySlaReport() {
     this.logger.log('Running daily SLA report cron job...');
+    if (this.isRunning.dailySlaReport) {
+      this.logger.warn(
+        'Skipping daily SLA report cron job: previous run still in progress',
+      );
+      return;
+    }
 
+    this.isRunning.dailySlaReport = true;
     try {
       await this.slaMonitorService.generateSlaReport();
-    } catch (error) {
-      this.logger.error('Error in daily SLA report cron job:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(
+        `Error in daily SLA report cron job: ${message}`,
+        stack,
+      );
+    } finally {
+      this.isRunning.dailySlaReport = false;
     }
   }
 
@@ -64,11 +111,25 @@ export class SchedulerService {
   })
   async handleAutoResolutionCheck() {
     this.logger.log('Running auto-resolution check cron job...');
+    if (this.isRunning.autoResolutionCheck) {
+      this.logger.warn(
+        'Skipping auto-resolution check cron job: previous run still in progress',
+      );
+      return;
+    }
 
+    this.isRunning.autoResolutionCheck = true;
     try {
       await this.triggerAutoResolutionForEligibleDisputes();
-    } catch (error) {
-      this.logger.error('Error in auto-resolution check cron job:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(
+        `Error in auto-resolution check cron job: ${message}`,
+        stack,
+      );
+    } finally {
+      this.isRunning.autoResolutionCheck = false;
     }
   }
 
@@ -79,11 +140,22 @@ export class SchedulerService {
   })
   async handleWeeklyCleanup() {
     this.logger.log('Running weekly cleanup cron job...');
+    if (this.isRunning.weeklyCleanup) {
+      this.logger.warn(
+        'Skipping weekly cleanup cron job: previous run still in progress',
+      );
+      return;
+    }
 
+    this.isRunning.weeklyCleanup = true;
     try {
       await this.cleanupOldData();
-    } catch (error) {
-      this.logger.error('Error in weekly cleanup cron job:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Error in weekly cleanup cron job: ${message}`, stack);
+    } finally {
+      this.isRunning.weeklyCleanup = false;
     }
   }
 
@@ -124,13 +196,13 @@ export class SchedulerService {
       this.logger.error('Error cleaning up old disputes:', error);
     }
 
-    // Clean up old audit logs (older than 2 years)
-    const twoYearsAgo = new Date();
-    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    // Clean up old audit logs per configured retention
+    const retentionMs = disputeConfig.retention.auditLogs;
+    const beforeDate = new Date(Date.now() - retentionMs);
 
     try {
       const deletedAuditCount =
-        await this.disputeService.cleanupOldAuditLogs(twoYearsAgo);
+        await this.disputeService.cleanupOldAuditLogs(beforeDate);
       this.logger.log(`Cleaned up ${deletedAuditCount} old audit logs`);
     } catch (error) {
       this.logger.error('Error cleaning up old audit logs:', error);

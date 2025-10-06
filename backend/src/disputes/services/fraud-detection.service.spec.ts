@@ -5,16 +5,14 @@ import {
   FraudDetectionService,
   FraudFactorType,
 } from './fraud-detection.service';
-import { Dispute, DisputeState } from '../entities/dispute.entity';
+import { Dispute } from '../entities/dispute.entity';
 import { Transaction } from '../entities/transaction.entity';
 import { User } from '../entities/user.entity';
-import { disputeConfig } from '../config/dispute.config';
 
 describe('FraudDetectionService', () => {
   let service: FraudDetectionService;
   let disputeRepository: jest.Mocked<Repository<Dispute>>;
   let transactionRepository: jest.Mocked<Repository<Transaction>>;
-  let userRepository: jest.Mocked<Repository<User>>;
 
   const mockDisputeRepository = {
     count: jest.fn(),
@@ -54,7 +52,6 @@ describe('FraudDetectionService', () => {
     service = module.get<FraudDetectionService>(FraudDetectionService);
     disputeRepository = module.get(getRepositoryToken(Dispute));
     transactionRepository = module.get(getRepositoryToken(Transaction));
-    userRepository = module.get(getRepositoryToken(User));
   });
 
   afterEach(() => {
@@ -120,7 +117,7 @@ describe('FraudDetectionService', () => {
         id: 'dispute-1',
         userId: 'user-1',
         transactionId: 'tx-1',
-        amountNaira: 600000,
+        amountNaira: '600000',
         createdAt: new Date('2024-01-01T11:00:00Z'),
         transaction: mockTransaction,
       } as Dispute;

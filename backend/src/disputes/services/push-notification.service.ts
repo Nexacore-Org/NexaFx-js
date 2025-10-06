@@ -24,9 +24,10 @@ export class PushNotificationService {
   private readonly isEnabled: boolean;
 
   constructor(private configService: ConfigService) {
-    this.isEnabled = this.configService.get('PUSH_ENABLED', 'false') === 'true';
+    const pushEnabled =
+      this.configService.get('PUSH_ENABLED', 'false') === 'true';
 
-    if (this.isEnabled) {
+    if (pushEnabled) {
       const serviceAccountPath = this.configService.get<string>(
         'FIREBASE_SERVICE_ACCOUNT_PATH',
       );
@@ -35,30 +36,71 @@ export class PushNotificationService {
       );
 
       if (serviceAccountPath) {
-        // Initialize with service account file
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccountPath),
-        });
-        this.logger.log(
-          'Firebase Admin SDK initialized with service account file',
-        );
+        // Initialize with service account file (guard against duplicate init)
+        if (admin.apps.length === 0) {
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccountPath),
+          });
+          this.logger.log(
+            'Firebase Admin SDK initialized with service account file',
+          );
+        } else {
+          // Rl
+          // euse existing default app
+          // Accessing admin.app() ensures the default app exists and is used
+          admin.app();
+          this.logger.log(
+            'Firebase Admin SDK already initialized; reusing existing app',
+          );
+        }
+        this.isEnabled = true;
       } else if (serviceAccountKey) {
         // Initialize with service account key object
-        const serviceAccount = JSON.parse(
-          serviceAccountKey,
-        ) as admin.ServiceAccount;
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-        });
-        this.logger.log(
-          'Firebase Admin SDK initialized with service account key',
-        );
+        try {
+          const serviceAccount = JSON.parse(
+            serviceAccountKey,
+          ) as admin.ServiceAccount;
+          if (admin.apps.length === 0) {
+            admin.initializeApp({
+              credential: admin.credential.cert(serviceAccount),
+            });
+            this.logger.log(
+              'Firebase Admin SDK initialized with service account key',
+            );
+          } else {
+            // Reuse existing default app
+            admin.app();
+            this.logger.log(
+              'Firebase Admin SDK already initialized; reusing existing app',
+            );
+          }
+          this.isEnabled = true;
+        } catch (err) {
+          const preview =
+            typeof serviceAccountKey === 'string'
+              ? serviceAccountKey.length > 200
+                ? `${serviceAccountKey.slice(0, 200)}... [truncated]`
+                : serviceAccountKey
+              : '[non-string content]';
+          this.logger.error(
+            'Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON. Failed to initialize Firebase Admin.',
+            err as Error,
+          );
+          this.logger.error(
+            `FIREBASE_SERVICE_ACCOUNT_KEY content preview: ${preview}`,
+          );
+          throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON');
+          // Alternatively, terminate process to fail fast:
+          // process.exit(1);
+        }
       } else {
         this.logger.warn(
           'Firebase credentials not found. Push notifications will be disabled.',
         );
         this.isEnabled = false;
       }
+    } else {
+      this.isEnabled = false;
     }
   }
 
@@ -79,8 +121,10 @@ export class PushNotificationService {
         apns: {
           payload: {
             aps: {
-              badge: notification.badge,
               sound: 'default',
+              ...(notification.badge != null
+                ? { badge: notification.badge }
+                : {}),
             },
           },
         },
@@ -136,8 +180,10 @@ export class PushNotificationService {
         apns: {
           payload: {
             aps: {
-              badge: notification.badge,
               sound: 'default',
+              ...(notification.badge != null
+                ? { badge: notification.badge }
+                : {}),
             },
           },
         },
@@ -197,10 +243,19 @@ export class PushNotificationService {
     disputeId: string,
     outcome: string,
     refundAmount?: number,
+    options?: { locale?: string; currency?: string },
   ): Promise<boolean> {
+    const locale = options?.locale || 'en-NG';
+    const currency = options?.currency || 'NGN';
+
     let body = `Your dispute has been resolved: ${this.formatOutcome(outcome)}`;
-    if (refundAmount) {
-      body += `. Refund of ₦${refundAmount.toLocaleString()} processed.`;
+    if (typeof refundAmount === 'number' && !Number.isNaN(refundAmount)) {
+      const formattedRefund = new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency,
+        currencyDisplay: 'symbol',
+      }).format(refundAmount);
+      body += `. Refund of ${formattedRefund} processed.`;
     }
 
     return this.sendPushNotification({
@@ -315,7 +370,7 @@ export class PushNotificationService {
       return false;
     }
     // FCM tokens are typically long and contain alphanumeric characters and some special chars
-    return token.length >= 140 && /^[a-zA-Z0-9_-]+$/.test(token);
+    return token.length >= 140 && /^[a-zA-Z0-9_:-]+$/.test(token);
   }
 
   private formatCategory(category: string): string {

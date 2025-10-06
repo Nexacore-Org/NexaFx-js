@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, Matches } from 'class-validator';
 
 export class ProcessRefundDto {
   @ApiProperty({
@@ -9,7 +9,7 @@ export class ProcessRefundDto {
     required: false,
   })
   @IsOptional()
-  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
   amount?: string;
 
   @ApiProperty({

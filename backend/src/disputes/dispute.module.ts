@@ -14,6 +14,7 @@ import { SmsService } from './services/sms.service';
 import { PushNotificationService } from './services/push-notification.service';
 import { NotificationService } from './services/notification.service';
 import { SchedulerService } from './services/scheduler.service';
+import { TimelineEntryService } from './services/timeline-entry.service';
 import { DisputeProcessor } from './processors/dispute.processor';
 import { NotificationProcessor } from './processors/notification.processor';
 import { OcrProcessor } from './processors/ocr.processor';
@@ -57,10 +58,11 @@ import { AuditLog } from './entities/audit-log.entity';
     PushNotificationService,
     NotificationService,
     SchedulerService,
+    TimelineEntryService,
     DisputeProcessor,
     NotificationProcessor,
     OcrProcessor,
   ],
-  exports: [DisputeService],
+  exports: [DisputeService, TimelineEntryService],
 })
 export class DisputeModule {}

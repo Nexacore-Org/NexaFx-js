@@ -95,7 +95,7 @@ export class DisputeService {
       },
     });
 
-    if (existingDispute && existingDispute.state !== DisputeState.CANCELLED) {
+    if (existingDispute) {
       throw new BadRequestException(
         'Dispute already exists for this transaction',
       );
@@ -195,6 +195,10 @@ export class DisputeService {
       offset?: number;
     },
   ): Promise<Dispute[]> {
+    const { take, skip } = this.validateAndNormalizePagination(
+      filters?.limit,
+      filters?.offset,
+    );
     const where: FindOptionsWhere<Dispute> = { userId };
 
     if (filters?.state) {
@@ -213,8 +217,8 @@ export class DisputeService {
       where,
       relations: ['transaction', 'assignedTo'],
       order: { createdAt: 'DESC' },
-      take: filters?.limit || 50,
-      skip: filters?.offset || 0,
+      take,
+      skip,
     });
   }
 
@@ -238,13 +242,14 @@ export class DisputeService {
     }
 
     // Update dispute
+    const originalState = dispute.state;
     Object.assign(dispute, updateDisputeDto);
     await this.disputeRepository.save(dispute);
 
     // Create timeline entry
     const stateChangePayload: StateChangePayload = {
-      from: dispute.state,
-      to: (updateDisputeDto.state as DisputeState) || dispute.state,
+      from: originalState,
+      to: (updateDisputeDto.state as DisputeState) || originalState,
       reason: 'user_update',
     };
     await this.createTimelineEntry(
@@ -416,7 +421,7 @@ export class DisputeService {
     await this.createAuditLog(id, agentId, 'agent', 'ESCALATE_DISPUTE', {
       action: 'ESCALATE_DISPUTE',
       reason: escalateDto.reason,
-      escalationLevel: dispute.escalationLevel + 1,
+      escalationLevel: dispute.escalationLevel,
       previousState: dispute.state,
     });
 
@@ -540,12 +545,14 @@ export class DisputeService {
       );
     }
 
+    // Capture the current state before changing it
+    const previousState = dispute.state;
     dispute.state = DisputeState.CANCELLED;
     await this.disputeRepository.save(dispute);
 
     // Create timeline entry
     const stateChangePayload: StateChangePayload = {
-      from: dispute.state,
+      from: previousState,
       to: DisputeState.CANCELLED,
       reason: 'user_cancelled',
     };
@@ -566,6 +573,10 @@ export class DisputeService {
     limit?: number;
     offset?: number;
   }): Promise<Dispute[]> {
+    const { take, skip } = this.validateAndNormalizePagination(
+      filters?.limit,
+      filters?.offset,
+    );
     const where: FindOptionsWhere<Dispute> = {
       state: DisputeState.OPEN,
     };
@@ -582,9 +593,40 @@ export class DisputeService {
       where,
       relations: ['transaction', 'user'],
       order: { priority: 'DESC', createdAt: 'ASC' },
-      take: filters?.limit || 50,
-      skip: filters?.offset || 0,
+      take,
+      skip,
     });
+  }
+
+  private validateAndNormalizePagination(
+    limit?: number,
+    offset?: number,
+  ): { take: number; skip: number } {
+    // Sensible defaults
+    const DEFAULT_LIMIT = 50;
+    const MAX_LIMIT = 100;
+
+    // Coerce undefined/null to defaults
+    const normalizedLimit =
+      typeof limit === 'number' && !Number.isNaN(limit)
+        ? limit
+        : DEFAULT_LIMIT;
+    const normalizedOffset =
+      typeof offset === 'number' && !Number.isNaN(offset) ? offset : 0;
+
+    // Validate bounds
+    if (normalizedLimit < 1 || normalizedLimit > MAX_LIMIT) {
+      throw new BadRequestException(
+        `Query parameter 'limit' must be between 1 and ${MAX_LIMIT}`,
+      );
+    }
+    if (normalizedOffset < 0) {
+      throw new BadRequestException(
+        "Query parameter 'offset' must be greater than or equal to 0",
+      );
+    }
+
+    return { take: normalizedLimit, skip: normalizedOffset };
   }
 
   async getAssignedDisputes(agentId: string): Promise<Dispute[]> {

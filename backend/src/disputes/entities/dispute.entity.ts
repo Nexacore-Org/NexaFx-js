@@ -11,26 +11,10 @@ import {
 } from 'typeorm';
 import { User } from './user.entity';
 import { Transaction } from './transaction.entity';
-// Forward declarations to avoid circular imports
-export interface Evidence {
-  id: string;
-  disputeId: string;
-  uploaderId: string;
-  s3Key: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  ocrText?: string;
-  createdAt: Date;
-}
-
-export interface Comment {
-  id: string;
-  disputeId: string;
-  authorId: string;
-  content: string;
-  createdAt: Date;
-}
+import { Evidence } from './evidence.entity';
+import { Comment } from './comment.entity';
+import { TimelineEntry } from './timeline-entry.entity';
+import { AuditLog } from './audit-log.entity';
 
 // Payload interfaces for different timeline entry types
 export interface CreatedPayload {
@@ -110,103 +94,6 @@ export interface AutoResolutionPayload {
 }
 
 // Discriminated union for TimelineEntry
-export type TimelineEntry =
-  | {
-      id: string;
-      disputeId: string;
-      type: 'created';
-      actorId?: string;
-      payload: CreatedPayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'state_change';
-      actorId?: string;
-      payload: StateChangePayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'comment';
-      actorId?: string;
-      payload: CommentPayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'evidence';
-      actorId?: string;
-      payload: EvidencePayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'assignment';
-      actorId?: string;
-      payload: AssignmentPayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'notification';
-      actorId?: string;
-      payload: NotificationPayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'escalation';
-      actorId?: string;
-      payload: EscalationPayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'resolution';
-      actorId?: string;
-      payload: ResolutionPayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'refund';
-      actorId?: string;
-      payload: RefundPayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'sla_violation';
-      actorId?: string;
-      payload: SlaViolationPayload;
-      createdAt: Date;
-    }
-  | {
-      id: string;
-      disputeId: string;
-      type: 'auto_resolution';
-      actorId?: string;
-      payload: AutoResolutionPayload;
-      createdAt: Date;
-    };
-
-export interface AuditLog {
-  id: string;
-  disputeId: string;
-  actorId?: string;
-  action: string;
-  createdAt: Date;
-}
 
 export enum DisputeState {
   DRAFT = 'draft',
@@ -347,15 +234,15 @@ export class Dispute {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToMany('Evidence', 'dispute')
+  @OneToMany(() => Evidence, (evidence) => evidence.dispute)
   evidences: Evidence[];
 
-  @OneToMany('Comment', 'dispute')
+  @OneToMany(() => Comment, (comment) => comment.dispute)
   comments: Comment[];
 
-  @OneToMany('TimelineEntry', 'dispute')
+  @OneToMany(() => TimelineEntry, (entry) => entry.dispute)
   timeline: TimelineEntry[];
 
-  @OneToMany('AuditLog', 'dispute')
+  @OneToMany(() => AuditLog, (audit) => audit.dispute)
   audits: AuditLog[];
 }

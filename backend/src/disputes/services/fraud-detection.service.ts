@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Not } from 'typeorm';
 import {
@@ -36,6 +36,7 @@ export interface FraudAnalysisResult {
 
 @Injectable()
 export class FraudDetectionService {
+  private readonly logger = new Logger(FraudDetectionService.name);
   constructor(
     @InjectRepository(Dispute)
     private disputeRepository: Repository<Dispute>,
@@ -337,6 +338,10 @@ export class FraudDetectionService {
 
     // Check if transaction relation is loaded
     if (!dispute.transaction) {
+      // Warn for observability when transaction relation is not loaded
+      this.logger.warn(
+        `Timing analysis skipped: missing loaded transaction relation for dispute ${dispute.id} (transactionId=${dispute.transactionId ?? 'unknown'}).`,
+      );
       // If transaction relation is not loaded, skip timing analysis
       // This could indicate a data integrity issue or incomplete loading
       factors.push({

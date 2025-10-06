@@ -11,9 +11,14 @@ import {
   UseInterceptors,
   UploadedFiles,
   ParseUUIDPipe,
+  ParseIntPipe,
   ForbiddenException,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import * as path from 'path';
 import {
   ApiTags,
   ApiOperation,
@@ -35,7 +40,33 @@ import { JwtAuthGuard } from '../../oauth/guards/jwt-auth.guard';
 import { AgentGuard } from '../guards/agent.guard';
 import { AdminGuard } from '../guards/admin.guard';
 import { DisputeAccessGuard } from '../guards/dispute-access.guard';
+import { SetMetadata } from '@nestjs/common';
 import { CurrentUser } from '../../rbac-system/decorators/current-user.decorator';
+
+// Multer helpers: sanitize filenames and allowlist validation
+const ALLOWED_MIME_TYPES = new Set<string>([
+  'image/jpeg',
+  'image/png',
+  'application/pdf',
+]);
+const ALLOWED_EXTENSIONS = new Set<string>(['.jpg', '.jpeg', '.png', '.pdf']);
+
+function sanitizeFilename(originalname: string): string {
+  const ext = path.extname(originalname || '').toLowerCase();
+  const base = path.basename(originalname || 'file', ext);
+  const sanitizedBase =
+    (base || 'file')
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^[-.]+|[-.]+$/g, '')
+      .slice(0, 100) || 'file';
+  return `${sanitizedBase}${ext}`;
+}
+
+function isAllowedFile(mime: string, ext: string): boolean {
+  return ALLOWED_MIME_TYPES.has(mime) && ALLOWED_EXTENSIONS.has(ext);
+}
 
 @ApiTags('Disputes')
 @Controller('disputes')
@@ -62,7 +93,28 @@ export class DisputeController {
   @Post('create-with-files')
   @ApiOperation({ summary: 'Create dispute with evidence files' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('evidenceFiles', 10))
+  @UseInterceptors(
+    FilesInterceptor('evidenceFiles', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024, files: 10 },
+      fileFilter: (
+        req: any,
+        file: Express.Multer.File,
+        cb: (error: any, acceptFile: boolean) => void,
+      ) => {
+        const ext = path.extname(file.originalname || '').toLowerCase();
+        const mime = (file.mimetype || '').toLowerCase();
+        const sanitized = sanitizeFilename(file.originalname || 'file');
+        // assign sanitized name for downstream consumers
+        (file as unknown as { originalname: string }).originalname = sanitized;
+
+        if (!isAllowedFile(mime, ext)) {
+          return cb(new BadRequestException('Invalid file type'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
   @ApiResponse({ status: 201, description: 'Dispute created successfully' })
   async createDisputeWithFiles(
     @Body() createDisputeDto: CreateDisputeDto,
@@ -99,8 +151,8 @@ export class DisputeController {
     currentUser: { id: string; isAdmin?: boolean; isAgent?: boolean },
     @Query('state') state?: string,
     @Query('category') category?: string,
-    @Query('limit') limit?: number,
-    @Query('offset') offset?: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('offset', new ParseIntPipe({ optional: true })) offset?: number,
   ): Promise<Dispute[]> {
     // Verify the user can only access their own disputes (unless admin/agent)
     if (
@@ -134,7 +186,27 @@ export class DisputeController {
   @Post(':disputeId/evidence')
   @ApiOperation({ summary: 'Submit evidence for dispute' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('files', 10))
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024, files: 10 },
+      fileFilter: (
+        req: any,
+        file: Express.Multer.File,
+        cb: (error: any, acceptFile: boolean) => void,
+      ) => {
+        const ext = path.extname(file.originalname || '').toLowerCase();
+        const mime = (file.mimetype || '').toLowerCase();
+        const sanitized = sanitizeFilename(file.originalname || 'file');
+        (file as unknown as { originalname: string }).originalname = sanitized;
+
+        if (!isAllowedFile(mime, ext)) {
+          return cb(new BadRequestException('Invalid file type'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
   @ApiResponse({ status: 201, description: 'Evidence uploaded successfully' })
   @UseGuards(DisputeAccessGuard)
   async uploadEvidence(
@@ -149,23 +221,15 @@ export class DisputeController {
   @ApiOperation({ summary: 'Get dispute evidence' })
   @ApiResponse({ status: 200, description: 'Evidence list' })
   @UseGuards(JwtAuthGuard, DisputeAccessGuard)
+  @SetMetadata('dispute_access_mode', 'evidence')
   async getEvidence(
     @Param('disputeId', ParseUUIDPipe) disputeId: string,
-    @CurrentUser() user: { id: string; isAdmin?: boolean; isAgent?: boolean },
   ): Promise<any> {
-    // Check if user can access evidence for this dispute
-    const canAccess = await this.disputeService.canAccessEvidenceWithUser(
-      user,
-      disputeId,
-    );
-    if (!canAccess) {
-      throw new ForbiddenException(
-        'You do not have permission to access this evidence',
-      );
-    }
-
     const dispute = await this.disputeService.findOne(disputeId);
-    return dispute.evidences;
+    if (!dispute) {
+      throw new NotFoundException('Dispute not found');
+    }
+    return dispute?.evidences ?? [];
   }
 
   @Post(':disputeId/comment')
@@ -198,7 +262,10 @@ export class DisputeController {
     @Param('disputeId', ParseUUIDPipe) disputeId: string,
   ): Promise<any> {
     const dispute = await this.disputeService.findOne(disputeId);
-    return dispute.timeline;
+    if (!dispute) {
+      throw new NotFoundException('Dispute not found');
+    }
+    return dispute?.timeline ?? [];
   }
 
   @Post('admin/:disputeId/assign')
@@ -248,8 +315,8 @@ export class DisputeController {
   async getPendingDisputes(
     @Query('priority') priority?: string,
     @Query('category') category?: string,
-    @Query('limit') limit?: number,
-    @Query('offset') offset?: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('offset', new ParseIntPipe({ optional: true })) offset?: number,
   ): Promise<Dispute[]> {
     const filters = { priority, category, limit, offset };
     return this.disputeService.getPendingDisputes(filters);
@@ -317,11 +384,14 @@ export class DisputeController {
     @Body() processRefundDto: ProcessRefundDto,
     @CurrentUser() user: { id: string },
   ): Promise<RefundResponseDto> {
+    if (!processRefundDto) {
+      throw new BadRequestException('Refund request body is required');
+    }
     return this.disputeService.processRefund(
       disputeId,
       user.id,
-      processRefundDto?.amount,
-      processRefundDto?.reason,
+      processRefundDto.amount,
+      processRefundDto.reason,
     );
   }
 

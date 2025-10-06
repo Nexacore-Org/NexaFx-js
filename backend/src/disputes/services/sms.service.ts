@@ -16,12 +16,18 @@ export class SmsService {
 
   constructor(private configService: ConfigService) {
     this.isEnabled = this.configService.get('SMS_ENABLED', 'false') === 'true';
-    this.fromNumber = this.configService.get(
-      'TWILIO_PHONE_NUMBER',
-      '+1234567890',
-    );
+    this.fromNumber =
+      this.configService.get<string>('TWILIO_PHONE_NUMBER') || '';
 
     if (this.isEnabled) {
+      if (!this.fromNumber || this.fromNumber.trim() === '') {
+        this.logger.error(
+          'TWILIO_PHONE_NUMBER is required when SMS is enabled. Please set a valid sending number.',
+        );
+        throw new Error(
+          'Initialization error: TWILIO_PHONE_NUMBER is required when SMS is enabled.',
+        );
+      }
       const accountSid = this.configService.get<string>('TWILIO_ACCOUNT_SID');
       const authToken = this.configService.get<string>('TWILIO_AUTH_TOKEN');
 
@@ -80,7 +86,7 @@ export class SmsService {
   ): Promise<boolean> {
     let message = `NexaFx: Your dispute ${disputeId} has been resolved. Outcome: ${this.formatOutcome(outcome)}.`;
 
-    if (refundAmount) {
+    if (refundAmount != null) {
       const formattedAmount = new Intl.NumberFormat('en-NG', {
         style: 'currency',
         currency: 'NGN',

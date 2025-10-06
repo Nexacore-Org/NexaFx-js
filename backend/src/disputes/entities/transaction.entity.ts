@@ -7,6 +7,7 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { User } from './user.entity';
 import { Dispute } from './dispute.entity';
@@ -23,6 +24,7 @@ export class Transaction {
   @PrimaryColumn()
   id: string;
 
+  @Index()
   @Column()
   userId: string;
 

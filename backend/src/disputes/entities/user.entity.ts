@@ -42,8 +42,8 @@ export class User {
   @Column({ nullable: true })
   fcmToken: string;
 
-  @Column({ type: 'text', nullable: true })
-  notificationPreferences: string; // JSON string
+  @Column({ type: 'jsonb', nullable: true })
+  notificationPreferences: Record<string, any> | null;
 
   @CreateDateColumn()
   createdAt: Date;

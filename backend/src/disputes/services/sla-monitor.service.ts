@@ -137,6 +137,7 @@ export class SlaMonitorService {
       // Generate report
       const report = {
         date: yesterdayStart.toISOString().split('T')[0],
+        total: totalResolved,
         totalResolved,
         withinSla,
         complianceRate: Math.round(complianceRate * 100) / 100,
@@ -433,21 +434,39 @@ export class SlaMonitorService {
 
       // Generate HTML report
       const htmlReport = this.generateHtmlReport(report);
+      type ReportWithDate = { date: string | number | Date };
+      const { date } = report as unknown as ReportWithDate;
+      const subjectDate = new Date(date).toLocaleDateString();
 
       // Send email to all management users
       const emailPromises = managementUsers.map((user) =>
         this.emailService.sendEmail({
           to: user.email,
-          subject: `Daily SLA Report - ${new Date().toLocaleDateString()}`,
+          subject: `Daily SLA Report - ${subjectDate}`,
           html: htmlReport,
           text: this.generateTextReport(report),
         }),
       );
 
-      await Promise.all(emailPromises);
+      const results = await Promise.allSettled(emailPromises);
+
+      let successCount = 0;
+      let failureCount = 0;
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          successCount += 1;
+        } else {
+          failureCount += 1;
+          this.logger.warn(
+            `Failed to send SLA report to ${managementUsers[index].email}: ${String(
+              result.reason,
+            )}`,
+          );
+        }
+      });
 
       this.logger.log(
-        `SLA report sent to ${managementUsers.length} management users`,
+        `SLA report email results -> successes: ${successCount}, failures: ${failureCount}, total recipients: ${managementUsers.length}`,
       );
     } catch (error) {
       this.logger.error('Error sending SLA report:', error);
@@ -455,25 +474,34 @@ export class SlaMonitorService {
   }
 
   private generateHtmlReport(report: any): string {
-    const currentDate = new Date().toLocaleDateString();
+    type ReportShape = {
+      date: string | number | Date;
+      total: number;
+      totalResolved: number;
+      withinSla: number;
+      complianceRate: number;
+      avgResolutionTime: number;
+    };
+    const r = report as ReportShape;
+    const reportDate = new Date(r.date).toLocaleDateString();
 
     return `
 <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
   <h2 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">
-    Daily SLA Report - ${currentDate}
+    Daily SLA Report - ${reportDate}
   </h2>
   
   <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
     <h3 style="color: #495057; margin-top: 0;">📊 Summary</h3>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
       <div>
-        <strong>Total Disputes:</strong> ${report.total}<br>
-        <strong>Resolved:</strong> ${report.totalResolved}<br>
-        <strong>Within SLA:</strong> ${report.withinSla}
+        <strong>Total Disputes:</strong> ${r.total}<br>
+        <strong>Resolved:</strong> ${r.totalResolved}<br>
+        <strong>Within SLA:</strong> ${r.withinSla}
       </div>
       <div>
-        <strong>Compliance Rate:</strong> ${report.complianceRate}%<br>
-        <strong>Avg Resolution Time:</strong> ${report.avgResolutionTime} hours
+        <strong>Compliance Rate:</strong> ${r.complianceRate}%<br>
+        <strong>Avg Resolution Time:</strong> ${r.avgResolutionTime} hours
       </div>
     </div>
   </div>
@@ -482,9 +510,9 @@ export class SlaMonitorService {
     <h4 style="color: #155724; margin-top: 0;">✅ SLA Performance</h4>
     <p style="margin: 0;">
       ${
-        report.complianceRate >= 95
+        r.complianceRate >= 95
           ? 'Excellent SLA compliance maintained!'
-          : report.complianceRate >= 90
+          : r.complianceRate >= 90
             ? 'Good SLA compliance, room for improvement'
             : 'SLA compliance needs immediate attention'
       }
@@ -494,8 +522,8 @@ export class SlaMonitorService {
   <div style="background-color: #fff3cd; padding: 15px; border-radius: 8px;">
     <h4 style="color: #856404; margin-top: 0;">⚠️ Recommendations</h4>
     <ul style="margin: 0;">
-      ${report.complianceRate < 95 ? '<li>Review dispute assignment process</li>' : ''}
-      ${report.avgResolutionTime > 24 ? '<li>Optimize resolution workflow</li>' : ''}
+      ${r.complianceRate < 95 ? '<li>Review dispute assignment process</li>' : ''}
+      ${r.avgResolutionTime > 24 ? '<li>Optimize resolution workflow</li>' : ''}
       <li>Monitor dispute escalation patterns</li>
       <li>Review agent workload distribution</li>
     </ul>
@@ -511,30 +539,39 @@ export class SlaMonitorService {
   }
 
   private generateTextReport(report: any): string {
-    const currentDate = new Date().toLocaleDateString();
+    type ReportShape = {
+      date: string | number | Date;
+      total: number;
+      totalResolved: number;
+      withinSla: number;
+      complianceRate: number;
+      avgResolutionTime: number;
+    };
+    const r = report as ReportShape;
+    const reportDate = new Date(r.date).toLocaleDateString();
 
     return `
-Daily SLA Report - ${currentDate}
+Daily SLA Report - ${reportDate}
 
 SUMMARY:
-- Total Disputes: ${report.total}
-- Resolved: ${report.totalResolved}
-- Within SLA: ${report.withinSla}
-- Compliance Rate: ${report.complianceRate}%
-- Avg Resolution Time: ${report.avgResolutionTime} hours
+- Total Disputes: ${r.total}
+- Resolved: ${r.totalResolved}
+- Within SLA: ${r.withinSla}
+- Compliance Rate: ${r.complianceRate}%
+- Avg Resolution Time: ${r.avgResolutionTime} hours
 
 SLA PERFORMANCE:
 ${
-  report.complianceRate >= 95
+  r.complianceRate >= 95
     ? 'Excellent SLA compliance maintained!'
-    : report.complianceRate >= 90
+    : r.complianceRate >= 90
       ? 'Good SLA compliance, room for improvement'
       : 'SLA compliance needs immediate attention'
 }
 
 RECOMMENDATIONS:
-${report.complianceRate < 95 ? '- Review dispute assignment process' : ''}
-${report.avgResolutionTime > 24 ? '- Optimize resolution workflow' : ''}
+${r.complianceRate < 95 ? '- Review dispute assignment process' : ''}
+${r.avgResolutionTime > 24 ? '- Optimize resolution workflow' : ''}
 - Monitor dispute escalation patterns
 - Review agent workload distribution
 

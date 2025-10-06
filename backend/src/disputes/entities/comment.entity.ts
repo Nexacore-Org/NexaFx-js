@@ -28,7 +28,9 @@ export class Comment {
   @Column()
   disputeId: string;
 
-  @ManyToOne(() => Dispute, (dispute) => dispute.comments)
+  @ManyToOne(() => Dispute, (dispute) => dispute.comments, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'disputeId' })
   dispute: Dispute;
 

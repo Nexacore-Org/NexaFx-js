@@ -1,3 +1,27 @@
+// Helper to compute duration in milliseconds for N business days, skipping non-working days
+const computeBusinessDaysDurationMs = (
+  numBusinessDays: number,
+  workingDays: number[],
+): number => {
+  const now = Date.now();
+  const date = new Date(now);
+  let daysAccumulated = 0;
+
+  // Advance day by day, counting only working days
+  while (daysAccumulated < numBusinessDays) {
+    date.setDate(date.getDate() + 1);
+    if (workingDays.includes(date.getDay())) {
+      daysAccumulated += 1;
+    }
+  }
+
+  return date.getTime() - now;
+};
+
+// Keep these in sync with the businessHours config below
+const BUSINESS_HOURS_ENABLED = true;
+const BUSINESS_WORKING_DAYS = [1, 2, 3, 4, 5]; // Monday to Friday
+
 interface DisputeConfig {
   // SLA Configuration
   sla: {
@@ -156,6 +180,13 @@ interface DisputeConfig {
       maxRequests: number;
     };
   };
+
+  // Security and privacy controls
+  security: {
+    requireConsent: boolean;
+    fullIpEnabled: boolean;
+    hashUserAgent: boolean;
+  };
 }
 
 export const disputeConfig: DisputeConfig = {
@@ -164,7 +195,10 @@ export const disputeConfig: DisputeConfig = {
     initialResponse: 2 * 60 * 60 * 1000, // 2 hours in milliseconds
     simpleResolution: 24 * 60 * 60 * 1000, // 24 hours
     complexResolution: 72 * 60 * 60 * 1000, // 72 hours
-    escalatedResolution: 5 * 24 * 60 * 60 * 1000, // 5 business days
+    // 5 business days when business hours are enabled; otherwise 5 calendar days
+    escalatedResolution: BUSINESS_HOURS_ENABLED
+      ? computeBusinessDaysDurationMs(5, BUSINESS_WORKING_DAYS)
+      : 5 * 24 * 60 * 60 * 1000,
   },
 
   // Priority thresholds
@@ -298,15 +332,22 @@ export const disputeConfig: DisputeConfig = {
   retention: {
     disputeData: 6 * 365 * 24 * 60 * 60 * 1000, // 6 years (NDPR compliant)
     evidenceFiles: 6 * 365 * 24 * 60 * 60 * 1000, // 6 years (NDPR compliant)
-    auditLogs: 6 * 365 * 24 * 60 * 60 * 1000, // 6 years (NDPR compliant)
+    auditLogs:
+      parseInt(process.env.AUDIT_RETENTION_DAYS || '', 10) > 0
+        ? parseInt(process.env.AUDIT_RETENTION_DAYS as string, 10) *
+          24 *
+          60 *
+          60 *
+          1000
+        : 6 * 365 * 24 * 60 * 60 * 1000,
     timelineEntries: 6 * 365 * 24 * 60 * 60 * 1000, // 6 years (NDPR compliant)
   },
 
   // Business hours for SLA calculations
   businessHours: {
-    enabled: true,
+    enabled: BUSINESS_HOURS_ENABLED,
     timezone: 'Africa/Lagos',
-    workingDays: [1, 2, 3, 4, 5], // Monday to Friday
+    workingDays: BUSINESS_WORKING_DAYS, // Monday to Friday
     workingHours: {
       start: '09:00',
       end: '17:00',
@@ -327,5 +368,12 @@ export const disputeConfig: DisputeConfig = {
       windowMs: 15 * 60 * 1000, // 15 minutes
       maxRequests: 10,
     },
+  },
+
+  // Security and privacy controls: wired to env vars with privacy-by-default
+  security: {
+    requireConsent: (process.env.SECURITY_REQUIRE_CONSENT || 'true') === 'true',
+    fullIpEnabled: (process.env.SECURITY_FULL_IP || 'false') === 'true',
+    hashUserAgent: (process.env.SECURITY_HASH_UA || 'true') === 'true',
   },
 };

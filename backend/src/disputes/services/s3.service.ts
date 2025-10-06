@@ -120,6 +120,42 @@ export class S3Service {
     prefix: string,
     metadata?: Record<string, string>,
   ): Promise<{ key: string; url: string }> {
+    // Validate input before constructing PutObjectCommand
+    if (!file) {
+      throw new Error('Invalid file: no file provided');
+    }
+
+    // Ensure buffer exists and is non-empty
+    if (
+      !file.buffer ||
+      !(file.buffer instanceof Buffer) ||
+      file.buffer.length === 0
+    ) {
+      throw new Error('Invalid file: buffer is missing or empty');
+    }
+
+    // Ensure size is a positive number
+    if (
+      typeof file.size !== 'number' ||
+      !Number.isFinite(file.size) ||
+      file.size <= 0
+    ) {
+      throw new Error(
+        'Invalid file: size must be a positive number, got ' + file.size,
+      );
+    }
+
+    // Ensure mimetype is present and optionally validate allowed types
+    if (!file.mimetype || typeof file.mimetype !== 'string') {
+      throw new Error('Invalid file: mimetype is missing');
+    }
+
+    const allowedMimePattern =
+      /^(image\/[a-z0-9.+-]+|application\/pdf|text\/plain)$/i;
+    if (!allowedMimePattern.test(file.mimetype)) {
+      throw new Error('Unsupported content type: ' + file.mimetype);
+    }
+
     const sanitizedFilename = this.sanitizeFilename(file.originalname);
     const key = `${prefix}/${uuidv4()}-${sanitizedFilename}`;
 
@@ -145,9 +181,51 @@ export class S3Service {
     contentType: string,
     metadata?: Record<string, string>,
   ): Promise<string> {
+    // Validate buffer
+    if (!buffer || !(buffer instanceof Buffer) || buffer.length === 0) {
+      throw new Error('Buffer is missing or empty');
+    }
+
+    // Validate content type
+    if (!contentType || typeof contentType !== 'string') {
+      throw new Error('Content type is required');
+    }
+    const allowedMimePattern =
+      /^(image\/[a-z0-9.+-]+|application\/pdf|text\/plain)$/i;
+    if (!allowedMimePattern.test(contentType)) {
+      throw new Error('Unsupported content type: ' + contentType);
+    }
+
+    // Validate and sanitize key
+    if (!key || typeof key !== 'string') {
+      throw new Error('Invalid key: key is required');
+    }
+    const normalizedKey = key.replace(/\\/g, '/').trim();
+    if (normalizedKey.length === 0) {
+      throw new Error('Invalid key: key must not be empty');
+    }
+    if (normalizedKey.includes('..') || normalizedKey.startsWith('/')) {
+      throw new Error(
+        'Invalid key: key must not be absolute or contain path traversal sequences',
+      );
+    }
+    const safeKey = normalizedKey
+      .split('/')
+      .map((segment) =>
+        segment
+          .trim()
+          .replace(/[^A-Za-z0-9._-]+/g, '-')
+          .replace(/^[.-]+|[.-]+$/g, ''),
+      )
+      .filter(Boolean)
+      .join('/');
+    if (!safeKey) {
+      throw new Error('Invalid key: resulted in empty key after sanitization');
+    }
+
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
-      Key: key,
+      Key: safeKey,
       Body: buffer,
       ContentType: contentType,
       ContentLength: buffer.length,
@@ -156,7 +234,7 @@ export class S3Service {
 
     await this.s3Client.send(command);
 
-    return this.buildS3Url(key);
+    return this.buildS3Url(safeKey);
   }
 
   async getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
@@ -236,8 +314,29 @@ export class S3Service {
   }
 
   generateEvidenceKey(disputeId: string, filename: string): string {
+    // Validate disputeId presence
+    if (!disputeId || disputeId.trim().length === 0) {
+      throw new Error('Invalid disputeId: missing or blank');
+    }
+
+    const trimmedDisputeId = disputeId.trim();
+
+    // Reject path traversal or slash characters
+    if (
+      trimmedDisputeId.includes('..') ||
+      trimmedDisputeId.includes('/') ||
+      trimmedDisputeId.includes('\\')
+    ) {
+      throw new Error(
+        "Invalid disputeId: must not contain path traversal ('..') or slashes",
+      );
+    }
+
+    // Normalize to allowed charset [A-Za-z0-9_-], replace others with '-'
+    const sanitizedDisputeId = trimmedDisputeId.replace(/[^A-Za-z0-9_-]/g, '-');
+
     const sanitizedFilename = this.sanitizeFilename(filename);
-    return `evidence/${disputeId}/${uuidv4()}-${sanitizedFilename}`;
+    return `evidence/${sanitizedDisputeId}/${uuidv4()}-${sanitizedFilename}`;
   }
 
   generateThumbnailKey(evidenceKey: string): string {
@@ -268,6 +367,13 @@ export class S3Service {
     }
 
     const nameWithoutExt = filename.substring(0, lastDotIndex);
+
+    // Validate that nameWithoutExt is non-empty and contains at least one alphanumeric character
+    if (!nameWithoutExt || nameWithoutExt.match(/^[.-]+$/)) {
+      throw new Error(
+        `Invalid filename for thumbnail generation: filename "${filename}" produces invalid name without extension "${nameWithoutExt}". Filename must contain at least one alphanumeric character before the extension.`,
+      );
+    }
 
     return `thumbnails/${parts[1]}/${nameWithoutExt}-thumb.jpg`;
   }

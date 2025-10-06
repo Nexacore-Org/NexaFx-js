@@ -40,19 +40,19 @@ export class Evidence {
   size: number;
 
   @Column({ type: 'text', nullable: true })
-  ocrText: string;
+  ocrText: string | null;
 
   @Column({ nullable: true })
-  ocrConfidence: number;
+  ocrConfidence: number | null;
 
   @Column({ default: false })
   isProcessed: boolean;
 
   @Column({ nullable: true })
-  extractedData: string; // JSON string for structured data
+  extractedData: string | null; // JSON string for structured data
 
   @Column({ nullable: true })
-  thumbnailKey: string; // S3 key for thumbnail
+  thumbnailKey: string | null; // S3 key for thumbnail
 
   @Column({
     type: 'enum',
@@ -62,7 +62,7 @@ export class Evidence {
   uploadStatus: 'pending' | 'completed' | 'failed';
 
   @Column({ type: 'text', nullable: true })
-  uploadError: string; // Error message if upload failed
+  uploadError: string | null; // Error message if upload failed
 
   @CreateDateColumn()
   createdAt: Date;
