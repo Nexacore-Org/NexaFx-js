@@ -16,6 +16,8 @@ import { RecoveryModule } from './recovery/recovery.module';
 import { SecurityHeaderModule } from './security-header/security-header.module';
 import { FileUploadModule } from './file-upload/file-upload.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SecurityModule } from './security/security.module';
+
 import { RedisModule } from './common/redis/redis.module';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
@@ -26,6 +28,10 @@ import { ConversionsModule } from './conversions/conversions.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+    }),
+    SecurityModule.forRoot({
+      windowMs: 60 * 1000, // 1 minute
+      max: 100, // limit each IP to 100 requests per windowMs
     }),
     ScheduleModule.forRoot(),
     MaskingModule,
@@ -54,5 +60,6 @@ import { ConversionsModule } from './conversions/conversions.module';
       useClass: LoggingMaskingInterceptor,
     },
   ],
+  
 })
 export class AppModule {}
