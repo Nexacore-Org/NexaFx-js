@@ -63,7 +63,11 @@
     "twilio": "^4.19.0",
     "typeorm": "^0.3.17",
     "uuid": "^13.0.0",
-    "xstate": "^5.0.0"
+    "xstate": "^5.0.0",
+    "redis": "^4.6.12",
+    "@nestjs/cache-manager": "^2.2.0",
+    "cache-manager": "^5.4.0",
+    "cache-manager-redis-store": "^3.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -79,10 +83,10 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.7",
     "@types/supertest": "^6.0.2",
-    "@types/bcrypt": "^5.0.0",
     "@types/multer": "^1.4.11",
     "@types/uuid": "^9.0.7",
     "@types/pdf-parse": "^1.1.4",
+    "@types/redis": "^4.0.10",
     "supertest": "^7.0.0",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
