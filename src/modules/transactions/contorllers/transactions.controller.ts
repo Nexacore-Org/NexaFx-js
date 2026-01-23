@@ -11,4 +11,12 @@ export class TransactionsController {
   search(@Query() query: SearchTransactionsDto) {
     return this.txService.search(query);
   }
+  @Get(':id/enrichment')
+async getEnrichment(@Param('id') id: string) {
+  const enrichment = await this.enrichmentService.getEnrichment(id);
+
+  return {
+    success: true,
+    data: enrichment,
+  };
 }

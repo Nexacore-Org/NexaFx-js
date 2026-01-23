@@ -1,3 +1,4 @@
+import { EnrichmentModule } from '../enrichment/enrichment.module';
 import { AdminTransactionsController } from './controllers/admin-transactions.controller';
 import { TransactionReplayService } from './services/transaction-replay.service';
 
@@ -9,6 +10,7 @@ import { TransactionReplayService } from './services/transaction-replay.service'
   providers: [
     // ...existing providers
     TransactionReplayService,
+      EnrichmentModule,
   ],
 })
 export class TransactionsModule {}
