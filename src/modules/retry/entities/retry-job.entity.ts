@@ -7,7 +7,12 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type RetryJobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type RetryJobStatus =
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
 
 export type RetryErrorCategory =
   | 'NETWORK_TIMEOUT'

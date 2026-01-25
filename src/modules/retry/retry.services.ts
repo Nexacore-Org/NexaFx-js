@@ -2,7 +2,10 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThanOrEqual, Repository } from 'typeorm';
 
-import { RetryJobEntity, RetryErrorCategory } from './entities/retry-job.entity';
+import {
+  RetryJobEntity,
+  RetryErrorCategory,
+} from './entities/retry-job.entity';
 import { getRetryPolicy } from './retry-policy';
 
 @Injectable()
@@ -79,12 +82,12 @@ export class RetryService {
       await this.executeRetry(job.type, job.entityId);
 
       job.status = 'succeeded';
-      job.lastError = null;
+      job.lastError = undefined;
       await this.retryRepo.save(job);
 
       return job;
     } catch (err: any) {
-      const category = (job.lastErrorCategory ?? 'UNKNOWN') as RetryErrorCategory;
+      const category = job.lastErrorCategory ?? 'UNKNOWN';
       const policy = getRetryPolicy(category);
 
       const attempts = job.attempts + 1;

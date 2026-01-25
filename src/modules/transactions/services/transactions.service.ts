@@ -4,12 +4,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { TransactionEntity } from '../entities/transaction.entity';
 import { SearchTransactionsDto } from '../dto/search-transactions.dto';
+import { EnrichmentService } from '../../enrichment/enrichment.service';
 
 @Injectable()
 export class TransactionsService {
   constructor(
     @InjectRepository(TransactionEntity)
     private readonly txRepo: Repository<TransactionEntity>,
+    private readonly enrichmentService: EnrichmentService,
   ) {}
 
   // ✅ NEW: FTS Search
@@ -20,18 +22,20 @@ export class TransactionsService {
 
     const qb = this.txRepo.createQueryBuilder('t');
 
-    const saved = await this.txRepo.save(tx);
-
-
     // ✅ Full-text search query (optional)
     if (dto.q && dto.q.trim().length > 0) {
       const q = dto.q.trim();
 
       // websearch_to_tsquery supports google-like syntax
-      qb.andWhere(`t.search_vector @@ websearch_to_tsquery('simple', :q)`, { q });
+      qb.andWhere(`t.search_vector @@ websearch_to_tsquery('simple', :q)`, {
+        q,
+      });
 
       // optionally include ranking
-      qb.addSelect(`ts_rank(t.search_vector, websearch_to_tsquery('simple', :q))`, 'rank');
+      qb.addSelect(
+        `ts_rank(t.search_vector, websearch_to_tsquery('simple', :q))`,
+        'rank',
+      );
       qb.orderBy('rank', 'DESC');
     }
 
@@ -54,16 +58,13 @@ export class TransactionsService {
 
     // ✅ Sorting fallback (if no FTS ranking or if you want to force sort)
     if (!dto.q) {
-      const sortCol =
-        dto.sortBy === 'amount' ? 't.amount' : 't.created_at';
+      const sortCol = dto.sortBy === 'amount' ? 't.amount' : 't.created_at';
 
-      qb.orderBy(sortCol, (dto.sortOrder ?? 'desc').toUpperCase() as 'ASC' | 'DESC');
+      qb.orderBy(
+        sortCol,
+        (dto.sortOrder ?? 'desc').toUpperCase() as 'ASC' | 'DESC',
+      );
     }
-
-    // ✅ async fire-and-forget enrichment
-setImmediate(() => {
-  this.enrichmentService.enrichTransaction(saved.id).catch(() => null);
-
 
     qb.take(limit).skip(offset);
 
@@ -81,4 +82,3 @@ setImmediate(() => {
     };
   }
 }
-

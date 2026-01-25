@@ -11,7 +11,9 @@ export class EnrichmentService {
   private readonly logger = new Logger(EnrichmentService.name);
 
   // ✅ pluggable providers list (add more later)
-  private readonly providers: EnrichmentProvider[] = [new HeuristicEnrichmentProvider()];
+  private readonly providers: EnrichmentProvider[] = [
+    new HeuristicEnrichmentProvider(),
+  ];
 
   constructor(
     @InjectRepository(TransactionEntity)
@@ -48,7 +50,7 @@ export class EnrichmentService {
     await this.txRepo.update(
       { id: tx.id },
       {
-        enrichmentMetadata: metadata,
+        enrichmentMetadata: metadata as any,
         enrichmentUpdatedAt: new Date(),
       },
     );

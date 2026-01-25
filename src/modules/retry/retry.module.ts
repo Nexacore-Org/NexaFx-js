@@ -3,9 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 
 import { RetryJobEntity } from './entities/retry-job.entity';
-import { RetryService } from './retry.service';
+import { RetryService } from './retry.services';
 import { RetryWorker } from './retry.worker';
-import { AdminRetryController } from './admin-retry.controller';
+import { AdminRetryController } from './retry-admin.controller';
 
 @Module({
   imports: [

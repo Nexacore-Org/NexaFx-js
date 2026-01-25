@@ -29,7 +29,9 @@ export class WebhookRetryJob {
     });
 
     for (const delivery of due) {
-      const sub = await this.subRepo.findOne({ where: { id: delivery.subscriptionId } });
+      const sub = await this.subRepo.findOne({
+        where: { id: delivery.subscriptionId },
+      });
       if (!sub || sub.status !== 'active') continue;
 
       const rawBody = JSON.stringify(delivery.payload);
@@ -54,7 +56,7 @@ export class WebhookRetryJob {
             status: 'success',
             attempts: delivery.attempts + 1,
             lastHttpStatus: res.status,
-            nextRetryAt: null,
+            nextRetryAt: undefined,
           },
         );
       } catch (err: any) {

@@ -16,7 +16,11 @@ export class AddTransactionEnrichmentXXXXXX implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE transactions DROP COLUMN IF EXISTS "enrichmentUpdatedAt";`);
-    await queryRunner.query(`ALTER TABLE transactions DROP COLUMN IF EXISTS "enrichmentMetadata";`);
+    await queryRunner.query(
+      `ALTER TABLE transactions DROP COLUMN IF EXISTS "enrichmentUpdatedAt";`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE transactions DROP COLUMN IF EXISTS "enrichmentMetadata";`,
+    );
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { RetryService } from './retry.service';
+import { RetryService } from './retry.services';
 
 @Injectable()
 export class RetryWorker {
