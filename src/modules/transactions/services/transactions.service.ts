@@ -20,6 +20,9 @@ export class TransactionsService {
 
     const qb = this.txRepo.createQueryBuilder('t');
 
+    const saved = await this.txRepo.save(tx);
+
+
     // ✅ Full-text search query (optional)
     if (dto.q && dto.q.trim().length > 0) {
       const q = dto.q.trim();
@@ -56,6 +59,11 @@ export class TransactionsService {
 
       qb.orderBy(sortCol, (dto.sortOrder ?? 'desc').toUpperCase() as 'ASC' | 'DESC');
     }
+
+    // ✅ async fire-and-forget enrichment
+setImmediate(() => {
+  this.enrichmentService.enrichTransaction(saved.id).catch(() => null);
+
 
     qb.take(limit).skip(offset);
 

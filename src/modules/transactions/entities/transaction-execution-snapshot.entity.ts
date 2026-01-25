@@ -38,6 +38,12 @@ export class TransactionExecutionSnapshotEntity {
   @Column({ type: 'text', nullable: true })
   errorStack?: string;
 
+  @Column({ type: 'jsonb', nullable: true })
+  enrichmentMetadata?: Record<string, any>;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  enrichmentUpdatedAt?: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 }
