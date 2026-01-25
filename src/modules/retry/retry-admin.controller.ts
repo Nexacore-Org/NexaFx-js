@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { RetryJobEntity } from './entities/retry-job.entity';
-import { RetryService } from './retry.service';
+import { RetryService } from './retry.services';
 import { AdminGuard } from '../auth/guards/admin.guard'; // adjust path to your guard
 
 @Controller('admin/retry-jobs')

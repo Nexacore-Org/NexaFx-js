@@ -1,10 +1,10 @@
 import { Controller, Get, Patch, Param, Body, UseGuards } from '@nestjs/common';
-import { DeviceService } from '../device-trust/device.service';
+import { DeviceService } from '../device-trust./device.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard'; // adjust to your project
 
 @Controller('sessions/devices')
 @UseGuards(JwtAuthGuard)
-export class DevicesController {
+export class DeviceController {
   constructor(private readonly deviceService: DeviceService) {}
 
   @Get()

@@ -18,7 +18,8 @@ export class WebhookDispatcherService {
   ) {}
 
   async dispatch(eventName: string, payload: Record<string, any>) {
-    const subs = await this.webhooksService.getActiveSubscriptionsForEvent(eventName);
+    const subs =
+      await this.webhooksService.getActiveSubscriptionsForEvent(eventName);
 
     for (const sub of subs) {
       await this.queueAndSend(sub.id, sub.url, sub.secret, eventName, payload);

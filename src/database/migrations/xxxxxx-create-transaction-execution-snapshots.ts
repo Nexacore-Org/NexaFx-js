@@ -25,6 +25,8 @@ export class CreateTransactionExecutionSnapshotsXXXXXX implements MigrationInter
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TABLE IF EXISTS "transaction_execution_snapshots"`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "transaction_execution_snapshots"`,
+    );
   }
 }

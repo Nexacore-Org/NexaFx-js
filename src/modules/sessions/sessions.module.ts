@@ -2,13 +2,13 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { DeviceEntity } from './entities/device.entity';
-import { DeviceTrustService } from './device-trust/device-trust.service';
-import { DeviceService } from './device-trust/device.service';
-import { DevicesController } from './controllers/devices.controller';
+import { DeviceTrustService } from './device-trust./device-trust.service';
+import { DeviceService } from './device-trust./device.service';
+import { DeviceController } from './controllers/device.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([DeviceEntity])],
-  controllers: [DevicesController],
+  controllers: [DeviceController],
   providers: [DeviceTrustService, DeviceService],
   exports: [DeviceService],
 })

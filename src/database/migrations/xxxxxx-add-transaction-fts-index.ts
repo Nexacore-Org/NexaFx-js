@@ -44,9 +44,17 @@ export class AddTransactionFtsIndexXXXXXX implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX IF EXISTS IDX_transactions_status_currency;`);
-    await queryRunner.query(`DROP INDEX IF EXISTS IDX_transactions_created_at;`);
-    await queryRunner.query(`DROP INDEX IF EXISTS IDX_transactions_search_vector;`);
-    await queryRunner.query(`ALTER TABLE transactions DROP COLUMN IF EXISTS search_vector;`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS IDX_transactions_status_currency;`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS IDX_transactions_created_at;`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS IDX_transactions_search_vector;`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE transactions DROP COLUMN IF EXISTS search_vector;`,
+    );
   }
 }
