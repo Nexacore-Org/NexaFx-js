@@ -3,7 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.entity';
+import { RateLimitRuleEntity } from './modules/rate-limit/entities/rate-limit-rule.entity';
+import { RateLimitTrackerEntity } from './modules/rate-limit/entities/rate-limit-tracker.entity';
 
 @Module({
   imports: [
@@ -14,11 +17,16 @@ import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.en
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'nexafx_dev',
-      entities: [ApiUsageLogEntity],
+      entities: [
+        ApiUsageLogEntity,
+        RateLimitRuleEntity,
+        RateLimitTrackerEntity,
+      ],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
     }),
     AnalyticsModule,
+    RateLimitModule,
   ],
   controllers: [AppController],
   providers: [AppService],
