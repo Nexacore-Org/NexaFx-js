@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.entity';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.en
       logging: process.env.NODE_ENV === 'development',
     }),
     AnalyticsModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
