@@ -12,4 +12,4 @@ import { DeviceController } from './controllers/device.controller';
   providers: [/* DeviceTrustService, DeviceService */],
   exports: [/* DeviceService */],
 })
-export class SessionsModule { }
+export class SessionsModule {}
