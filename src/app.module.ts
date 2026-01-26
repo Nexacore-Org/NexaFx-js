@@ -6,6 +6,8 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.entity';
 import { HealthModule } from './modules/health/health.module';
+import { RpcHealthModule } from './modules/rpc-health/rpc-health.module';
+import { RpcHealthLogEntity } from './modules/rpc-health/entities/rpc-health-log.entity';
 import { FeatureFlagEntity } from './modules/feature-flags/entities/feature-flag.entity';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { RateLimitRuleEntity } from './modules/rate-limit/entities/rate-limit-rule.entity';
@@ -22,6 +24,7 @@ import { RateLimitTrackerEntity } from './modules/rate-limit/entities/rate-limit
       database: process.env.DB_NAME || 'nexafx_dev',
       entities: [
         ApiUsageLogEntity,
+        RpcHealthLogEntity,
         RateLimitRuleEntity,
         RateLimitTrackerEntity,
         FeatureFlagEntity,
@@ -31,6 +34,7 @@ import { RateLimitTrackerEntity } from './modules/rate-limit/entities/rate-limit
     }),
     AnalyticsModule,
     HealthModule,
+    RpcHealthModule,
     FeatureFlagsModule,
     RateLimitModule,
   ],
