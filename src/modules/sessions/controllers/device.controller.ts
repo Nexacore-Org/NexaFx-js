@@ -1,5 +1,5 @@
 import { Controller, Get, Patch, Param, Body, UseGuards } from '@nestjs/common';
-import { DeviceService } from '../device-trust./device.service';
+import { DeviceService } from '../services/device.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard'; // adjust to your project
 
 @Controller('sessions/devices')
