@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.entity';
+import { WalletAliasEntity } from './modules/transactions/entities/wallet-alias.entity';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.en
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'nexafx_dev',
-      entities: [ApiUsageLogEntity],
+      entities: [ApiUsageLogEntity, WalletAliasEntity],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
     }),
