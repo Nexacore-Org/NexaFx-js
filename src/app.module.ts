@@ -12,6 +12,7 @@ import { FeatureFlagEntity } from './modules/feature-flags/entities/feature-flag
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { RateLimitRuleEntity } from './modules/rate-limit/entities/rate-limit-rule.entity';
 import { RateLimitTrackerEntity } from './modules/rate-limit/entities/rate-limit-tracker.entity';
+import { ExperimentsModule } from './modules/experiments/experiments.module';
 
 @Module({
   imports: [
@@ -37,8 +38,9 @@ import { RateLimitTrackerEntity } from './modules/rate-limit/entities/rate-limit
     RpcHealthModule,
     FeatureFlagsModule,
     RateLimitModule,
+    ExperimentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
