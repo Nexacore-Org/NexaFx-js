@@ -12,7 +12,8 @@ import { FeatureFlagEntity } from './modules/feature-flags/entities/feature-flag
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { RateLimitRuleEntity } from './modules/rate-limit/entities/rate-limit-rule.entity';
 import { RateLimitTrackerEntity } from './modules/rate-limit/entities/rate-limit-tracker.entity';
-import { ExperimentsModule } from './modules/experiments/experiments.module';
+import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
+import { AdminAuditLogEntity } from './modules/admin-audit/entities/admin-audit-log.entity';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ExperimentsModule } from './modules/experiments/experiments.module';
         RateLimitRuleEntity,
         RateLimitTrackerEntity,
         FeatureFlagEntity,
+        AdminAuditLogEntity,
       ],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
@@ -38,9 +40,9 @@ import { ExperimentsModule } from './modules/experiments/experiments.module';
     RpcHealthModule,
     FeatureFlagsModule,
     RateLimitModule,
-    ExperimentsModule,
+    AdminAuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}
