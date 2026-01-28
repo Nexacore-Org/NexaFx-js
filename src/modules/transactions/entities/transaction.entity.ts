@@ -6,7 +6,10 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   Generated,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { TransactionCategoryEntity } from './transaction-category.entity';
 
 @Entity('transactions')
 @Index('idx_transactions_status', ['status'])
@@ -45,6 +48,13 @@ export class TransactionEntity {
 
   @Column({ type: 'tsvector', nullable: true })
   searchVector?: any;
+
+  @Column({ type: 'uuid', nullable: true })
+  categoryId?: string;
+
+  @ManyToOne(() => TransactionCategoryEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'categoryId' })
+  category?: TransactionCategoryEntity;
 
   @CreateDateColumn()
   createdAt: Date;
