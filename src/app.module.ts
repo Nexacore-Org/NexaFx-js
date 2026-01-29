@@ -14,6 +14,8 @@ import { RateLimitRuleEntity } from './modules/rate-limit/entities/rate-limit-ru
 import { RateLimitTrackerEntity } from './modules/rate-limit/entities/rate-limit-tracker.entity';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AdminAuditLogEntity } from './modules/admin-audit/entities/admin-audit-log.entity';
+import { UsersModule } from './modules/users/users.module';
+import { UserPreferenceEntity } from './modules/users/entities/user-preference.entity';
 
 @Module({
   imports: [
@@ -31,6 +33,7 @@ import { AdminAuditLogEntity } from './modules/admin-audit/entities/admin-audit-
         RateLimitTrackerEntity,
         FeatureFlagEntity,
         AdminAuditLogEntity,
+        UserPreferenceEntity,
       ],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
@@ -41,6 +44,7 @@ import { AdminAuditLogEntity } from './modules/admin-audit/entities/admin-audit-
     FeatureFlagsModule,
     RateLimitModule,
     AdminAuditModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
