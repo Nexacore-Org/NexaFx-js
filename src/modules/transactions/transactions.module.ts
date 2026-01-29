@@ -7,6 +7,9 @@ import { TransactionsController } from './contorllers/transactions.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TransactionEntity } from './entities/transaction.entity';
 import { TransactionExecutionSnapshotEntity } from './entities/transaction-execution-snapshot.entity';
+import { TransactionCategoryEntity } from './entities/transaction-category.entity';
+import { CategoriesController } from './controllers/categories.controller';
+import { CategoriesService } from './services/categories.service';
 
 @Module({
   imports: [
@@ -14,10 +17,15 @@ import { TransactionExecutionSnapshotEntity } from './entities/transaction-execu
     TypeOrmModule.forFeature([
       TransactionEntity,
       TransactionExecutionSnapshotEntity,
+      TransactionCategoryEntity,
     ]),
   ],
-  controllers: [AdminTransactionsController, TransactionsController],
-  providers: [TransactionReplayService, TransactionsService],
-  exports: [TransactionsService],
+  controllers: [
+    AdminTransactionsController,
+    TransactionsController,
+    CategoriesController,
+  ],
+  providers: [TransactionReplayService, TransactionsService, CategoriesService],
+  exports: [TransactionsService, CategoriesService],
 })
 export class TransactionsModule {}
