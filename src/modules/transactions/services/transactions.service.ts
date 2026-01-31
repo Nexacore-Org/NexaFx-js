@@ -5,6 +5,7 @@ import { Brackets, Repository } from 'typeorm';
 import { TransactionEntity } from '../entities/transaction.entity';
 import { SearchTransactionsDto } from '../dto/search-transactions.dto';
 import { EnrichmentService } from '../../enrichment/enrichment.service';
+import { WalletAliasService } from './wallet-alias.service';
 
 @Injectable()
 export class TransactionsService {
@@ -12,10 +13,11 @@ export class TransactionsService {
     @InjectRepository(TransactionEntity)
     private readonly txRepo: Repository<TransactionEntity>,
     private readonly enrichmentService: EnrichmentService,
+    private readonly walletAliasService: WalletAliasService,
   ) {}
 
-  // ✅ NEW: FTS Search
-  async search(dto: SearchTransactionsDto) {
+  // ✅ NEW: FTS Search with wallet aliases
+  async search(dto: SearchTransactionsDto, userId?: string) {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const offset = (page - 1) * limit;
@@ -74,9 +76,15 @@ export class TransactionsService {
 
     const [items, total] = await qb.getManyAndCount();
 
+    // ✅ Enrich with wallet aliases if userId is provided
+    let enrichedItems = items;
+    if (userId) {
+      enrichedItems = await this.enrichWithWalletAliases(items, userId);
+    }
+
     return {
       success: true,
-      data: items,
+      data: enrichedItems,
       meta: {
         page,
         limit,
@@ -84,5 +92,60 @@ export class TransactionsService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  private async enrichWithWalletAliases(transactions: TransactionEntity[], userId: string) {
+    const walletAliasMap = await this.walletAliasService.getWalletAliasMap(userId);
+    
+    return transactions.map(tx => {
+      // Extract wallet addresses from transaction metadata/payload
+      const walletAddresses = this.extractWalletAddresses(tx);
+      const walletAliases: Record<string, string> = {};
+      
+      walletAddresses.forEach(address => {
+        const alias = walletAliasMap.get(address);
+        if (alias) {
+          walletAliases[address] = alias;
+        }
+      });
+
+      return {
+        ...tx,
+        walletAliases: Object.keys(walletAliases).length > 0 ? walletAliases : undefined,
+      };
+    });
+  }
+
+  private extractWalletAddresses(transaction: TransactionEntity): string[] {
+    const addresses: string[] = [];
+    
+    // Extract from metadata
+    if (transaction.metadata) {
+      if (transaction.metadata.fromAddress) {
+        addresses.push(transaction.metadata.fromAddress);
+      }
+      if (transaction.metadata.toAddress) {
+        addresses.push(transaction.metadata.toAddress);
+      }
+      if (transaction.metadata.walletAddress) {
+        addresses.push(transaction.metadata.walletAddress);
+      }
+    }
+
+    // Extract from payload
+    if (transaction.payload) {
+      if (transaction.payload.fromAddress) {
+        addresses.push(transaction.payload.fromAddress);
+      }
+      if (transaction.payload.toAddress) {
+        addresses.push(transaction.payload.toAddress);
+      }
+      if (transaction.payload.walletAddress) {
+        addresses.push(transaction.payload.walletAddress);
+      }
+    }
+
+    // Remove duplicates
+    return [...new Set(addresses)];
   }
 }

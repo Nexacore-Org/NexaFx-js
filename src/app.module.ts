@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.entity';
+import { WalletAliasEntity } from './modules/transactions/entities/wallet-alias.entity';
 import { HealthModule } from './modules/health/health.module';
 import { RpcHealthModule } from './modules/rpc-health/rpc-health.module';
 import { RpcHealthLogEntity } from './modules/rpc-health/entities/rpc-health-log.entity';
@@ -34,6 +35,7 @@ import { UserPreferenceEntity } from './modules/users/entities/user-preference.e
         FeatureFlagEntity,
         AdminAuditLogEntity,
         UserPreferenceEntity,
+        WalletAliasEntity
       ],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
