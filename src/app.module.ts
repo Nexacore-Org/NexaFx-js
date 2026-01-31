@@ -2,6 +2,12 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { RetryModule } from './modules/retry/retry.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
+import { TransactionsModule } from './modules/transactions/transactions.module';
+import { EnrichmentModule } from './modules/enrichment/enrichment.module';  
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { ApiUsageLogEntity } from './modules/analytics/entities/api-usage-log.entity';
@@ -35,7 +41,7 @@ import { UserPreferenceEntity } from './modules/users/entities/user-preference.e
         FeatureFlagEntity,
         AdminAuditLogEntity,
         UserPreferenceEntity,
-        WalletAliasEntity
+        WalletAliasEntity,
       ],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
@@ -47,6 +53,12 @@ import { UserPreferenceEntity } from './modules/users/entities/user-preference.e
     RateLimitModule,
     AdminAuditModule,
     UsersModule,
+      NotificationsModule,
+    WebhooksModule,
+    RetryModule,
+    SessionsModule,
+    TransactionsModule,
+    EnrichmentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
