@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ReplayTransactionDto } from '../dto/replay-transaction.dto';
 import { TransactionEntity } from '../entities/transaction.entity';
@@ -29,7 +33,11 @@ export class TransactionReplayService {
         // ✅ You can re-run the same execution path used in prod,
         // but pass a flag so downstream services behave in "replay mode"
         // (no external side effects like emails, webhooks, payments).
-        const replayOutput = await this.simulateExecution(manager, transaction, logs);
+        const replayOutput = await this.simulateExecution(
+          manager,
+          transaction,
+          logs,
+        );
 
         const durationMs = Date.now() - startedAt;
 
@@ -69,7 +77,10 @@ export class TransactionReplayService {
     return this.replayWithForcedRollback(transaction, dto);
   }
 
-  private async replayWithForcedRollback(transaction: TransactionEntity, dto: ReplayTransactionDto) {
+  private async replayWithForcedRollback(
+    transaction: TransactionEntity,
+    dto: ReplayTransactionDto,
+  ) {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -78,7 +89,11 @@ export class TransactionReplayService {
     const startedAt = Date.now();
 
     try {
-      const replayOutput = await this.simulateExecution(queryRunner.manager, transaction, logs);
+      const replayOutput = await this.simulateExecution(
+        queryRunner.manager,
+        transaction,
+        logs,
+      );
       const durationMs = Date.now() - startedAt;
 
       // ✅ ALWAYS rollback (safe replay)
@@ -117,7 +132,11 @@ export class TransactionReplayService {
    * This should mimic your real production transaction execution flow,
    * but MUST NOT trigger side effects.
    */
-  private async simulateExecution(manager: any, transaction: TransactionEntity, logs: any[]) {
+  private async simulateExecution(
+    manager: any,
+    transaction: TransactionEntity,
+    logs: any[],
+  ) {
     logs.push({
       step: 'LOAD_TRANSACTION',
       txId: transaction.id,
