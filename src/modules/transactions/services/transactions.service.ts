@@ -58,6 +58,10 @@ export class TransactionsService {
       qb.andWhere('t.created_at <= :to', { to: new Date(dto.to) });
     }
 
+    if (dto.categoryId) {
+      qb.andWhere('t.categoryId = :categoryId', { categoryId: dto.categoryId });
+    }
+
     // ✅ Sorting fallback (if no FTS ranking or if you want to force sort)
     if (!dto.q) {
       const sortCol = dto.sortBy === 'amount' ? 't.amount' : 't.created_at';

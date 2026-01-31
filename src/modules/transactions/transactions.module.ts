@@ -10,6 +10,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TransactionEntity } from './entities/transaction.entity';
 import { TransactionExecutionSnapshotEntity } from './entities/transaction-execution-snapshot.entity';
 import { WalletAliasEntity } from './entities/wallet-alias.entity';
+import { TransactionCategoryEntity } from './entities/transaction-category.entity';
+import { CategoriesController } from './controllers/categories.controller';
+import { CategoriesService } from './services/categories.service';
 
 @Module({
   imports: [
@@ -18,10 +21,16 @@ import { WalletAliasEntity } from './entities/wallet-alias.entity';
       TransactionEntity,
       TransactionExecutionSnapshotEntity,
       WalletAliasEntity,
+      TransactionCategoryEntity
     ]),
   ],
-  controllers: [AdminTransactionsController, TransactionsController, WalletAliasController],
-  providers: [TransactionReplayService, TransactionsService, WalletAliasService],
-  exports: [TransactionsService, WalletAliasService],
+  controllers: [
+    AdminTransactionsController,
+    TransactionsController,
+    CategoriesController,
+    WalletAliasController
+  ],
+  providers: [TransactionReplayService, TransactionsService, CategoriesService,WalletAliasService],
+  exports: [TransactionsService, CategoriesService,WalletAliasService],
 })
 export class TransactionsModule {}

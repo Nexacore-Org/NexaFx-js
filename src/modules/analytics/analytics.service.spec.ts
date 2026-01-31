@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ApiUsageService } from '../services/api-usage.service';
-import { ApiUsageLogEntity } from '../entities/api-usage-log.entity';
+import { ApiUsageService } from './services/api-usage.service';
+import { ApiUsageLogEntity } from './entities/api-usage-log.entity';
 
 describe('API Usage Analytics (e2e)', () => {
   let service: ApiUsageService;

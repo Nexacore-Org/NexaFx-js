@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SearchTransactionsDto {
@@ -21,6 +21,10 @@ export class SearchTransactionsDto {
   @IsOptional()
   @IsString()
   to?: string; // ISO date string
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
 
   @IsOptional()
   @Type(() => Number)
