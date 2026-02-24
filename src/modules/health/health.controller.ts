@@ -5,6 +5,7 @@ import {
   HealthCheckResult,
 } from '@nestjs/terminus';
 import { DatabaseHealthIndicator } from './indicators/database.indicator';
+import { ConfigHealthIndicator } from './indicators/config.indicator';
 
 interface StatusResponse {
   status: 'healthy' | 'unhealthy' | 'degraded';
@@ -15,6 +16,9 @@ interface StatusResponse {
     database: {
       status: 'up' | 'down';
       responseTime?: number;
+    };
+    configuration: {
+      status: 'up' | 'down';
     };
   };
   details?: Record<string, unknown>;
@@ -27,6 +31,7 @@ export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
     private readonly databaseIndicator: DatabaseHealthIndicator,
+    private readonly configIndicator: ConfigHealthIndicator,
   ) {
     this.startTime = Date.now();
   }
@@ -42,18 +47,27 @@ export class HealthController {
     try {
       healthResult = await this.health.check([
         () => this.databaseIndicator.isHealthy('database'),
+        () => this.configIndicator.isHealthy('configuration'),
       ]);
     } catch (error) {
       healthResult = (error as { response?: HealthCheckResult }).response || {
         status: 'error',
         info: {},
-        error: { database: { status: 'down' } },
-        details: { database: { status: 'down' } },
+        error: { 
+          database: { status: 'down' },
+          configuration: { status: 'down' }
+        },
+        details: { 
+          database: { status: 'down' },
+          configuration: { status: 'down' }
+        },
       };
     }
 
     const dbStatus = healthResult.details?.database || healthResult.error?.database;
+    const configStatus = healthResult.details?.configuration || healthResult.error?.configuration;
     const isDbUp = dbStatus?.status === 'up';
+    const isConfigValid = configStatus?.status === 'up';
 
     const response: StatusResponse = {
       status: this.determineOverallStatus(healthResult),
@@ -64,6 +78,9 @@ export class HealthController {
         database: {
           status: isDbUp ? 'up' : 'down',
           responseTime: dbStatus?.responseTime,
+        },
+        configuration: {
+          status: isConfigValid ? 'up' : 'down',
         },
       },
     };
