@@ -61,7 +61,7 @@ $ npm run test:cov
 
 The data archival feature is implemented and documented in:
 
-- [README-ARCHIVE.md](README-ARCHIVE.md)
+- [README-ARCHIVE.md](docs/README-ARCHIVE.md)
 
 It includes:
 - required environment variables,
