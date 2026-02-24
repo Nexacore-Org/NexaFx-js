@@ -6,6 +6,7 @@ import { RetryJobEntity } from './entities/retry-job.entity';
 import { RetryService } from './retry.services';
 import { RetryWorker } from './retry.worker';
 import { AdminRetryController } from './retry-admin.controller';
+import { TransactionRetryListener } from './listeners/transaction-retry.listener';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { AdminRetryController } from './retry-admin.controller';
     ScheduleModule.forRoot(),
   ],
   controllers: [AdminRetryController],
-  providers: [RetryService, RetryWorker],
+  providers: [RetryService, RetryWorker, TransactionRetryListener],
   exports: [RetryService],
 })
 export class RetryModule {}

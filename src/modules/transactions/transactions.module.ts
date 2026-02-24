@@ -13,6 +13,9 @@ import { WalletAliasEntity } from './entities/wallet-alias.entity';
 import { TransactionCategoryEntity } from './entities/transaction-category.entity';
 import { CategoriesController } from './controllers/categories.controller';
 import { CategoriesService } from './services/categories.service';
+import { TransactionLifecycleService } from './services/transaction-lifecycle.service';
+import { TransactionSnapshotService } from './services/transaction-snapshot.service';
+import { TransactionSnapshotListener } from './listeners/transaction-snapshot.listener';
 
 @Module({
   imports: [
@@ -21,16 +24,30 @@ import { CategoriesService } from './services/categories.service';
       TransactionEntity,
       TransactionExecutionSnapshotEntity,
       WalletAliasEntity,
-      TransactionCategoryEntity
+      TransactionCategoryEntity,
     ]),
   ],
   controllers: [
     AdminTransactionsController,
     TransactionsController,
     CategoriesController,
-    WalletAliasController
+    WalletAliasController,
   ],
-  providers: [TransactionReplayService, TransactionsService, CategoriesService,WalletAliasService],
-  exports: [TransactionsService, CategoriesService,WalletAliasService],
+  providers: [
+    TransactionReplayService,
+    TransactionsService,
+    CategoriesService,
+    WalletAliasService,
+    TransactionLifecycleService,
+    TransactionSnapshotService,
+    TransactionSnapshotListener,
+  ],
+  exports: [
+    TransactionsService,
+    CategoriesService,
+    WalletAliasService,
+    TransactionLifecycleService,
+    TransactionSnapshotService,
+  ],
 })
 export class TransactionsModule {}
