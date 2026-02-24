@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './modules/auth/auth.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { RetryModule } from './modules/retry/retry.module';
@@ -32,6 +33,7 @@ import { SecretsModule } from './modules/secrets/secrets.module';
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
     }),
+    AuthModule,
     AnalyticsModule,
     HealthModule,
     RpcHealthModule,
