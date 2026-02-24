@@ -56,6 +56,18 @@ export class TransactionEntity {
   @JoinColumn({ name: 'categoryId' })
   category?: TransactionCategoryEntity;
 
+  @Column({ type: 'int', default: 0 })
+  riskScore: number;
+
+  @Column({ type: 'boolean', default: false })
+  isFlagged: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  riskEvaluatedAt?: Date;
+
+  @Column({ type: 'boolean', default: false })
+  requiresManualReview: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
