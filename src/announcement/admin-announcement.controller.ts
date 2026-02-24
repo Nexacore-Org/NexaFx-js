@@ -16,6 +16,8 @@ import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
 import { QueryAnnouncementsDto } from './dto/query-announcements.dto';
 import { Announcement } from './entities/announcement.entity';
+import { AuditLog } from '../modules/admin-audit/decorators/audit-log.decorator';
+import { SkipAudit } from '../modules/admin-audit/decorators/skip-audit.decorator';
 
 /**
  * Admin controller for managing announcements
@@ -34,6 +36,11 @@ export class AdminAnnouncementsController {
    * Create a new announcement
    */
   @Post()
+  @AuditLog({
+    action: 'CREATE_ANNOUNCEMENT',
+    entity: 'Announcement',
+    description: 'Admin created a new announcement',
+  })
   async create(@Body() createAnnouncementDto: CreateAnnouncementDto): Promise<Announcement> {
     return this.announcementsService.create(createAnnouncementDto);
   }
@@ -43,6 +50,7 @@ export class AdminAnnouncementsController {
    * Retrieve all announcements with optional filters
    */
   @Get()
+  @SkipAudit()
   async findAll(@Query() query: QueryAnnouncementsDto): Promise<Announcement[]> {
     return this.announcementsService.findAll(query);
   }
@@ -52,6 +60,7 @@ export class AdminAnnouncementsController {
    * Retrieve a specific announcement
    */
   @Get(':id')
+  @SkipAudit()
   async findOne(@Param('id') id: string): Promise<Announcement> {
     return this.announcementsService.findOne(id);
   }
@@ -61,6 +70,12 @@ export class AdminAnnouncementsController {
    * Update an announcement
    */
   @Patch(':id')
+  @AuditLog({
+    action: 'UPDATE_ANNOUNCEMENT',
+    entity: 'Announcement',
+    entityIdParam: 'id',
+    description: 'Admin updated an announcement',
+  })
   async update(
     @Param('id') id: string,
     @Body() updateAnnouncementDto: UpdateAnnouncementDto,
@@ -74,6 +89,12 @@ export class AdminAnnouncementsController {
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @AuditLog({
+    action: 'DELETE_ANNOUNCEMENT',
+    entity: 'Announcement',
+    entityIdParam: 'id',
+    description: 'Admin deleted an announcement',
+  })
   async remove(@Param('id') id: string): Promise<void> {
     return this.announcementsService.remove(id);
   }
@@ -83,6 +104,12 @@ export class AdminAnnouncementsController {
    * Archive an announcement
    */
   @Patch(':id/archive')
+  @AuditLog({
+    action: 'ARCHIVE_ANNOUNCEMENT',
+    entity: 'Announcement',
+    entityIdParam: 'id',
+    description: 'Admin archived an announcement',
+  })
   async archive(@Param('id') id: string): Promise<Announcement> {
     return this.announcementsService.archive(id);
   }
@@ -92,6 +119,12 @@ export class AdminAnnouncementsController {
    * Publish an announcement immediately
    */
   @Patch(':id/publish')
+  @AuditLog({
+    action: 'PUBLISH_ANNOUNCEMENT',
+    entity: 'Announcement',
+    entityIdParam: 'id',
+    description: 'Admin published an announcement',
+  })
   async publish(@Param('id') id: string): Promise<Announcement> {
     return this.announcementsService.publish(id);
   }

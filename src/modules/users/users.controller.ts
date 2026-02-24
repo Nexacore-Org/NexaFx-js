@@ -10,6 +10,8 @@ import {
 import { UsersService } from './users.service';
 import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
+import { AuditLog } from '../admin-audit/decorators/audit-log.decorator';
+import { SkipAudit } from '../admin-audit/decorators/skip-audit.decorator';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -37,12 +39,18 @@ export class UsersController {
   }
 
   @Get('preferences')
+  @SkipAudit()
   async getPreferences(@Request() req) {
     const userId = this.getUserId(req);
     return this.usersService.getPreferences(userId);
   }
 
   @Patch('preferences')
+  @AuditLog({
+    action: 'UPDATE_USER_PREFERENCES',
+    entity: 'UserPreferences',
+    description: 'User updated their preferences',
+  })
   async updatePreferences(
     @Request() req,
     @Body() dto: UpdateUserPreferencesDto,

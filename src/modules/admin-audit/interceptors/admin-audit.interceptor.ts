@@ -80,12 +80,13 @@ export class AdminAuditInterceptor implements NestInterceptor {
       };
 
       this.adminAuditService.logAction({
-        adminId,
+        actorId: adminId,
+        actorType: 'admin' as any,
         action,
         entity,
         entityId: typeof entityId === 'string' || typeof entityId === 'number' ? String(entityId) : undefined,
         metadata,
-        ip: ip || request.connection.remoteAddress,
+        ip: ip || request.connection?.remoteAddress,
       });
     } catch (e) {
       this.logger.error('Failed to log admin audit', e);

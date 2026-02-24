@@ -4,7 +4,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AdminAuditLogEntity } from './entities/admin-audit-log.entity';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminAuditController } from './admin-audit.controller';
-import { AdminAuditInterceptor } from './interceptors/admin-audit.interceptor';
+import { AuditInterceptor } from './interceptors/audit.interceptor';
 
 @Module({
   imports: [TypeOrmModule.forFeature([AdminAuditLogEntity])],
@@ -13,9 +13,13 @@ import { AdminAuditInterceptor } from './interceptors/admin-audit.interceptor';
     AdminAuditService,
     {
       provide: APP_INTERCEPTOR,
-      useClass: AdminAuditInterceptor,
+      useClass: AuditInterceptor,
     },
   ],
   exports: [AdminAuditService],
 })
 export class AdminAuditModule {}
+
+// Re-export decorators for convenient imports
+export * from './decorators';
+export { ActorType } from './entities/admin-audit-log.entity';

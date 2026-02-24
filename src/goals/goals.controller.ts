@@ -25,6 +25,8 @@ import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { GoalResponseDto, GoalListResponseDto } from './dto/goal-response.dto';
 import { GoalStatus } from './entities/goal.entity';
+import { AuditLog } from '../modules/admin-audit/decorators/audit-log.decorator';
+import { SkipAudit } from '../modules/admin-audit/decorators/skip-audit.decorator';
 
 // Import your auth guard - adjust path as needed
 // import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -45,6 +47,11 @@ export class GoalsController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @AuditLog({
+    action: 'CREATE_GOAL',
+    entity: 'Goal',
+    description: 'User created a new financial goal',
+  })
   async create(
     @Request() req,
     @Body() createGoalDto: CreateGoalDto,
@@ -68,6 +75,7 @@ export class GoalsController {
     type: GoalListResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @SkipAudit()
   async findAll(
     @Request() req,
     @Query('status') status?: GoalStatus,
@@ -87,6 +95,7 @@ export class GoalsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - not your goal' })
   @ApiResponse({ status: 404, description: 'Goal not found' })
+  @SkipAudit()
   async findOne(
     @Request() req,
     @Param('id') id: string,
@@ -107,6 +116,12 @@ export class GoalsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - not your goal' })
   @ApiResponse({ status: 404, description: 'Goal not found' })
+  @AuditLog({
+    action: 'UPDATE_GOAL',
+    entity: 'Goal',
+    entityIdParam: 'id',
+    description: 'User updated a financial goal',
+  })
   async update(
     @Request() req,
     @Param('id') id: string,
@@ -124,6 +139,12 @@ export class GoalsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - not your goal' })
   @ApiResponse({ status: 404, description: 'Goal not found' })
+  @AuditLog({
+    action: 'DELETE_GOAL',
+    entity: 'Goal',
+    entityIdParam: 'id',
+    description: 'User deleted a financial goal',
+  })
   async remove(@Request() req, @Param('id') id: string): Promise<void> {
     const userId = req.user?.id || req.user?.userId || 'demo-user-id';
     return this.goalsService.remove(id, userId);
@@ -141,6 +162,12 @@ export class GoalsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - not your goal' })
   @ApiResponse({ status: 404, description: 'Goal not found' })
+  @AuditLog({
+    action: 'UPDATE_GOAL_PROGRESS',
+    entity: 'Goal',
+    entityIdParam: 'id',
+    description: 'User updated goal progress',
+  })
   async updateProgress(
     @Request() req,
     @Param('id') id: string,
@@ -165,6 +192,12 @@ export class GoalsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - not your goal' })
   @ApiResponse({ status: 404, description: 'Goal not found' })
+  @AuditLog({
+    action: 'SYNC_GOAL_WALLET',
+    entity: 'Goal',
+    entityIdParam: 'id',
+    description: 'User synced goal progress with wallet',
+  })
   async syncWalletProgress(
     @Request() req,
     @Param('id') id: string,
