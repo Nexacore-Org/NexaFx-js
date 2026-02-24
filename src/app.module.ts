@@ -4,6 +4,7 @@ import { ConfigModule } from './config/config.module';
 import { ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './modules/auth/auth.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { RetryModule } from './modules/retry/retry.module';
@@ -39,6 +40,7 @@ import { SecretsModule } from './modules/secrets/secrets.module';
       }),
       inject: [ConfigService],
     }),
+    AuthModule,
     AnalyticsModule,
     HealthModule,
     RpcHealthModule,
