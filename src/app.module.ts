@@ -23,6 +23,7 @@ import { FeesModule } from './modules/fee/fee.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { DataArchiveModule } from './modules/data-archive/data-archive.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { AdminModule } from './modules/admin/admin.module';
     FeesModule,
     SecretsModule,
     AdminModule,
+    DataArchiveModule,
   ],
   controllers: [AppController],
   providers: [AppService],

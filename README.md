@@ -57,6 +57,18 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Data Archival
+
+The data archival feature is implemented and documented in:
+
+- [README-ARCHIVE.md](README-ARCHIVE.md)
+
+It includes:
+- required environment variables,
+- admin archive/restore endpoints,
+- archive schema migration details,
+- and test commands.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
