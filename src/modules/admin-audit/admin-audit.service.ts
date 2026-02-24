@@ -20,8 +20,16 @@ export class AdminAuditService {
   async findAll(filters: AdminAuditLogFilterDto) {
     const where: FindOptionsWhere<AdminAuditLogEntity> = {};
 
-    if (filters.adminId) {
-      where.adminId = filters.adminId;
+    if (filters.actorId) {
+      where.actorId = filters.actorId;
+    }
+
+    if (filters.actorType) {
+      where.actorType = filters.actorType;
+    }
+
+    if (filters.entity) {
+      where.entity = filters.entity;
     }
 
     if (filters.action) {
