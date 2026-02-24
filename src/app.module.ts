@@ -21,6 +21,7 @@ import { UsersModule } from './modules/users/users.module';
 import { FeesModule } from './modules/fee/fee.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { SecretsModule } from './modules/secrets/secrets.module';
     ReconciliationModule,
     FeesModule,
     SecretsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
