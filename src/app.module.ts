@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigModule } from './config/config.module';
 import { ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -25,6 +26,12 @@ import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
+    EventEmitterModule.forRoot({
+      wildcard: false,
+      delimiter: '.',
+      maxListeners: 20,
+      verboseMemoryLeak: process.env.NODE_ENV === 'development',
+    }),
     ConfigModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

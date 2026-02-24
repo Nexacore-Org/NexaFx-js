@@ -15,6 +15,9 @@ import { TransactionCategoryEntity } from './entities/transaction-category.entit
 import { TransactionRiskEntity } from './entities/transaction-risk.entity';
 import { CategoriesController } from './controllers/categories.controller';
 import { CategoriesService } from './services/categories.service';
+import { TransactionLifecycleService } from './services/transaction-lifecycle.service';
+import { TransactionSnapshotService } from './services/transaction-snapshot.service';
+import { TransactionSnapshotListener } from './listeners/transaction-snapshot.listener';
 import { RiskScoringService } from './services/risk-scoring.service';
 import { RiskEvaluationLoggerService } from './services/risk-evaluation-logger.service';
 import { RiskScoringAdminController, RiskScoringController } from './controllers/risk-scoring.controller';
@@ -44,6 +47,9 @@ import { RiskScoringAdminController, RiskScoringController } from './controllers
     TransactionsService,
     CategoriesService,
     WalletAliasService,
+    TransactionLifecycleService,
+    TransactionSnapshotService,
+    TransactionSnapshotListener,
     RiskScoringService,
     RiskEvaluationLoggerService,
   ],
@@ -51,6 +57,8 @@ import { RiskScoringAdminController, RiskScoringController } from './controllers
     TransactionsService,
     CategoriesService,
     WalletAliasService,
+    TransactionLifecycleService,
+    TransactionSnapshotService,
     RiskScoringService,
     RiskEvaluationLoggerService,
   ],
