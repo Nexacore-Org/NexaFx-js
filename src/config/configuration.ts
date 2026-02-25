@@ -39,6 +39,8 @@ export default () => {
   const redisPort = parseInt(process.env.REDIS_PORT || "6379", 10);
   const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10);
   const rateLimitMaxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "100", 10);
+  const archiveThresholdMonths = parseInt(process.env.ARCHIVE_THRESHOLD_MONTHS || "12", 10);
+  const archiveBatchSize = parseInt(process.env.ARCHIVE_BATCH_SIZE || "500", 10);
 
   return {
     // Application settings
@@ -118,6 +120,14 @@ export default () => {
     rateLimit: {
       windowMs: rateLimitWindowMs,
       maxRequests: rateLimitMaxRequests,
+    },
+
+    // Data archival configuration
+    archive: {
+      enabled: (process.env.ARCHIVE_ENABLED || 'true') === "true",
+      thresholdMonths: archiveThresholdMonths,
+      batchSize: archiveBatchSize,
+      cron: process.env.ARCHIVE_CRON || '0 3 * * *',
     },
   };
 };

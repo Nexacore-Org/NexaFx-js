@@ -146,6 +146,25 @@ export const envSchema = z.object({
     .transform(Number)
     .pipe(z.number().positive())
     .default(() => 100),
+
+  // ============================================
+  // Data Archival Configuration
+  // ============================================
+  ARCHIVE_ENABLED: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => true),
+  ARCHIVE_THRESHOLD_MONTHS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(120))
+    .default(() => 12),
+  ARCHIVE_BATCH_SIZE: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().min(10).max(5000))
+    .default(() => 500),
+  ARCHIVE_CRON: z.string().min(1).default(() => '0 3 * * *'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
