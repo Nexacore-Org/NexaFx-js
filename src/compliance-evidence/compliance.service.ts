@@ -12,6 +12,7 @@ import { ComplianceReport } from './entities/compliance-report.entity';
 import { AuditEvidenceLog } from './entities/audit-evidence-log.entity';
 import { GenerateReportDto, ReportFilterDto } from './dto/generate-report.dto';
 import { ReportType, ExportFormat, ReportStatus } from './enums/report-type.enum';
+import { CountryRule } from './entities/country-rule.entity';
 
 export const COMPLIANCE_QUEUE = 'compliance';
 export const GENERATE_REPORT_JOB = 'generate-report';
@@ -19,6 +20,7 @@ export const GENERATE_REPORT_JOB = 'generate-report';
 @Injectable()
 export class ComplianceService {
   private readonly logger = new Logger(ComplianceService.name);
+  private rules = new Map<string, CountryRule>(); // In production, fetch from DB
 
   constructor(
     @InjectRepository(ComplianceReport)
@@ -64,6 +66,8 @@ export class ComplianceService {
     this.logger.log(`Compliance report ${saved.id} queued (${dto.reportType})`);
     return saved;
   }
+
+  
 
   /** Called by the BullMQ processor — performs actual data collection. */
   async processReport(reportId: string): Promise<void> {
@@ -325,6 +329,24 @@ export class ComplianceService {
       summary: { totalEntries: records.length },
       records,
     };
+  }
+
+  async validateAction(countryCode: string, amount: number, asset: string) {
+    const rule = this.rules.get(countryCode);
+    
+    if (!rule || !rule.isEnabled) {
+      throw new ForbiddenException(`Trading not supported in ${countryCode}`);
+    }
+
+    if (amount > rule.maxTransactionLimit) {
+      throw new ForbiddenException(`Transaction exceeds ${countryCode} limit of ${rule.maxTransactionLimit}`);
+    }
+
+    if (rule.restrictedAssets.includes(asset)) {
+      throw new ForbiddenException(`Asset ${asset} is restricted in ${countryCode}`);
+    }
+
+    return true;
   }
 
   private computeChecksum(data: Record<string, unknown>): string {

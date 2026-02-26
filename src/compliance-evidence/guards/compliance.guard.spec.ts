@@ -1,6 +1,6 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ComplianceGuard, COMPLIANCE_ROLES } from './guards/compliance.guard';
+import { ComplianceGuard, COMPLIANCE_ROLES } from './compliance.guard';
 
 const createContext = (user: any): ExecutionContext =>
   ({
