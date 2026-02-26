@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { WebhookDeliveryEntity } from './entities/webhook-delivery.entity';
 import { WebhooksService } from './webhooks.service';
 import { signWebhookPayload } from './utils/webhook-signature';
+import { NotificationService } from '../notifications/services/notification.service';
 
 @Injectable()
 export class WebhookDispatcherService {
@@ -15,6 +16,7 @@ export class WebhookDispatcherService {
     private readonly webhooksService: WebhooksService,
     @InjectRepository(WebhookDeliveryEntity)
     private readonly deliveryRepo: Repository<WebhookDeliveryEntity>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async dispatch(eventName: string, payload: Record<string, any>) {
@@ -88,6 +90,20 @@ export class WebhookDispatcherService {
           nextRetryAt,
         },
       );
+
+      // ✅ NEW: Send notification for webhook failure (will be throttled)
+      await this.notificationService.send({
+        type: 'webhook.failed',
+        recipientId: subscriptionId,
+        payload: {
+          webhookUrl: url,
+          eventName,
+          error: message,
+          httpStatus: status,
+          deliveryId: delivery.id,
+        },
+        timestamp: new Date(),
+      });
 
       this.logger.warn(
         `Webhook delivery failed [${delivery.id}] event=${eventName} url=${url} status=${status} err=${message}`,

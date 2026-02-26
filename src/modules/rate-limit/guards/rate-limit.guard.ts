@@ -110,6 +110,21 @@ export class RateLimitGuard implements CanActivate {
     );
 
     if (!result.allowed) {
+      // Log the violation (fire and forget)
+      this.rateLimitService
+        .logViolation({
+          userId,
+          ipAddress,
+          route,
+          method,
+          tier: userTier,
+          limit: result.limit,
+          userAgent: request.headers['user-agent'],
+        })
+        .catch((err) =>
+          console.error('Failed to log rate limit violation:', err),
+        );
+
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,

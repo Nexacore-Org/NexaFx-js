@@ -4,19 +4,19 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { WebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
 import { WebhookDispatcherService } from './webhook-dispatcher.service';
+import { TransactionWebhookListener } from './listeners/transaction-webhook.listener';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 import { WebhookSubscriptionEntity } from './entities/webhook-subscription.entity';
 import { WebhookDeliveryEntity } from './entities/webhook-delivery.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      WebhookSubscriptionEntity,
-      WebhookDeliveryEntity,
-    ]),
+    TypeOrmModule.forFeature([WebhookSubscriptionEntity, WebhookDeliveryEntity]),
+    NotificationsModule,
   ],
   controllers: [WebhooksController],
-  providers: [WebhooksService, WebhookDispatcherService],
+  providers: [WebhooksService, WebhookDispatcherService, TransactionWebhookListener],
   exports: [WebhookDispatcherService],
 })
 export class WebhooksModule {}
