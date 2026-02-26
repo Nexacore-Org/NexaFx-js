@@ -14,6 +14,15 @@ import { RateLimitRuleEntity } from './modules/rate-limit/entities/rate-limit-ru
 import { RateLimitTrackerEntity } from './modules/rate-limit/entities/rate-limit-tracker.entity';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AdminAuditLogEntity } from './modules/admin-audit/entities/admin-audit-log.entity';
+import { StrategyOptimizerModule } from './modules/strategy-optimizer/strategy-optimizer.module';
+import { Strategy } from './modules/strategy-optimizer/entities/strategy.entity';
+import { StrategyParameter } from './modules/strategy-optimizer/entities/strategy-parameter.entity';
+import { StrategyVersion } from './modules/strategy-optimizer/entities/strategy-version.entity';
+import { PerformanceMetric } from './modules/strategy-optimizer/entities/performance-metric.entity';
+import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
+import { RiskState } from './modules/risk-engine/entities/risk-state.entity';
+import { RiskPosition } from './modules/risk-engine/entities/risk-position.entity';
+import { RiskSnapshot } from './modules/risk-engine/entities/risk-snapshot.entity';
 
 @Module({
   imports: [
@@ -31,6 +40,13 @@ import { AdminAuditLogEntity } from './modules/admin-audit/entities/admin-audit-
         RateLimitTrackerEntity,
         FeatureFlagEntity,
         AdminAuditLogEntity,
+        Strategy,
+        StrategyParameter,
+        StrategyVersion,
+        PerformanceMetric,
+        RiskState,
+        RiskPosition,
+        RiskSnapshot,
       ],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
@@ -41,6 +57,8 @@ import { AdminAuditLogEntity } from './modules/admin-audit/entities/admin-audit-
     FeatureFlagsModule,
     RateLimitModule,
     AdminAuditModule,
+    StrategyOptimizerModule,
+    RiskEngineModule,
   ],
   controllers: [AppController],
   providers: [AppService],

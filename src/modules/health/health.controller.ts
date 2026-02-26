@@ -33,9 +33,7 @@ export class HealthController {
 
   @Get()
   @HealthCheck()
-  async getStatus(
-    @Query('verbose') verbose?: string,
-  ): Promise<StatusResponse> {
+  async getStatus(@Query('verbose') verbose?: string): Promise<StatusResponse> {
     const isVerbose = verbose === 'true' || verbose === '1';
 
     let healthResult: HealthCheckResult;
@@ -52,7 +50,8 @@ export class HealthController {
       };
     }
 
-    const dbStatus = healthResult.details?.database || healthResult.error?.database;
+    const dbStatus =
+      healthResult.details?.database || healthResult.error?.database;
     const isDbUp = dbStatus?.status === 'up';
 
     const response: StatusResponse = {

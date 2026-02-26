@@ -6,9 +6,9 @@ import { RpcHealthWorker } from './workers/rpc-health.worker';
 import { RpcHealthLogEntity } from './entities/rpc-health-log.entity';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([RpcHealthLogEntity])],
-    controllers: [RpcHealthController],
-    providers: [RpcHealthService, RpcHealthWorker],
-    exports: [RpcHealthService],
+  imports: [TypeOrmModule.forFeature([RpcHealthLogEntity])],
+  controllers: [RpcHealthController],
+  providers: [RpcHealthService, RpcHealthWorker],
+  exports: [RpcHealthService],
 })
-export class RpcHealthModule { }
+export class RpcHealthModule {}
