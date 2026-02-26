@@ -1,12 +1,11 @@
-import {
-  Injectable,
-  HttpException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
-import { RateLimitRuleEntity, UserTier, RiskLevel } from '../entities/rate-limit-rule.entity';
+import {
+  RateLimitRuleEntity,
+  UserTier,
+  RiskLevel,
+} from '../entities/rate-limit-rule.entity';
 import { RateLimitTrackerEntity } from '../entities/rate-limit-tracker.entity';
 
 export interface RateLimitContext {
@@ -40,9 +39,7 @@ export class RateLimitService {
   /**
    * Check if a request should be allowed based on rate limits
    */
-  async checkRateLimit(
-    context: RateLimitContext,
-  ): Promise<RateLimitResult> {
+  async checkRateLimit(context: RateLimitContext): Promise<RateLimitResult> {
     // Determine user tier (default to guest if not provided)
     const tier = context.tier || 'guest';
 
@@ -188,9 +185,7 @@ export class RateLimitService {
     }
 
     // Convert pattern to regex (support * wildcard)
-    const regexPattern = pattern
-      .replace(/\*/g, '.*')
-      .replace(/\//g, '\\/');
+    const regexPattern = pattern.replace(/\*/g, '.*').replace(/\//g, '\\/');
     const regex = new RegExp(`^${regexPattern}$`);
 
     return regex.test(route);

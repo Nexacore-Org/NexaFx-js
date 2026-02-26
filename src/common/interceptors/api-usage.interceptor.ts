@@ -26,7 +26,7 @@ export class ApiUsageInterceptor implements NestInterceptor {
       request.socket.remoteAddress;
 
     // Extract userId from request if available (e.g., from JWT token)
-    const userId = (request as any).user?.id;
+    const userId = request.user?.id;
 
     return next.handle().pipe(
       tap({

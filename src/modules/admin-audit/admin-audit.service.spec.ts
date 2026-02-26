@@ -16,7 +16,11 @@ describe('AdminAuditService', () => {
           provide: getRepositoryToken(AdminAuditLogEntity),
           useValue: {
             create: jest.fn().mockImplementation((dto) => dto),
-            save: jest.fn().mockImplementation((log) => Promise.resolve({ id: 'uuid', ...log })),
+            save: jest
+              .fn()
+              .mockImplementation((log) =>
+                Promise.resolve({ id: 'uuid', ...log }),
+              ),
             findAndCount: jest.fn().mockResolvedValue([[], 0]),
           },
         },
@@ -24,7 +28,9 @@ describe('AdminAuditService', () => {
     }).compile();
 
     service = module.get<AdminAuditService>(AdminAuditService);
-    repo = module.get<Repository<AdminAuditLogEntity>>(getRepositoryToken(AdminAuditLogEntity));
+    repo = module.get<Repository<AdminAuditLogEntity>>(
+      getRepositoryToken(AdminAuditLogEntity),
+    );
   });
 
   it('should be defined', () => {

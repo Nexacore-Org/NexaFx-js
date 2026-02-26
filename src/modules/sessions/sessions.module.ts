@@ -9,7 +9,11 @@ import { DeviceController } from './controllers/device.controller';
 @Module({
   imports: [TypeOrmModule.forFeature([DeviceEntity])],
   controllers: [DeviceController],
-  providers: [],
-  exports: [TypeOrmModule],
+  providers: [
+    /* DeviceTrustService, DeviceService */
+  ],
+  exports: [
+    /* DeviceService */
+  ],
 })
 export class SessionsModule {}

@@ -7,7 +7,10 @@ import {
   SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { RateLimitService, RateLimitContext } from '../services/rate-limit.service';
+import {
+  RateLimitService,
+  RateLimitContext,
+} from '../services/rate-limit.service';
 import { UserTier, RiskLevel } from '../entities/rate-limit-rule.entity';
 
 export const RATE_LIMIT_KEY = 'rateLimit';
@@ -65,8 +68,14 @@ export class RateLimitGuard implements CanActivate {
     // Extract user information from request
     // This assumes the JWT guard sets req.user
     const userId = request.user?.id || request.user?.userId;
-    const userTier = options?.tier || request.user?.tier || this.determineTierFromRequest(request);
-    const riskLevel = options?.riskLevel || request.user?.riskLevel || this.determineRiskLevel(request);
+    const userTier =
+      options?.tier ||
+      request.user?.tier ||
+      this.determineTierFromRequest(request);
+    const riskLevel =
+      options?.riskLevel ||
+      request.user?.riskLevel ||
+      this.determineRiskLevel(request);
 
     // Get IP address
     const ipAddress =
@@ -95,7 +104,10 @@ export class RateLimitGuard implements CanActivate {
     // Set rate limit headers
     response.setHeader('X-RateLimit-Limit', result.limit);
     response.setHeader('X-RateLimit-Remaining', result.remaining);
-    response.setHeader('X-RateLimit-Reset', Math.floor(result.resetAt.getTime() / 1000));
+    response.setHeader(
+      'X-RateLimit-Reset',
+      Math.floor(result.resetAt.getTime() / 1000),
+    );
 
     if (!result.allowed) {
       // Log the violation (fire and forget)
@@ -144,7 +156,10 @@ export class RateLimitGuard implements CanActivate {
 
     // Check for tier header (if provided by auth system)
     const tierHeader = request.headers['x-user-tier'];
-    if (tierHeader && ['guest', 'standard', 'premium', 'admin'].includes(tierHeader)) {
+    if (
+      tierHeader &&
+      ['guest', 'standard', 'premium', 'admin'].includes(tierHeader)
+    ) {
       return tierHeader as UserTier;
     }
 

@@ -22,7 +22,8 @@ export class DatabaseHealthIndicator extends HealthIndicator {
       return this.getStatus(key, true, { responseTime });
     } catch (error) {
       const result = this.getStatus(key, false, {
-        message: error instanceof Error ? error.message : 'Database connection failed',
+        message:
+          error instanceof Error ? error.message : 'Database connection failed',
       });
       throw new HealthCheckError('Database check failed', result);
     }
@@ -45,7 +46,8 @@ export class DatabaseHealthIndicator extends HealthIndicator {
     } catch (error) {
       return {
         status: 'down',
-        message: error instanceof Error ? error.message : 'Database connection failed',
+        message:
+          error instanceof Error ? error.message : 'Database connection failed',
         isConnected: false,
       };
     }

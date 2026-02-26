@@ -34,7 +34,9 @@ describe('HealthController', () => {
 
     controller = module.get<HealthController>(HealthController);
     healthCheckService = module.get<HealthCheckService>(HealthCheckService);
-    databaseIndicator = module.get<DatabaseHealthIndicator>(DatabaseHealthIndicator);
+    databaseIndicator = module.get<DatabaseHealthIndicator>(
+      DatabaseHealthIndicator,
+    );
   });
 
   describe('getStatus', () => {
@@ -59,8 +61,12 @@ describe('HealthController', () => {
         response: {
           status: 'error',
           info: {},
-          error: { database: { status: 'down', message: 'Connection refused' } },
-          details: { database: { status: 'down', message: 'Connection refused' } },
+          error: {
+            database: { status: 'down', message: 'Connection refused' },
+          },
+          details: {
+            database: { status: 'down', message: 'Connection refused' },
+          },
         },
       };
       (healthCheckService.check as jest.Mock).mockRejectedValue(error);

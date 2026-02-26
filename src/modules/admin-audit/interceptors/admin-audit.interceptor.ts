@@ -27,16 +27,17 @@ export class AdminAuditInterceptor implements NestInterceptor {
     if (method === 'GET' && url.includes('/audit-logs')) {
       return next.handle();
     }
-    
+
     // Only intercept if it looks like an admin request.
     // Assuming 'x-admin' header or if the route is under /admin (except audit-logs which is already excluded above if GET)
     // or if the user is an admin.
-    const isAdmin = request.headers['x-admin'] === 'true' || request.user?.isAdmin; 
-    
+    const isAdmin =
+      request.headers['x-admin'] === 'true' || request.user?.isAdmin;
+
     // If not admin, maybe we shouldn't log as "Admin Audit", but maybe security audit?
     // For this task, I'll assume we only want to log if it is an admin action.
     if (!isAdmin) {
-       return next.handle();
+      return next.handle();
     }
 
     return next.handle().pipe(
@@ -57,7 +58,7 @@ export class AdminAuditInterceptor implements NestInterceptor {
     try {
       const { method, url, body, params, query, user, ip, headers } = request;
       const adminId = user?.id || headers['x-admin-id'] || 'unknown';
-      
+
       // Simple heuristic for Action
       let action = method;
       if (method === 'POST') action = 'CREATE';
@@ -84,7 +85,10 @@ export class AdminAuditInterceptor implements NestInterceptor {
         actorType: 'admin' as any,
         action,
         entity,
-        entityId: typeof entityId === 'string' || typeof entityId === 'number' ? String(entityId) : undefined,
+        entityId:
+          typeof entityId === 'string' || typeof entityId === 'number'
+            ? String(entityId)
+            : undefined,
         metadata,
         ip: ip || request.connection?.remoteAddress,
       });
