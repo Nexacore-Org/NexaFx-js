@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { NotificationsPersistenceService } from '../notifications-persistence.service';
-import { PersistedNotification } from '../entities/persisted-notification.entity';
-import { NOTIFICATION_EVENTS } from '../notifications.constants';
+import { NotificationsPersistenceService } from './notifications-persistence.service';
+import { PersistedNotification } from './entities/persisted-notification.entity';
+import { NOTIFICATION_EVENTS } from './notifications.constants';
 
 const mockRepo = () => ({
   create: jest.fn(),

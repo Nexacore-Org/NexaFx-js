@@ -6,6 +6,12 @@ import { TransactionEntity } from '../transactions/entities/transaction.entity';
 import { FeatureFlagEntity } from '../feature-flags/entities/feature-flag.entity';
 import { RetryJobEntity } from '../retry/entities/retry-job.entity';
 import { AdminAuditLogEntity } from '../admin-audit/entities/admin-audit-log.entity';
+import { DeviceEntity } from '../sessions/entities/device.entity';
+import { WebhookDeliveryEntity } from '../webhooks/entities/webhook-delivery.entity';
+import { ComplianceReport } from '../../compliance-evidence/compliance-report.entity';
+import { RpcHealthLogEntity } from '../rpc-health/entities/rpc-health-log.entity';
+import { DashboardController } from './controllers/dashboard.controller';
+import { DashboardService } from './services/dashboard.service';
 
 @Module({
   imports: [
@@ -14,9 +20,13 @@ import { AdminAuditLogEntity } from '../admin-audit/entities/admin-audit-log.ent
       FeatureFlagEntity,
       RetryJobEntity,
       AdminAuditLogEntity,
+      DeviceEntity,
+      WebhookDeliveryEntity,
+      ComplianceReport,
+      RpcHealthLogEntity,
     ]),
   ],
-  controllers: [AdminController],
-  providers: [AdminService],
+  controllers: [AdminController, DashboardController],
+  providers: [AdminService, DashboardService],
 })
 export class AdminModule {}

@@ -2,10 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { WsException } from '@nestjs/websockets';
-import { NotificationsGateway } from '../notifications.gateway';
-import { NotificationsService } from '../notifications.service';
-import { NotificationsPersistenceService } from '../notifications-persistence.service';
-import { NOTIFICATION_EVENTS } from '../notifications.constants';
+import { NotificationsGateway } from './notifications.gateway';
+import { NotificationsService } from './notifications.service';
+import { NotificationsPersistenceService } from './notifications-persistence.service';
+import { NOTIFICATION_EVENTS } from './notifications.constants';
 
 const makeSocket = (overrides: Record<string, any> = {}) => ({
   id: 'socket-123',

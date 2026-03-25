@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotificationsService } from '../notifications.service';
-import { NotificationsPersistenceService } from '../notifications-persistence.service';
-import { NOTIFICATION_EVENTS } from '../notifications.constants';
+import { NotificationsService } from './notifications.service';
+import { NotificationsPersistenceService } from './notifications-persistence.service';
+import { NOTIFICATION_EVENTS } from './notifications.constants';
 import { Server } from 'socket.io';
 
 const mockPersistence = () => ({
