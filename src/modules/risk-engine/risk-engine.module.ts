@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RiskState } from './entities/risk-state.entity';
 import { RiskPosition } from './entities/risk-position.entity';
@@ -17,6 +18,7 @@ import { ExposureService } from './exposure.service';
 
 @Module({
   imports: [
+    EventEmitterModule.forRoot(),
     TypeOrmModule.forFeature([
       RiskState,
       RiskPosition,

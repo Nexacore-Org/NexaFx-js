@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsObject, IsEnum, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { NotificationEvent, NOTIFICATION_EVENTS } from '../notifications.constants';
+import { NotificationEvent, NOTIFICATION_EVENTS } from './notifications.constants';
 
 export class EmitNotificationDto {
   @ApiProperty({ description: 'Target user ID (omit for broadcast)' })

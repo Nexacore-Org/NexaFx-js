@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RiskState } from '../entities/risk-state.entity';
@@ -6,6 +7,10 @@ import { RiskPosition } from '../entities/risk-position.entity';
 import { RiskSnapshot } from '../entities/risk-snapshot.entity';
 import { RiskCalculationService } from './risk-calculation.service';
 import { StressTestService } from './stress-test.service';
+import {
+  POSITION_CHANGE_THRESHOLD,
+  POSITION_SIGNIFICANT_CHANGE_EVENT,
+} from '../../../web-sockets/market-feed.constants';
 
 @Injectable()
 export class RiskManagerService {
@@ -18,6 +23,7 @@ export class RiskManagerService {
     private readonly snapshotRepo: Repository<RiskSnapshot>,
     private readonly riskCalc: RiskCalculationService,
     private readonly stressTest: StressTestService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async getRiskState(userId: string): Promise<RiskState> {
@@ -39,6 +45,7 @@ export class RiskManagerService {
       riskState = await this.createRiskProfile(userId);
     }
 
+    const previousExposure = this.calculateCurrentExposure(riskState);
     const positions = await this.positionRepo.find({ where: { userId } });
 
     // Calculate Metrics
@@ -60,6 +67,7 @@ export class RiskManagerService {
     riskState.usedMargin = usedMargin;
     riskState.freeMargin = riskState.totalEquity - usedMargin;
     riskState.currentDailyPL = unrealizedPnL; // Simplified
+    riskState.exposureBreakdown = this.buildExposureBreakdown(positions);
 
     // Calculate Risk Score
     const score = this.riskCalc.calculateRiskScore({
@@ -87,6 +95,7 @@ export class RiskManagerService {
       },
     });
     await this.snapshotRepo.save(snapshot);
+    this.emitPositionChangeIfSignificant(userId, positions, previousExposure, totalExposure);
 
     return riskState;
   }
@@ -104,5 +113,51 @@ export class RiskManagerService {
     const riskState = await this.getRiskState(userId);
     riskState.limits = { ...riskState.limits, ...limits };
     return this.riskStateRepo.save(riskState);
+  }
+
+  private calculateCurrentExposure(riskState: RiskState): number {
+    const exposures = Object.values(riskState.exposureBreakdown ?? {});
+    return exposures.reduce((sum, value) => sum + Math.abs(Number(value)), 0);
+  }
+
+  private buildExposureBreakdown(positions: RiskPosition[]): Record<string, number> {
+    return positions.reduce<Record<string, number>>((acc, position) => {
+      const positionValue = Number(position.quantity) * Number(position.currentPrice);
+      const signedValue = position.side === 'BUY' ? positionValue : -positionValue;
+      acc[position.symbol] = (acc[position.symbol] ?? 0) + signedValue;
+      return acc;
+    }, {});
+  }
+
+  private emitPositionChangeIfSignificant(
+    userId: string,
+    positions: RiskPosition[],
+    previousExposure: number,
+    totalExposure: number,
+  ): void {
+    const baseline = Math.max(Math.abs(previousExposure), 1);
+    const changeRatio = Math.abs(totalExposure - previousExposure) / baseline;
+
+    if (changeRatio <= POSITION_CHANGE_THRESHOLD) {
+      return;
+    }
+
+    this.eventEmitter.emit(POSITION_SIGNIFICANT_CHANGE_EVENT, {
+      userId,
+      totalExposure,
+      previousTotalExposure: previousExposure,
+      changeRatio,
+      positions: positions.map((position) => ({
+        id: position.id,
+        symbol: position.symbol,
+        quantity: Number(position.quantity),
+        entryPrice: Number(position.entryPrice),
+        currentPrice: Number(position.currentPrice),
+        leverage: Number(position.leverage),
+        side: position.side,
+        assetType: position.assetType,
+      })),
+      timestamp: new Date().toISOString(),
+    });
   }
 }

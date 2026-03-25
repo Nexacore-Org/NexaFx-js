@@ -19,6 +19,7 @@ import { SessionsModule } from './modules/sessions/sessions.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EnrichmentModule } from './modules/enrichment/enrichment.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { NotificationsModule as WebSocketNotificationsModule } from './web-sockets/notifications.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { RetryModule } from './modules/retry/retry.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
@@ -27,6 +28,7 @@ import { TransactionRiskModule } from './modules/transaction-risk/transaction-ri
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
 import { DataArchiveModule } from './modules/data-archive/data-archive.module';
+import { FxModule } from './modules/fx/fx.module';
 import { EscrowModule } from './modules/escrow/escrow.module';
 import { GoalsModule } from './goals/goal.module';
 import { AnnouncementsModule } from './announcement/announcement.module';
@@ -85,6 +87,7 @@ const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !
     TransactionsModule,
     EnrichmentModule,
     NotificationsModule,
+    WebSocketNotificationsModule,
     ReconciliationModule,
     RetryModule,
     ExperimentsModule,
@@ -93,6 +96,7 @@ const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !
     WebhooksModule,
     SecretsModule,
     DataArchiveModule,
+    FxModule,
     EscrowModule,
     GoalsModule,
     AnnouncementsModule,
