@@ -15,6 +15,7 @@ import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { StrategyOptimizerModule } from './modules/strategy-optimizer/strategy-optimizer.module';
 import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
+ fix-app-modules
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -57,6 +58,41 @@ const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !
         logging: process.env.NODE_ENV === 'development',
         autoLoadEntities: true,
       }),
+
+import { RiskState } from './modules/risk-engine/entities/risk-state.entity';
+import { RiskPosition } from './modules/risk-engine/entities/risk-position.entity';
+import { RiskSnapshot } from './modules/risk-engine/entities/risk-snapshot.entity';
+import { SecretsModule } from './modules/secrets/secrets.module';
+import { SecretVersion } from './modules/secrets/entities/secret-version.entity';
+
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      username: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+      database: process.env.DB_NAME || 'nexafx_dev',
+      entities: [
+        ApiUsageLogEntity,
+        RpcHealthLogEntity,
+        RateLimitRuleEntity,
+        RateLimitTrackerEntity,
+        FeatureFlagEntity,
+        AdminAuditLogEntity,
+        Strategy,
+        StrategyParameter,
+        StrategyVersion,
+        PerformanceMetric,
+        RiskState,
+        RiskPosition,
+        RiskSnapshot,
+        SecretVersion,
+      ],
+      synchronize: process.env.NODE_ENV !== 'production',
+      logging: process.env.NODE_ENV === 'development',
+main
     }),
     ...(enableBull
       ? [
@@ -83,6 +119,7 @@ const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !
     AdminAuditModule,
     StrategyOptimizerModule,
     RiskEngineModule,
+fix-app-modules
     AdminModule,
     AuthModule,
     UsersModule,
@@ -105,6 +142,9 @@ const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !
     LedgerModule,
     VersioningModule,
     InsightsModule,
+
+    SecretsModule,
+ main
   ],
   controllers: [AppController],
   providers: [AppService],

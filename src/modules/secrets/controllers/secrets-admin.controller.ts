@@ -3,7 +3,7 @@ import { AdminGuard } from '../../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { SecretsService } from '../services/secrets.service';
 import { RotateSecretDto } from '../dto/rotate-secret.dto';
-import { SecretType } from '../entities/secret.entity';
+import { SecretType } from '../entities/secret-version.entity';
 
 @Controller('admin/secrets')
 @UseGuards(JwtAuthGuard, AdminGuard)
