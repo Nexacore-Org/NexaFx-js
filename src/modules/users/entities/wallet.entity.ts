@@ -37,6 +37,12 @@ export class WalletEntity {
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, any>;
 
+  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0 })
+  availableBalance: number;
+
+  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0 })
+  escrowBalance: number;
+
   @CreateDateColumn()
   createdAt: Date;
 
