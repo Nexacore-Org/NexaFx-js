@@ -24,6 +24,9 @@ export interface CreateTransactionInput {
   metadata?: Record<string, any>;
   payload?: Record<string, any>;
   externalId?: string;
+  walletId?: string;
+  toAddress?: string;
+  fromAddress?: string;
 }
 
 /**
@@ -58,6 +61,9 @@ export class TransactionLifecycleService {
         metadata: input.metadata,
         payload: input.payload,
         externalId: input.externalId,
+        walletId: input.walletId,
+        toAddress: input.toAddress,
+        fromAddress: input.fromAddress,
       });
       transaction = await repo.save(entity);
     });
