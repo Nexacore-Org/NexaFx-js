@@ -24,19 +24,17 @@ import {
   ReconciliationResultDto,
   LedgerBalanceDto,
 } from './dto/ledger.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../modules/auth/guards/jwt.guard';
+import { AdminGuard } from '../modules/auth/guards/admin.guard';
 
 @ApiTags('Ledger')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('ledger')
 export class LedgerController {
   constructor(private readonly ledgerService: LedgerService) {}
 
   @Post('entries')
-  @Roles('admin', 'system')
   @HttpCode(HttpStatus.CREATED)
   @ApiCreatedResponse({ description: 'Double-entry posted successfully' })
   @ApiOperation({ summary: 'Post a balanced double-entry transaction' })
@@ -45,7 +43,6 @@ export class LedgerController {
   }
 
   @Get('reconcile')
-  @Roles('admin', 'finance')
   @ApiOkResponse({ type: ReconciliationResultDto })
   @ApiOperation({ summary: 'Run ledger reconciliation' })
   async reconcile(@Query() query: ReconciliationQueryDto): Promise<ReconciliationResultDto> {
@@ -53,7 +50,6 @@ export class LedgerController {
   }
 
   @Get('integrity')
-  @Roles('admin')
   @ApiOperation({ summary: 'Run full integrity validation across all transactions' })
   async runIntegrityValidation() {
     return this.ledgerService.runIntegrityValidation();
