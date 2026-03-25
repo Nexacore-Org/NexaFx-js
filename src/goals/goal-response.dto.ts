@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { GoalStatus } from '../entities/goal.entity';
+import { GoalStatus } from './entities/goal.entity';
 
 export class GoalResponseDto {
   @ApiProperty({ description: 'Goal ID' })
