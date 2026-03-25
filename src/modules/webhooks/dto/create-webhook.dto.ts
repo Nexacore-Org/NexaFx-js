@@ -1,4 +1,5 @@
-import { IsArray, IsString, IsUrl, ArrayMinSize } from 'class-validator';
+import { IsArray, IsIn, IsUrl, ArrayMinSize } from 'class-validator';
+import { WEBHOOK_EVENT_NAMES } from '../webhook-event-catalog';
 
 export class CreateWebhookDto {
   @IsUrl()
@@ -6,6 +7,6 @@ export class CreateWebhookDto {
 
   @IsArray()
   @ArrayMinSize(1)
-  @IsString({ each: true })
+  @IsIn(WEBHOOK_EVENT_NAMES, { each: true })
   events: string[];
 }
