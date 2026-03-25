@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminAuditModule } from '../admin-audit/admin-audit.module';
 import { UserPreferenceEntity } from './entities/user-preference.entity';
 import { UserEntity } from './entities/user.entity';
 import { WalletEntity } from './entities/wallet.entity';
@@ -8,7 +9,10 @@ import { UsersService } from './users.service';
 import { WalletService } from './wallet.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([UserPreferenceEntity, UserEntity, WalletEntity])],
+  imports: [
+    TypeOrmModule.forFeature([UserPreferenceEntity, UserEntity, WalletEntity]),
+    AdminAuditModule,
+  ],
   controllers: [UsersController],
   providers: [UsersService, WalletService],
   exports: [UsersService, WalletService],

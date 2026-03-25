@@ -1,12 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
-
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-
-// Core domain modules
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './modules/health/health.module';
 import { RpcHealthModule } from './modules/rpc-health/rpc-health.module';
@@ -15,7 +12,6 @@ import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { StrategyOptimizerModule } from './modules/strategy-optimizer/strategy-optimizer.module';
 import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
- fix-app-modules
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -26,13 +22,12 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { RetryModule } from './modules/retry/retry.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
-import { FeeModule } from './modules/fee/fee.module';
+import { FeesModule } from './modules/fee/fee.module';
 import { TransactionRiskModule } from './modules/transaction-risk/transaction-risk.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
 import { DataArchiveModule } from './modules/data-archive/data-archive.module';
-
-// Extended feature modules
+import { EscrowModule } from './modules/escrow/escrow.module';
 import { GoalsModule } from './goals/goal.module';
 import { AnnouncementsModule } from './announcement/announcement.module';
 import { ComplianceModule } from './compliance-evidence/compliance.module';
@@ -58,41 +53,6 @@ const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !
         logging: process.env.NODE_ENV === 'development',
         autoLoadEntities: true,
       }),
-
-import { RiskState } from './modules/risk-engine/entities/risk-state.entity';
-import { RiskPosition } from './modules/risk-engine/entities/risk-position.entity';
-import { RiskSnapshot } from './modules/risk-engine/entities/risk-snapshot.entity';
-import { SecretsModule } from './modules/secrets/secrets.module';
-import { SecretVersion } from './modules/secrets/entities/secret-version.entity';
-
-@Module({
-  imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      username: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-      database: process.env.DB_NAME || 'nexafx_dev',
-      entities: [
-        ApiUsageLogEntity,
-        RpcHealthLogEntity,
-        RateLimitRuleEntity,
-        RateLimitTrackerEntity,
-        FeatureFlagEntity,
-        AdminAuditLogEntity,
-        Strategy,
-        StrategyParameter,
-        StrategyVersion,
-        PerformanceMetric,
-        RiskState,
-        RiskPosition,
-        RiskSnapshot,
-        SecretVersion,
-      ],
-      synchronize: process.env.NODE_ENV !== 'production',
-      logging: process.env.NODE_ENV === 'development',
-main
     }),
     ...(enableBull
       ? [
@@ -110,7 +70,6 @@ main
           }),
         ]
       : []),
-    // Core domain
     AnalyticsModule,
     HealthModule,
     RpcHealthModule,
@@ -119,7 +78,6 @@ main
     AdminAuditModule,
     StrategyOptimizerModule,
     RiskEngineModule,
-fix-app-modules
     AdminModule,
     AuthModule,
     UsersModule,
@@ -130,21 +88,18 @@ fix-app-modules
     ReconciliationModule,
     RetryModule,
     ExperimentsModule,
-    FeeModule,
+    FeesModule,
     TransactionRiskModule,
     WebhooksModule,
     SecretsModule,
     DataArchiveModule,
-    // Extended
+    EscrowModule,
     GoalsModule,
     AnnouncementsModule,
     ComplianceModule,
     LedgerModule,
     VersioningModule,
     InsightsModule,
-
-    SecretsModule,
- main
   ],
   controllers: [AppController],
   providers: [AppService],
