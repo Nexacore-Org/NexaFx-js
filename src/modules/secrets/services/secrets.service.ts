@@ -1,129 +1,113 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { SecretEntity, SecretType } from '../entities/secret.entity';
+import { Between, MoreThan, Repository } from 'typeorm';
+import { randomBytes } from 'crypto';
+import { SecretType, SecretVersion } from '../entities/secret-version.entity';
 import { RotateSecretDto } from '../dto/rotate-secret.dto';
 
-/** Grace period: old secret versions remain valid for 1 hour post-rotation */
-const GRACE_PERIOD_MS = 60 * 60 * 1000;
+// Default 5-minute grace window unless overridden
+const DEFAULT_GRACE_MINUTES = Number(process.env.SECRET_GRACE_PERIOD_MINUTES || 5);
 
 @Injectable()
 export class SecretsService {
   private readonly logger = new Logger(SecretsService.name);
+  private readonly graceMs = DEFAULT_GRACE_MINUTES * 60 * 1000;
 
   constructor(
-    @InjectRepository(SecretEntity)
-    private readonly secretRepo: Repository<SecretEntity>,
+    @InjectRepository(SecretVersion)
+    private readonly secretRepo: Repository<SecretVersion>,
   ) {}
 
-  /**
-   * Returns the current active secret value for a given type.
-   */
+  private now() {
+    return new Date();
+  }
+
+  private generateSecretValue(type: SecretType): string {
+    // Use longer key for JWT tokens
+    const bytes = type === 'JWT' ? 48 : 32;
+    return randomBytes(bytes).toString('base64url');
+  }
+
   async getActiveSecret(type: SecretType): Promise<string> {
-    const secret = await this.secretRepo.findOne({
-      where: { type, isActive: true },
+    const active = await this.secretRepo.findOne({
+      where: { type, expiresAt: null },
       order: { version: 'DESC' },
     });
 
-    if (!secret) {
+    if (!active) {
       throw new NotFoundException(`No active secret found for type: ${type}`);
     }
 
-    return secret.value;
+    return active.value;
   }
 
   /**
-   * Returns all valid secrets for a given type within the grace period.
-   * Used for JWT verification fallback — allows tokens signed with a recently
-   * rotated key to remain valid during the grace window.
+   * Returns all non-expired secrets (active + grace window) ordered newest first.
    */
   async getValidSecrets(type: SecretType): Promise<string[]> {
-    const graceCutoff = new Date(Date.now() - GRACE_PERIOD_MS);
-
-    const secrets = await this.secretRepo
-      .createQueryBuilder('s')
-      .where('s.type = :type', { type })
-      .andWhere(
-        '(s.isActive = true OR (s.retiredAt IS NOT NULL AND s.retiredAt > :graceCutoff))',
-        { graceCutoff },
-      )
-      .orderBy('s.version', 'DESC')
-      .getMany();
-
+    const now = this.now();
+    const secrets = await this.secretRepo.find({
+      where: [
+        { type, expiresAt: null },
+        { type, expiresAt: MoreThan(now) },
+      ],
+      order: { version: 'DESC' },
+    });
     return secrets.map((s) => s.value);
   }
 
-  /**
-   * Rotates a secret: creates new version, marks old version as retired (not immediately deleted).
-   * Old version remains usable for GRACE_PERIOD_MS for backward compatibility.
-   */
   async rotateSecret(
     dto: RotateSecretDto,
-  ): Promise<{ message: string; newVersion: number }> {
+  ): Promise<{ message: string; newVersion: number; expiresAt: Date | null }>
+  {
+    const now = this.now();
+    const graceMinutes = dto.gracePeriodMinutes ?? this.graceMs / 60000;
     const currentActive = await this.secretRepo.findOne({
-      where: { type: dto.type, isActive: true },
+      where: [{ type: dto.type, expiresAt: null }],
       order: { version: 'DESC' },
     });
 
     const nextVersion = currentActive ? currentActive.version + 1 : 1;
 
-    // Retire current active secret (start grace period clock)
     if (currentActive) {
-      currentActive.isActive = false;
-      currentActive.retiredAt = new Date();
+      currentActive.expiresAt = new Date(now.getTime() + graceMinutes * 60 * 1000);
       await this.secretRepo.save(currentActive);
     }
 
-    // Create new active version
     const newSecret = this.secretRepo.create({
       type: dto.type,
       version: nextVersion,
-      value: dto.newValue,
-      isActive: true,
+      value: dto.newValue || this.generateSecretValue(dto.type),
+      expiresAt: null,
     });
 
     await this.secretRepo.save(newSecret);
 
     this.logger.log(
-      `Secret rotated — type: ${dto.type}, version: ${nextVersion}. ` +
-        `Previous version enters ${GRACE_PERIOD_MS / 60000}-minute grace period.`,
+      `Secret rotated — type: ${dto.type}, version: ${nextVersion}. Grace period ${graceMinutes} minute(s).`,
     );
 
     return {
       message: `Secret rotated successfully to version ${nextVersion}`,
       newVersion: nextVersion,
+      expiresAt: currentActive?.expiresAt || null,
     };
   }
 
-  /**
-   * Cron job: purge secrets that have been retired past the grace period.
-   * Runs every 30 minutes.
-   */
   @Cron(CronExpression.EVERY_30_MINUTES)
   async purgeExpiredSecrets(): Promise<void> {
-    const expiryThreshold = new Date(Date.now() - GRACE_PERIOD_MS);
-
-    const result = await this.secretRepo
-      .createQueryBuilder()
-      .delete()
-      .from(SecretEntity)
-      .where('isActive = false')
-      .andWhere('retiredAt < :expiryThreshold', { expiryThreshold })
-      .execute();
-
+    const now = this.now();
+    const result = await this.secretRepo.delete({ expiresAt: Between(new Date(0), now) });
     if (result.affected && result.affected > 0) {
       this.logger.log(`Purged ${result.affected} expired secret version(s)`);
     }
   }
 
-  /**
-   * Returns rotation audit log (non-sensitive — versions and timestamps only).
-   */
   async getRotationHistory(type: SecretType) {
     return this.secretRepo.find({
       where: { type },
-      select: ['id', 'type', 'version', 'isActive', 'retiredAt', 'createdAt'],
+      select: ['id', 'type', 'version', 'expiresAt', 'createdAt'],
       order: { version: 'DESC' },
     });
   }

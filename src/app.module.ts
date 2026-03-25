@@ -23,6 +23,8 @@ import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
 import { RiskState } from './modules/risk-engine/entities/risk-state.entity';
 import { RiskPosition } from './modules/risk-engine/entities/risk-position.entity';
 import { RiskSnapshot } from './modules/risk-engine/entities/risk-snapshot.entity';
+import { SecretsModule } from './modules/secrets/secrets.module';
+import { SecretVersion } from './modules/secrets/entities/secret-version.entity';
 
 @Module({
   imports: [
@@ -47,6 +49,7 @@ import { RiskSnapshot } from './modules/risk-engine/entities/risk-snapshot.entit
         RiskState,
         RiskPosition,
         RiskSnapshot,
+        SecretVersion,
       ],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
@@ -59,6 +62,7 @@ import { RiskSnapshot } from './modules/risk-engine/entities/risk-snapshot.entit
     AdminAuditModule,
     StrategyOptimizerModule,
     RiskEngineModule,
+    SecretsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
