@@ -1,9 +1,10 @@
-import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsIn, IsOptional } from 'class-validator';
+import { WEBHOOK_EVENT_NAMES } from '../webhook-event-catalog';
 
 export class UpdateWebhookDto {
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IsIn(WEBHOOK_EVENT_NAMES, { each: true })
   events?: string[];
 
   @IsOptional()

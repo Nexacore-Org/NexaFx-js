@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Between, MoreThan, Repository } from 'typeorm';
+import { Between, IsNull, MoreThan, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { SecretType, SecretVersion } from '../entities/secret-version.entity';
 import { RotateSecretDto } from '../dto/rotate-secret.dto';
@@ -31,7 +31,7 @@ export class SecretsService {
 
   async getActiveSecret(type: SecretType): Promise<string> {
     const active = await this.secretRepo.findOne({
-      where: { type, expiresAt: null },
+      where: { type, expiresAt: IsNull() },
       order: { version: 'DESC' },
     });
 
@@ -49,7 +49,7 @@ export class SecretsService {
     const now = this.now();
     const secrets = await this.secretRepo.find({
       where: [
-        { type, expiresAt: null },
+        { type, expiresAt: IsNull() },
         { type, expiresAt: MoreThan(now) },
       ],
       order: { version: 'DESC' },
@@ -64,7 +64,7 @@ export class SecretsService {
     const now = this.now();
     const graceMinutes = dto.gracePeriodMinutes ?? this.graceMs / 60000;
     const currentActive = await this.secretRepo.findOne({
-      where: [{ type: dto.type, expiresAt: null }],
+      where: [{ type: dto.type, expiresAt: IsNull() }],
       order: { version: 'DESC' },
     });
 

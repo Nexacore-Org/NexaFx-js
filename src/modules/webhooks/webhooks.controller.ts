@@ -4,10 +4,14 @@ import { UpdateWebhookDto } from './dto/update-webhook.dto';
 import { WebhooksService } from './webhooks.service';
 import { AuditLog } from '../admin-audit/decorators/audit-log.decorator';
 import { SkipAudit } from '../admin-audit/decorators/skip-audit.decorator';
+import { WebhookSandboxService } from './sandbox/webhook-sandbox.service';
 
 @Controller('webhooks')
 export class WebhooksController {
-  constructor(private readonly service: WebhooksService) {}
+  constructor(
+    private readonly service: WebhooksService,
+    private readonly sandboxService: WebhookSandboxService,
+  ) {}
 
   @Post()
   @AuditLog({
@@ -36,5 +40,11 @@ export class WebhooksController {
   })
   update(@Param('id') id: string, @Body() dto: UpdateWebhookDto) {
     return this.service.update(id, dto);
+  }
+
+  @Post('sandbox/:eventType')
+  @SkipAudit()
+  sendSandboxEvent(@Param('eventType') eventType: string) {
+    return this.sandboxService.sendTestEvent(eventType);
   }
 }

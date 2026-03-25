@@ -47,11 +47,11 @@ export class NotificationThrottleEntity {
 
   // When the current batch was started
   @Column({ type: 'timestamptz', nullable: true })
-  batchStartedAt?: Date;
+  batchStartedAt?: Date | null;
 
   // When the last batch was sent
   @Column({ type: 'timestamptz', nullable: true })
-  lastSentAt?: Date;
+  lastSentAt?: Date | null;
 
   // Pending notifications count (in queue)
   @Column({ type: 'int', default: 0 })

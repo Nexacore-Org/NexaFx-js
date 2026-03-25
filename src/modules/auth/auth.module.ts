@@ -1,8 +1,4 @@
-fix-app-modules
-import { Global, Module } from '@nestjs/common';
-
-import { Module, forwardRef } from '@nestjs/common';
- main
+import { Global, Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from '../users/entities/user.entity';
 import { AuthService } from './auth.service';
