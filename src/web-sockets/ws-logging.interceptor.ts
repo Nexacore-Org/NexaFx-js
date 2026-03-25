@@ -6,7 +6,7 @@ import {
   NestInterceptor,
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
-import { WsAuthenticatedSocket } from '../guards/ws-jwt.guard';
+import { WsAuthenticatedSocket } from './ws-jwt.guard';
 
 @Injectable()
 export class WsLoggingInterceptor implements NestInterceptor {

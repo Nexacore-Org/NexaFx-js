@@ -17,16 +17,12 @@ import {
 import { NotificationsService } from './notifications.service';
 import { NotificationsGateway } from './notifications.gateway';
 import { EmitNotificationDto } from './dto/notification.dto';
-
-// Replace these with your actual auth guards
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { AdminGuard } from '../modules/auth/guards/admin.guard';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
 @Controller('notifications')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(AdminGuard)
 export class NotificationsController {
   constructor(
     private readonly notificationsService: NotificationsService,
@@ -34,7 +30,6 @@ export class NotificationsController {
   ) {}
 
   @Post('emit/user/:userId')
-  @Roles('admin', 'super_admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Emit a notification to a specific user (admin only)' })
   @ApiResponse({ status: 204, description: 'Notification emitted' })
@@ -46,7 +41,6 @@ export class NotificationsController {
   }
 
   @Post('emit/admin')
-  @Roles('admin', 'super_admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Broadcast an admin-level notification' })
   async emitToAdmins(@Body() dto: EmitNotificationDto): Promise<void> {
@@ -54,7 +48,6 @@ export class NotificationsController {
   }
 
   @Post('emit/transaction/:transactionId/user/:userId')
-  @Roles('admin', 'super_admin', 'system')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Emit a transaction status update' })
   async emitTransactionUpdate(
@@ -72,7 +65,6 @@ export class NotificationsController {
   }
 
   @Post('emit/fraud-alert/user/:userId')
-  @Roles('admin', 'super_admin', 'fraud_analyst')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Emit a fraud alert for a user' })
   async emitFraudAlert(
@@ -85,7 +77,6 @@ export class NotificationsController {
   }
 
   @Get('stats')
-  @Roles('admin', 'super_admin')
   @ApiOperation({ summary: 'WebSocket connection statistics' })
   getStats() {
     return {
@@ -96,7 +87,6 @@ export class NotificationsController {
   }
 
   @Get('health/user/:userId')
-  @Roles('admin', 'super_admin')
   @ApiOperation({ summary: 'Check if a user has an active WebSocket connection' })
   checkUserOnline(@Param('userId') userId: string) {
     return {
