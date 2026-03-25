@@ -1,25 +1,30 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 
 import { WebhookSubscriptionEntity } from './entities/webhook-subscription.entity';
+import { WebhookDeliveryEntity } from './entities/webhook-delivery.entity';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
 import { UpdateWebhookDto } from './dto/update-webhook.dto';
+import { WEBHOOK_EVENT_NAMES } from './webhook-event-catalog';
 
 @Injectable()
 export class WebhooksService {
   constructor(
     @InjectRepository(WebhookSubscriptionEntity)
     private readonly subRepo: Repository<WebhookSubscriptionEntity>,
+    @InjectRepository(WebhookDeliveryEntity)
+    private readonly deliveryRepo: Repository<WebhookDeliveryEntity>,
   ) {}
 
   async create(dto: CreateWebhookDto) {
     const secret = randomBytes(32).toString('hex');
+    const events = this.normalizeEvents(dto.events);
 
     const sub = this.subRepo.create({
       url: dto.url,
-      events: dto.events,
+      events,
       secret,
       status: 'active',
     });
@@ -33,6 +38,7 @@ export class WebhooksService {
       events: saved.events,
       status: saved.status,
       createdAt: saved.createdAt,
+      signingSecret: secret,
     };
   }
 
@@ -51,7 +57,12 @@ export class WebhooksService {
   }
 
   async update(id: string, dto: UpdateWebhookDto) {
-    await this.subRepo.update({ id }, dto);
+    const update: UpdateWebhookDto = {
+      ...dto,
+      ...(dto.events ? { events: this.normalizeEvents(dto.events) } : {}),
+    };
+
+    await this.subRepo.update({ id }, update);
     const updated = await this.subRepo.findOne({ where: { id } });
 
     if (!updated) return null;
@@ -71,5 +82,33 @@ export class WebhooksService {
       .where('s.status = :status', { status: 'active' })
       .andWhere('s.events @> :event', { event: JSON.stringify([eventName]) })
       .getMany();
+  }
+
+  async getSecretByDeliveryId(deliveryId: string): Promise<string | null> {
+    const delivery = await this.deliveryRepo.findOne({ where: { id: deliveryId } });
+    if (!delivery) {
+      return null;
+    }
+
+    const subscription = await this.subRepo.findOne({
+      where: { id: delivery.subscriptionId },
+    });
+
+    return subscription?.secret ?? null;
+  }
+
+  private normalizeEvents(events: string[]): string[] {
+    const normalizedEvents = [...new Set(events.map((event) => event.trim()))];
+    const unsupportedEvents = normalizedEvents.filter(
+      (event) => !WEBHOOK_EVENT_NAMES.includes(event),
+    );
+
+    if (unsupportedEvents.length > 0) {
+      throw new BadRequestException(
+        `Unsupported webhook events: ${unsupportedEvents.join(', ')}`,
+      );
+    }
+
+    return normalizedEvents;
   }
 }

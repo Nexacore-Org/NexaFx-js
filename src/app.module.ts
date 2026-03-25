@@ -19,10 +19,11 @@ import { SessionsModule } from './modules/sessions/sessions.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EnrichmentModule } from './modules/enrichment/enrichment.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { NotificationsModule as WebSocketNotificationsModule } from './web-sockets/notifications.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { RetryModule } from './modules/retry/retry.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
-import { FeeModule } from './modules/fee/fee.module';
+import { FeesModule } from './modules/fee/fee.module';
 import { TransactionRiskModule } from './modules/transaction-risk/transaction-risk.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
@@ -90,7 +91,7 @@ const enableBull =
     ReconciliationModule,
     RetryModule,
     ExperimentsModule,
-    FeeModule,
+    FeesModule,
     TransactionRiskModule,
     WebhooksModule,
     SecretsModule,
