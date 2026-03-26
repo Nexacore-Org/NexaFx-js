@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ApiUsageInterceptor } from './common/interceptors/api-usage.interceptor';
 import { Logger } from '@nestjs/common';
 import * as express from 'express';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -47,10 +48,30 @@ async function bootstrap() {
     logger.log(`Mail Password: ${maskSensitive(configService.get('mail.password') || '')}`);
     logger.log(`Redis Password: ${maskSensitive(configService.get('redis.password') || '')}`);
 
+    // Configure Swagger/OpenAPI
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('NexaFx API')
+      .setDescription('NexaFx financial platform REST API')
+      .setVersion('1.0')
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        'access-token',
+      )
+      .addServer(`/api/v1`, 'API v1')
+      .build();
+
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+
+    app.setGlobalPrefix('api/v1');
+
     const port = configService.get('app.port');
     await app.listen(port);
 
     logger.log(`Application is running on: http://localhost:${port}`);
+    logger.log(`Swagger UI available at: http://localhost:${port}/api/docs`);
   } catch (error) {
     logger.error('Failed to start application', error.stack);
     process.exit(1);

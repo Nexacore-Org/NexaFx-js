@@ -20,6 +20,7 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { OnEvent } from '@nestjs/event-emitter';
 
 import { WsJwtGuard, WsAuthenticatedSocket } from './guards/ws-jwt.guard';
 import { WsLoggingInterceptor } from './interceptors/ws-logging.interceptor';
@@ -206,6 +207,16 @@ export class NotificationsGateway
         timestamp: new Date().toISOString(),
       },
     );
+  }
+
+  @OnEvent('flag.updated')
+  handleFlagUpdated(payload: Record<string, unknown>): void {
+    this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('flag.updated', {
+      event: 'flag.updated',
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+    this.logger.debug(`Emitted flag.updated to admin channel for flag: ${payload['flagName']}`);
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
