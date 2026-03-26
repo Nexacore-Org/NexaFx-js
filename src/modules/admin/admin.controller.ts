@@ -14,14 +14,21 @@ import { AdminService } from './admin.service';
 import { SuspendUserDto } from './dto/suspend-user.dto';
 import { ToggleFeatureFlagDto } from './dto/toggle-feature-flag.dto';
 import { RetryJobControlDto } from './dto/retry-job-control.dto';
+import { AdminSearchUsersDto } from './dto/admin-search-users.dto';
+import { AdminUpdateUserStatusDto } from './dto/admin-update-user-status.dto';
+import { AdminBulkStatusDto } from './dto/admin-bulk-status.dto';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { AuditLog } from '../admin-audit/decorators/audit-log.decorator';
 import { SkipAudit } from '../admin-audit/decorators/skip-audit.decorator';
+import { ActivityTimelineService } from '../users/services/activity-timeline.service';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly activityTimelineService: ActivityTimelineService,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // Metrics
@@ -34,8 +41,55 @@ export class AdminController {
   }
 
   // ---------------------------------------------------------------------------
-  // Users
+  // Users (issue #315)
   // ---------------------------------------------------------------------------
+
+  @Get('users')
+  @SkipAudit()
+  searchUsers(@Query() dto: AdminSearchUsersDto) {
+    return this.adminService.searchUsers(dto);
+  }
+
+  @Patch('users/:id/status')
+  @AuditLog({
+    action: 'UPDATE_USER_STATUS',
+    entity: 'User',
+    entityIdParam: 'id',
+    description: 'Admin updated user status',
+  })
+  updateUserStatus(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AdminUpdateUserStatusDto,
+    @Request() req: any,
+  ) {
+    const adminId = req.user?.id ?? 'system';
+    return this.adminService.updateUserStatus(id, adminId, dto);
+  }
+
+  @Post('users/bulk-status')
+  @AuditLog({
+    action: 'BULK_UPDATE_USER_STATUS',
+    entity: 'User',
+    description: 'Admin bulk updated user statuses',
+  })
+  bulkUpdateUserStatus(@Body() dto: AdminBulkStatusDto, @Request() req: any) {
+    const adminId = req.user?.id ?? 'system';
+    return this.adminService.bulkUpdateUserStatus(adminId, dto);
+  }
+
+  @Get('users/:id/activity')
+  @SkipAudit()
+  getUserActivity(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.activityTimelineService.getTimeline(id, {
+      cursor,
+      limit: limit ? Number(limit) : 20,
+      adminView: true,
+    });
+  }
 
   @Patch('users/:id/suspend')
   @AuditLog({

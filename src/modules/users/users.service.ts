@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere, IsNull } from 'typeorm';
+import { Repository, IsNull, ILike, In } from 'typeorm';
 import { UserEntity } from './entities/user.entity';
 import { WalletEntity } from './entities/wallet.entity';
 import { UserPreferenceEntity } from './entities/user-preference.entity';
 import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { WalletService } from './wallet.service';
 import { AdminAuditService } from '../admin-audit/admin-audit.service';
 import { CreateAdminAuditLogDto } from '../admin-audit/dto/create-admin-audit-log.dto';
@@ -149,6 +155,175 @@ export class UsersService {
   // Soft delete wallet
   async softDeleteWallet(walletId: string): Promise<void> {
     await this.walletService.softDeleteWallet(walletId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Profile endpoints (issue #315)
+  // ---------------------------------------------------------------------------
+
+  async getProfile(userId: string): Promise<Omit<UserEntity, 'passwordHash'>> {
+    const user = await this.findActiveUserById(userId);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash, ...profile } = user as UserEntity & { passwordHash?: string };
+    return profile;
+  }
+
+  async updateProfile(
+    userId: string,
+    dto: UpdateProfileDto,
+  ): Promise<Omit<UserEntity, 'passwordHash'>> {
+    const user = await this.findActiveUserById(userId);
+
+    if (dto.firstName !== undefined) user.firstName = dto.firstName;
+    if (dto.lastName !== undefined) user.lastName = dto.lastName;
+
+    // Store extended profile fields in metadata
+    user.metadata = user.metadata ?? {};
+    if (dto.timezone !== undefined) user.metadata.timezone = dto.timezone;
+    if (dto.currencyPreference !== undefined) user.metadata.currencyPreference = dto.currencyPreference;
+    if (dto.language !== undefined) user.metadata.language = dto.language;
+
+    const saved = await this.userRepository.save(user);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash, ...profile } = saved as UserEntity & { passwordHash?: string };
+    return profile;
+  }
+
+  async deactivateUser(userId: string): Promise<void> {
+    await this.softDeleteUser(userId, userId, ActorType.USER);
+    // Session revocation is handled by the caller (controller layer) via AuthBlacklistService
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin user management (issue #315)
+  // ---------------------------------------------------------------------------
+
+  async adminSearchUsers(opts: {
+    search?: string;
+    role?: string;
+    status?: string;
+    page: number;
+    limit: number;
+  }) {
+    const qb = this.userRepository
+      .createQueryBuilder('u')
+      .orderBy('u.createdAt', 'DESC');
+
+    if (opts.search) {
+      qb.andWhere(
+        '(u.email ILIKE :q OR u.firstName ILIKE :q OR u.lastName ILIKE :q)',
+        { q: `%${opts.search}%` },
+      );
+    }
+
+    if (opts.status) {
+      qb.andWhere('u.status = :status', { status: opts.status });
+    }
+
+    if (opts.role) {
+      // role is stored in metadata JSONB
+      qb.andWhere("u.metadata->>'role' = :role", { role: opts.role });
+    }
+
+    const [data, total] = await qb
+      .skip((opts.page - 1) * opts.limit)
+      .take(opts.limit)
+      .getManyAndCount();
+
+    return {
+      data: data.map(({ passwordHash: _pw, ...u }) => u),
+      total,
+      page: opts.page,
+      limit: opts.limit,
+    };
+  }
+
+  async adminUpdateUserStatus(
+    targetUserId: string,
+    adminId: string,
+    status: 'active' | 'suspended',
+    reason?: string,
+  ): Promise<Omit<UserEntity, 'passwordHash'>> {
+    if (targetUserId === adminId) {
+      throw new ForbiddenException('Admin cannot change their own status');
+    }
+
+    const user = await this.findUserById(targetUserId);
+
+    const previousStatus = user.status;
+    user.status = status;
+    const saved = await this.userRepository.save(user);
+
+    try {
+      const auditDto = new CreateAdminAuditLogDto();
+      auditDto.actorId = adminId;
+      auditDto.actorType = ActorType.ADMIN;
+      auditDto.action = status === 'suspended' ? 'SUSPEND_USER' : 'REACTIVATE_USER';
+      auditDto.entity = 'User';
+      auditDto.entityId = targetUserId;
+      auditDto.beforeSnapshot = { status: previousStatus };
+      auditDto.afterSnapshot = { status };
+      auditDto.metadata = { reason };
+      auditDto.description = `Admin ${adminId} changed user ${targetUserId} status to ${status}${reason ? `: ${reason}` : ''}`;
+      await this.adminAuditService.logAction(auditDto);
+    } catch {
+      // Audit log failure must not block the status update
+    }
+
+    const { passwordHash: _pw, ...profile } = saved as UserEntity & { passwordHash?: string };
+    return profile;
+  }
+
+  async adminBulkUpdateStatus(
+    userIds: string[],
+    adminId: string,
+    status: 'active' | 'suspended',
+    reason?: string,
+  ): Promise<{ updated: number; failed: string[] }> {
+    if (userIds.length > 100) {
+      throw new BadRequestException('Bulk operations are limited to 100 users per request');
+    }
+
+    const failed: string[] = [];
+    let updated = 0;
+
+    const users = await this.userRepository.find({
+      where: { id: In(userIds) },
+      withDeleted: false,
+    });
+
+    const foundIds = new Set(users.map((u) => u.id));
+    for (const id of userIds) {
+      if (!foundIds.has(id)) failed.push(id);
+    }
+
+    for (const user of users) {
+      if (user.id === adminId) {
+        failed.push(user.id);
+        continue;
+      }
+      try {
+        user.status = status;
+        await this.userRepository.save(user);
+
+        const auditDto = new CreateAdminAuditLogDto();
+        auditDto.actorId = adminId;
+        auditDto.actorType = ActorType.ADMIN;
+        auditDto.action = status === 'suspended' ? 'BULK_SUSPEND_USER' : 'BULK_REACTIVATE_USER';
+        auditDto.entity = 'User';
+        auditDto.entityId = user.id;
+        auditDto.afterSnapshot = { status };
+        auditDto.metadata = { reason, bulkOperation: true };
+        auditDto.description = `Bulk status update: user ${user.id} → ${status}`;
+        await this.adminAuditService.logAction(auditDto);
+
+        updated++;
+      } catch {
+        failed.push(user.id);
+      }
+    }
+
+    return { updated, failed };
   }
 
   // User preferences methods (existing)

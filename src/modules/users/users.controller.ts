@@ -2,67 +2,155 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Patch,
+  Post,
+  Query,
   Request,
   UseGuards,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiOkResponse,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { AuditLog } from '../admin-audit/decorators/audit-log.decorator';
 import { SkipAudit } from '../admin-audit/decorators/skip-audit.decorator';
+import { ActivityTimelineService } from './services/activity-timeline.service';
+import { FinancialSummaryService } from './services/financial-summary.service';
+import { AccountHealthService } from './services/account-health.service';
 
 @ApiTags('Users')
 @ApiBearerAuth('access-token')
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly activityTimelineService: ActivityTimelineService,
+    private readonly financialSummaryService: FinancialSummaryService,
+    private readonly accountHealthService: AccountHealthService,
+  ) {}
 
   private getUserId(req: any): string {
-    // In a real app, the guard/strategy populates req.user
-    // If not present (due to placeholder guard), we might check headers or throw
-    const user = req.user;
-    if (user && user.id) {
-      return user.id;
-    }
-    
-    // Fallback for development/testing if user object isn't fully populated by the placeholder guard
-    // but typically the guard ensures authentication.
-    // Let's assume the client might send a mock header for now if the guard is loose.
-    const mockId = req.headers['x-user-id'];
-    if (mockId) {
-      return mockId;
-    }
-
-    // If we can't identify the user, we can't get their preferences
+    if (req.user?.id) return req.user.id;
+    const mockId = req.headers?.['x-user-id'];
+    if (mockId) return mockId;
     throw new UnauthorizedException('User ID could not be determined from request');
   }
+
+  // ---------------------------------------------------------------------------
+  // Profile (issue #315)
+  // ---------------------------------------------------------------------------
+
+  @Get('me')
+  @SkipAudit()
+  @ApiOperation({ summary: 'Get current user full profile (excludes password, tokens)' })
+  @ApiOkResponse({ description: 'User profile' })
+  async getProfile(@Request() req) {
+    return this.usersService.getProfile(this.getUserId(req));
+  }
+
+  @Patch('me')
+  @AuditLog({
+    action: 'UPDATE_PROFILE',
+    entity: 'User',
+    description: 'User updated their profile',
+  })
+  @ApiOperation({ summary: 'Update name, timezone, currency preference, language' })
+  @ApiOkResponse({ description: 'Updated user profile' })
+  async updateProfile(@Request() req, @Body() dto: UpdateProfileDto) {
+    return this.usersService.updateProfile(this.getUserId(req), dto);
+  }
+
+  @Post('me/deactivate')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @AuditLog({
+    action: 'DEACTIVATE_ACCOUNT',
+    entity: 'User',
+    description: 'User deactivated their own account',
+  })
+  @ApiOperation({ summary: 'Soft-delete account and revoke all active sessions' })
+  async deactivateAccount(@Request() req) {
+    await this.usersService.deactivateUser(this.getUserId(req));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Activity timeline (issue #316)
+  // ---------------------------------------------------------------------------
+
+  @Get(':id/activity')
+  @SkipAudit()
+  @ApiOperation({ summary: 'Get chronological activity events for a user' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'Cursor for pagination (ISO timestamp)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Number of events per page (default 20)' })
+  async getActivity(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.activityTimelineService.getTimeline(id, {
+      cursor,
+      limit: limit ? Number(limit) : 20,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Financial summary (issue #316)
+  // ---------------------------------------------------------------------------
+
+  @Get('me/financial-summary')
+  @SkipAudit()
+  @ApiOperation({ summary: 'Get volume, success rate, top currencies, account age' })
+  @ApiOkResponse({ description: 'Financial summary' })
+  async getFinancialSummary(@Request() req) {
+    return this.financialSummaryService.getSummary(this.getUserId(req));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account health score (issue #316)
+  // ---------------------------------------------------------------------------
+
+  @Get('me/health')
+  @SkipAudit()
+  @ApiOperation({ summary: 'Get health score 0-100 with breakdown and improvement suggestions' })
+  @ApiOkResponse({ description: 'Account health score' })
+  async getHealthScore(@Request() req) {
+    return this.accountHealthService.getHealthScore(this.getUserId(req));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Preferences (legacy)
+  // ---------------------------------------------------------------------------
 
   @Get('preferences')
   @SkipAudit()
   @ApiOperation({ summary: 'Get current user preferences' })
   @ApiOkResponse({ description: 'User preferences' })
   async getPreferences(@Request() req) {
-    const userId = this.getUserId(req);
-    return this.usersService.getPreferences(userId);
+    return this.usersService.getPreferences(this.getUserId(req));
   }
 
   @Patch('preferences')
-  @ApiOperation({ summary: 'Update current user preferences' })
-  @ApiOkResponse({ description: 'Updated preferences' })
   @AuditLog({
     action: 'UPDATE_USER_PREFERENCES',
     entity: 'UserPreferences',
     description: 'User updated their preferences',
   })
-  async updatePreferences(
-    @Request() req,
-    @Body() dto: UpdateUserPreferencesDto,
-  ) {
-    const userId = this.getUserId(req);
-    return this.usersService.updatePreferences(userId, dto);
+  @ApiOperation({ summary: 'Update current user preferences' })
+  @ApiOkResponse({ description: 'Updated preferences' })
+  async updatePreferences(@Request() req, @Body() dto: UpdateUserPreferencesDto) {
+    return this.usersService.updatePreferences(this.getUserId(req), dto);
   }
 }

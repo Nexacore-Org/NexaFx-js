@@ -1,163 +1,141 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { RiskState } from '../entities/risk-state.entity';
-import { RiskPosition } from '../entities/risk-position.entity';
-import { RiskSnapshot } from '../entities/risk-snapshot.entity';
-import { RiskCalculationService } from './risk-calculation.service';
-import { StressTestService } from './stress-test.service';
-import {
-  POSITION_CHANGE_THRESHOLD,
-  POSITION_SIGNIFICANT_CHANGE_EVENT,
-} from '../../../web-sockets/market-feed.constants';
+import { Trade } from '../../transactions/entities/trade.entity';
+
+export interface RiskCheckResult {
+  isAllowed: boolean;
+  reason?: string;
+  currentMetrics: {
+    dailyLoss: number;
+    dailyLossLimit: number;
+    openPositions: number;
+    maxPositionSize: number;
+    circuitBreakerActive: boolean;
+  };
+}
 
 @Injectable()
 export class RiskManagerService {
+  private readonly logger = new Logger(RiskManagerService.name);
+
   constructor(
     @InjectRepository(RiskState)
-    private readonly riskStateRepo: Repository<RiskState>,
-    @InjectRepository(RiskPosition)
-    private readonly positionRepo: Repository<RiskPosition>,
-    @InjectRepository(RiskSnapshot)
-    private readonly snapshotRepo: Repository<RiskSnapshot>,
-    private readonly riskCalc: RiskCalculationService,
-    private readonly stressTest: StressTestService,
-    private readonly eventEmitter: EventEmitter2,
+    private readonly riskStateRepository: Repository<RiskState>,
+    @InjectRepository(Trade)
+    private readonly tradeRepository: Repository<Trade>,
+    private readonly dataSource: DataSource,
   ) {}
 
-  async getRiskState(userId: string): Promise<RiskState> {
-    const riskState = await this.riskStateRepo.findOne({ where: { userId } });
-    if (!riskState) {
-      throw new NotFoundException(`Risk profile not found for user ${userId}`);
+  /**
+   * Refresh the persisted RiskState by recomputing from live trade data.
+   * Must be called after every trade completion.
+   */
+  async refreshRiskState(userId: string): Promise<RiskState> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+
+      // Re-read from DB (not cache) for accuracy per spec
+      const todayTrades = await queryRunner.manager.find(Trade, {
+        where: {
+          userId,
+          completedAt: { $gte: startOfDay } as any,
+          status: 'COMPLETED',
+        },
+      });
+
+      const dailyLoss = todayTrades
+        .filter((t) => t.pnl < 0)
+        .reduce((sum, t) => sum + Math.abs(t.pnl), 0);
+
+      const openPositions = await queryRunner.manager.count(Trade, {
+        where: { userId, status: 'OPEN' },
+      });
+
+      let riskState = await queryRunner.manager.findOne(RiskState, {
+        where: { userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!riskState) {
+        riskState = queryRunner.manager.create(RiskState, {
+          userId,
+          dailyLoss: 0,
+          openPositions: 0,
+          circuitBreakerActive: false,
+        });
+      }
+
+      riskState.dailyLoss = dailyLoss;
+      riskState.openPositions = openPositions;
+      riskState.circuitBreakerActive =
+        dailyLoss >= riskState.dailyLossLimit;
+      riskState.lastRefreshedAt = new Date();
+
+      await queryRunner.manager.save(RiskState, riskState);
+      await queryRunner.commitTransaction();
+
+      this.logger.log(
+        `RiskState refreshed for user ${userId}: dailyLoss=${dailyLoss}, circuitBreaker=${riskState.circuitBreakerActive}`,
+      );
+
+      return riskState;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Failed to refresh risk state for ${userId}`, err);
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
-    return riskState;
   }
 
-  async createRiskProfile(userId: string): Promise<RiskState> {
-    const riskState = this.riskStateRepo.create({ userId });
-    return this.riskStateRepo.save(riskState);
+  /**
+   * Read the current RiskState for a user directly from DB.
+   */
+  async getRiskState(userId: string): Promise<RiskState | null> {
+    return this.riskStateRepository.findOne({ where: { userId } });
   }
 
-  async updateRiskMetrics(userId: string): Promise<RiskState> {
-    let riskState = await this.riskStateRepo.findOne({ where: { userId } });
-    if (!riskState) {
-      riskState = await this.createRiskProfile(userId);
+  /**
+   * Daily reset cron — runs at midnight UTC.
+   * Resets daily loss counters and lifts circuit breakers for all users.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async resetDailyLimits(): Promise<void> {
+    this.logger.log('Running midnight UTC daily loss limit reset...');
+    try {
+      await this.riskStateRepository
+        .createQueryBuilder()
+        .update(RiskState)
+        .set({
+          dailyLoss: 0,
+          circuitBreakerActive: false,
+          lastResetAt: new Date(),
+        })
+        .execute();
+
+      this.logger.log('Daily loss limits reset successfully for all users.');
+    } catch (err) {
+      this.logger.error('Failed to reset daily loss limits', err);
+      throw err;
     }
-
-    const previousExposure = this.calculateCurrentExposure(riskState);
-    const positions = await this.positionRepo.find({ where: { userId } });
-
-    // Calculate Metrics
-    const totalExposure = this.riskCalc.calculateTotalExposure(positions);
-    const usedMargin = this.riskCalc.calculateUsedMargin(positions);
-    const currentVaR = this.riskCalc.calculateVaR(positions);
-
-    // Assume equity is updated elsewhere or passed in. For now, we use existing equity.
-    // In a real system, equity = balance + unrealized PnL.
-    // We can calculate unrealized PnL here if we have entry prices.
-    const unrealizedPnL = positions.reduce((sum, pos) => {
-      const value = Number(pos.quantity) * Number(pos.currentPrice);
-      const cost = Number(pos.quantity) * Number(pos.entryPrice);
-      return sum + (pos.side === 'BUY' ? value - cost : cost - value);
-    }, 0);
-
-    // Update risk state
-    riskState.currentVaR = currentVaR;
-    riskState.usedMargin = usedMargin;
-    riskState.freeMargin = riskState.totalEquity - usedMargin;
-    riskState.currentDailyPL = unrealizedPnL; // Simplified
-    riskState.exposureBreakdown = this.buildExposureBreakdown(positions);
-
-    // Calculate Risk Score
-    const score = this.riskCalc.calculateRiskScore({
-      exposure: totalExposure,
-      equity: riskState.totalEquity,
-      var: currentVaR,
-      drawdown: riskState.maxDrawdown,
-    });
-    riskState.riskScore = score;
-
-    await this.riskStateRepo.save(riskState);
-
-    // Create Snapshot for history
-    const snapshot = this.snapshotRepo.create({
-      userId,
-      equity: riskState.totalEquity,
-      margin: usedMargin,
-      dailyPL: unrealizedPnL,
-      var: currentVaR,
-      maxDrawdown: riskState.maxDrawdown,
-      riskScore: score,
-      metrics: {
-        exposureByAsset: {}, // TODO: Implement breakdown
-        leverage: totalExposure / (riskState.totalEquity || 1),
-      },
-    });
-    await this.snapshotRepo.save(snapshot);
-    this.emitPositionChangeIfSignificant(userId, positions, previousExposure, totalExposure);
-
-    return riskState;
   }
 
-  async runStressTest(userId: string): Promise<any> {
-    const riskState = await this.getRiskState(userId);
-    const positions = await this.positionRepo.find({ where: { userId } });
-    return this.stressTest.runStandardScenarios(
-      positions,
-      riskState.totalEquity,
+  /**
+   * Manually lift circuit breaker for a specific user (admin action).
+   */
+  async liftCircuitBreaker(userId: string): Promise<void> {
+    await this.riskStateRepository.update(
+      { userId },
+      { circuitBreakerActive: false },
     );
-  }
-
-  async updateLimits(userId: string, limits: any): Promise<RiskState> {
-    const riskState = await this.getRiskState(userId);
-    riskState.limits = { ...riskState.limits, ...limits };
-    return this.riskStateRepo.save(riskState);
-  }
-
-  private calculateCurrentExposure(riskState: RiskState): number {
-    const exposures = Object.values(riskState.exposureBreakdown ?? {});
-    return exposures.reduce((sum, value) => sum + Math.abs(Number(value)), 0);
-  }
-
-  private buildExposureBreakdown(positions: RiskPosition[]): Record<string, number> {
-    return positions.reduce<Record<string, number>>((acc, position) => {
-      const positionValue = Number(position.quantity) * Number(position.currentPrice);
-      const signedValue = position.side === 'BUY' ? positionValue : -positionValue;
-      acc[position.symbol] = (acc[position.symbol] ?? 0) + signedValue;
-      return acc;
-    }, {});
-  }
-
-  private emitPositionChangeIfSignificant(
-    userId: string,
-    positions: RiskPosition[],
-    previousExposure: number,
-    totalExposure: number,
-  ): void {
-    const baseline = Math.max(Math.abs(previousExposure), 1);
-    const changeRatio = Math.abs(totalExposure - previousExposure) / baseline;
-
-    if (changeRatio <= POSITION_CHANGE_THRESHOLD) {
-      return;
-    }
-
-    this.eventEmitter.emit(POSITION_SIGNIFICANT_CHANGE_EVENT, {
-      userId,
-      totalExposure,
-      previousTotalExposure: previousExposure,
-      changeRatio,
-      positions: positions.map((position) => ({
-        id: position.id,
-        symbol: position.symbol,
-        quantity: Number(position.quantity),
-        entryPrice: Number(position.entryPrice),
-        currentPrice: Number(position.currentPrice),
-        leverage: Number(position.leverage),
-        side: position.side,
-        assetType: position.assetType,
-      })),
-      timestamp: new Date().toISOString(),
-    });
+    this.logger.warn(`Circuit breaker manually lifted for user ${userId}`);
   }
 }
