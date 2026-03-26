@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
-import { ReportType, ExportFormat, ReportStatus } from '../enums/report-type.enum';
+import { ReportType, ExportFormat, ReportStatus } from './report-type.enum';
 
 @Entity('compliance_reports')
 @Index(['reportType', 'createdAt'])

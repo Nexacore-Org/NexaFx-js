@@ -8,7 +8,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ReportType, ExportFormat } from '../enums/report-type.enum';
+import { ReportType, ExportFormat } from './report-type.enum';
 
 export class GenerateReportDto {
   @ApiProperty({ enum: ReportType })

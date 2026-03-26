@@ -3,7 +3,7 @@ import { ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { WsException } from '@nestjs/websockets';
-import { WsJwtGuard } from '../guards/ws-jwt.guard';
+import { WsJwtGuard } from './guards/ws-jwt.guard';
 
 const makeContext = (socketOverrides: Record<string, any> = {}): ExecutionContext =>
   ({

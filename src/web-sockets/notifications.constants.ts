@@ -23,6 +23,7 @@ export const NOTIFICATION_EVENTS = {
   ADMIN_ALERT: 'admin.alert',
   ADMIN_USER_FLAGGED: 'admin.user_flagged',
   ADMIN_SYSTEM_EVENT: 'admin.system_event',
+  DASHBOARD_ALERT: 'dashboard.alert',
 
   // Connection events
   CONNECTION_ACK: 'connection.ack',

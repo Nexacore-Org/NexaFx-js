@@ -6,10 +6,10 @@ import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { io, Socket } from 'socket.io-client';
 
-import { NotificationsModule } from '../notifications.module';
-import { NotificationsService } from '../notifications.service';
-import { PersistedNotification } from '../entities/persisted-notification.entity';
-import { NOTIFICATION_EVENTS, WS_NAMESPACE } from '../notifications.constants';
+import { NotificationsModule } from './notifications.module';
+import { NotificationsService } from './notifications.service';
+import { PersistedNotification } from './entities/persisted-notification.entity';
+import { NOTIFICATION_EVENTS, WS_NAMESPACE } from './notifications.constants';
 
 /** Skipped in CI if no DB — uses in-memory repository mocks */
 describe('Notifications Integration', () => {

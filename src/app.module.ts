@@ -28,16 +28,16 @@ import { TransactionRiskModule } from './modules/transaction-risk/transaction-ri
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
 import { DataArchiveModule } from './modules/data-archive/data-archive.module';
-import { FxModule } from './modules/fx/fx.module';
-import { EscrowModule } from './modules/escrow/escrow.module';
 import { GoalsModule } from './goals/goal.module';
 import { AnnouncementsModule } from './announcement/announcement.module';
 import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
 import { VersioningModule } from './versioning/versioning.module';
 import { InsightsModule } from './exxagerated/exxagerated.module';
+import { NotificationsModule as WebSocketNotificationsModule } from './web-sockets/notifications.module';
 
-const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
+const enableBull =
+  process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
 
 @Module({
   imports: [
@@ -96,8 +96,6 @@ const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !
     WebhooksModule,
     SecretsModule,
     DataArchiveModule,
-    FxModule,
-    EscrowModule,
     GoalsModule,
     AnnouncementsModule,
     ComplianceModule,
