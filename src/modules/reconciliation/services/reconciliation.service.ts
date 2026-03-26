@@ -4,23 +4,48 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
 import {
   ReconciliationIssueEntity,
   MismatchType,
 } from '../entities/reconciliation-issue.entity';
 import { TransactionEntity } from '../../transactions/entities/transaction.entity';
 import { ReconciliationIssueQueryDto } from '../dto/reconciliation-issue-query.dto';
+import { BlockchainService } from '../../blockchain/blockchain.service';
 
 @Injectable()
 export class ReconciliationService {
   private readonly logger = new Logger(ReconciliationService.name);
+  private readonly providerApiUrl: string;
+  private readonly providerApiKey: string;
+  private readonly providerApiTimeout: number;
 
   constructor(
     @InjectRepository(ReconciliationIssueEntity)
     private readonly issueRepo: Repository<ReconciliationIssueEntity>,
     @InjectRepository(TransactionEntity)
     private readonly txRepo: Repository<TransactionEntity>,
-  ) {}
+    private readonly httpService: HttpService,
+    private readonly blockchainService: BlockchainService,
+    private readonly configService: ConfigService,
+  ) {
+    // Read provider API configuration from environment variables
+    this.providerApiUrl =
+      this.configService.get<string>('PROVIDER_API_URL') ||
+      'https://api.payment-provider.com';
+    this.providerApiKey =
+      this.configService.get<string>('PROVIDER_API_KEY') || '';
+    this.providerApiTimeout =
+      this.configService.get<number>('PROVIDER_API_TIMEOUT') || 30000;
+
+    if (!this.providerApiKey) {
+      this.logger.warn(
+        'PROVIDER_API_KEY not configured. Provider status checks will fail.',
+      );
+    }
+  }
 
   /**
    * Main reconciliation job — runs every 15 minutes.
@@ -121,26 +146,120 @@ export class ReconciliationService {
   }
 
   /**
-   * Stub: replace with real HTTP call to payment provider API.
+   * Fetch real payment provider transaction status using externalId
+   * Makes HTTP call to provider API and returns transaction status
    */
   private async fetchProviderStatus(
     tx: TransactionEntity,
   ): Promise<string | null> {
-    if (!tx.externalId) return null;
-    // TODO: inject HttpService and call provider API using tx.externalId
-    return null;
+    if (!tx.externalId) {
+      this.logger.debug(
+        `Transaction ${tx.id} has no externalId, skipping provider check`,
+      );
+      return null;
+    }
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.providerApiUrl}/transactions/${tx.externalId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${this.providerApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: this.providerApiTimeout,
+          },
+        ),
+      );
+
+      const providerData = response.data;
+
+      // Map provider status to our standard statuses
+      // Provider likely returns: PENDING, COMPLETED, FAILED, CANCELLED
+      const status = providerData.status || providerData.state;
+
+      if (!status) {
+        this.logger.warn(
+          `Provider API returned no status for transaction ${tx.id}`,
+        );
+        return null;
+      }
+
+      // Normalize provider status to our standard format
+      const normalizedStatus = this.normalizeProviderStatus(status);
+      this.logger.debug(
+        `Provider status for ${tx.id}: ${status} → ${normalizedStatus}`,
+      );
+
+      return normalizedStatus;
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to fetch provider status for transaction ${tx.id} (external: ${tx.externalId}):`,
+        error.message,
+      );
+      // Return null on error to avoid false positives
+      return null;
+    }
   }
 
   /**
-   * Stub: replace with real blockchain RPC confirmation check.
+   * Fetch blockchain transaction status using txHash in metadata
+   * Calls blockchain RPC to check confirmation status
    */
   private async fetchBlockchainStatus(
     tx: TransactionEntity,
   ): Promise<string | null> {
     const txHash = tx.metadata?.txHash;
-    if (!txHash) return null;
-    // TODO: call blockchain node RPC for confirmation count
-    return null;
+    if (!txHash) {
+      this.logger.debug(
+        `Transaction ${tx.id} has no txHash in metadata, skipping blockchain check`,
+      );
+      return null;
+    }
+
+    try {
+      const status = await this.blockchainService.getTransactionStatus(txHash);
+
+      if (!status) {
+        this.logger.debug(
+          `Transaction ${txHash} not yet confirmed on blockchain`,
+        );
+        return null;
+      }
+
+      this.logger.debug(
+        `Blockchain status for ${tx.id} (hash: ${txHash}): ${status}`,
+      );
+      return status;
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to fetch blockchain status for transaction ${tx.id} (hash: ${txHash}):`,
+        error.message,
+      );
+      // Return null on error to avoid false positives
+      return null;
+    }
+  }
+
+  /**
+   * Normalize provider status to standard transaction statuses
+   */
+  private normalizeProviderStatus(providerStatus: string): string | null {
+    const statusMap: Record<string, string> = {
+      PENDING: 'PENDING',
+      COMPLETED: 'SUCCESS',
+      SUCCEEDED: 'SUCCESS',
+      SUCCESS: 'SUCCESS',
+      FAILED: 'FAILED',
+      FAILURE: 'FAILED',
+      CANCELLED: 'CANCELLED',
+      CANCEL: 'CANCELLED',
+      PROCESSING: 'PENDING',
+    };
+
+    const normalized = statusMap[providerStatus.toUpperCase()];
+    return normalized || null;
   }
 
   /**
