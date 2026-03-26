@@ -73,6 +73,14 @@ export class HealthController {
 
     return response;
   }
+  @Get('ready')
+  ready() {
+    if (this.shutdownService.isShutdownInProgress()) {
+      throw new ServiceUnavailableException('Shutting down');
+    }
+
+    return { status: 'ok' };
+  }
 
   private determineOverallStatus(
     result: HealthCheckResult,
