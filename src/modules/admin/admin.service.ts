@@ -10,9 +10,14 @@ import { TransactionEntity } from '../transactions/entities/transaction.entity';
 import { FeatureFlagEntity } from '../feature-flags/entities/feature-flag.entity';
 import { RetryJobEntity } from '../retry/entities/retry-job.entity';
 import { AdminAuditLogEntity } from '../admin-audit/entities/admin-audit-log.entity';
+import { UserEntity } from '../users/entities/user.entity';
 import { SuspendUserDto } from './dto/suspend-user.dto';
 import { ToggleFeatureFlagDto } from './dto/toggle-feature-flag.dto';
 import { RetryJobControlDto } from './dto/retry-job-control.dto';
+import { AdminSearchUsersDto } from './dto/admin-search-users.dto';
+import { AdminUpdateUserStatusDto } from './dto/admin-update-user-status.dto';
+import { AdminBulkStatusDto } from './dto/admin-bulk-status.dto';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AdminService {
@@ -30,6 +35,11 @@ export class AdminService {
 
     @InjectRepository(AdminAuditLogEntity)
     private readonly auditLogRepo: Repository<AdminAuditLogEntity>,
+
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
+
+    private readonly usersService: UsersService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -81,7 +91,43 @@ export class AdminService {
   }
 
   // ---------------------------------------------------------------------------
-  // User suspension
+  // User management (issue #315)
+  // ---------------------------------------------------------------------------
+
+  async searchUsers(dto: AdminSearchUsersDto) {
+    return this.usersService.adminSearchUsers({
+      search: dto.search,
+      role: dto.role,
+      status: dto.status,
+      page: dto.page ?? 1,
+      limit: dto.limit ?? 20,
+    });
+  }
+
+  async updateUserStatus(
+    userId: string,
+    adminId: string,
+    dto: AdminUpdateUserStatusDto,
+  ) {
+    return this.usersService.adminUpdateUserStatus(
+      userId,
+      adminId,
+      dto.status,
+      dto.reason,
+    );
+  }
+
+  async bulkUpdateUserStatus(adminId: string, dto: AdminBulkStatusDto) {
+    return this.usersService.adminBulkUpdateStatus(
+      dto.userIds,
+      adminId,
+      dto.status,
+      dto.reason,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // User suspension (legacy — kept for backwards compatibility)
   // ---------------------------------------------------------------------------
 
   async suspendUser(userId: string, dto: SuspendUserDto, adminId: string) {
