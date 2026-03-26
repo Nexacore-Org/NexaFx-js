@@ -214,4 +214,9 @@ export class RbacAdminController {
   getUserAuditLogs(@Param('userId', ParseUUIDPipe) userId: string) {
     return this.auditService.findByTargetUser(userId);
   }
+
+  @Get('roles')
+async getRoles() {
+  return this.rbacAdminService.getAllRolesWithInheritance();
+}
 }
