@@ -91,6 +91,17 @@ export class HealthController {
     return 'unhealthy';
   }
 
+  @Get()
+  async getAll() {
+    return this.breaker.getAll();
+  }
+
+  @Post(':name/open')
+  async open(@Param('name') name: string) {
+    await this.breaker.manualOpen(name);
+    return { message: `${name} opened manually` };
+  }
+
   private async getVerboseDetails(): Promise<Record<string, unknown>> {
     const dbDetails = await this.databaseIndicator.getDetails();
 
