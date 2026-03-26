@@ -28,13 +28,13 @@ import { TransactionRiskModule } from './modules/transaction-risk/transaction-ri
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
 import { DataArchiveModule } from './modules/data-archive/data-archive.module';
+import { IdempotencyModule } from './idempotency/idempotency.module';
 import { GoalsModule } from './goals/goal.module';
 import { AnnouncementsModule } from './announcement/announcement.module';
 import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
 import { VersioningModule } from './versioning/versioning.module';
 import { InsightsModule } from './exxagerated/exxagerated.module';
-import { NotificationsModule as WebSocketNotificationsModule } from './web-sockets/notifications.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -96,6 +96,7 @@ const enableBull =
     WebhooksModule,
     SecretsModule,
     DataArchiveModule,
+    IdempotencyModule,
     GoalsModule,
     AnnouncementsModule,
     ComplianceModule,

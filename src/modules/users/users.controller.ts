@@ -7,12 +7,15 @@ import {
   UseGuards,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { AuditLog } from '../admin-audit/decorators/audit-log.decorator';
 import { SkipAudit } from '../admin-audit/decorators/skip-audit.decorator';
 
+@ApiTags('Users')
+@ApiBearerAuth('access-token')
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
@@ -40,12 +43,16 @@ export class UsersController {
 
   @Get('preferences')
   @SkipAudit()
+  @ApiOperation({ summary: 'Get current user preferences' })
+  @ApiOkResponse({ description: 'User preferences' })
   async getPreferences(@Request() req) {
     const userId = this.getUserId(req);
     return this.usersService.getPreferences(userId);
   }
 
   @Patch('preferences')
+  @ApiOperation({ summary: 'Update current user preferences' })
+  @ApiOkResponse({ description: 'Updated preferences' })
   @AuditLog({
     action: 'UPDATE_USER_PREFERENCES',
     entity: 'UserPreferences',

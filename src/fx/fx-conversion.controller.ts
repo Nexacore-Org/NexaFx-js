@@ -8,8 +8,13 @@ import {
   Query,
   Request,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiCreatedResponse, ApiHeader } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import { Idempotent } from '../../idempotency/idempotency.decorator';
+import { IdempotencyGuard } from '../../idempotency/idempotency.guard';
+import { IdempotencyInterceptor } from '../../idempotency/idempotency.interceptor';
 import { FxConversionService } from '../services/fx-conversion.service';
 import {
   ConversionHistoryDto,
@@ -19,6 +24,8 @@ import {
 } from '../dto/fx-conversion.dto';
 import { LoyaltyTier } from '../../loyalty/entities/loyalty-account.entity';
 
+@ApiTags('FX Conversion')
+@ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
 @Controller('fx')
 export class FxConversionController {
@@ -35,6 +42,8 @@ export class FxConversionController {
    *  - regulatoryDisclosure text for the user's jurisdiction
    */
   @Get('convert/quote')
+  @ApiOperation({ summary: 'Get a locked FX conversion quote' })
+  @ApiOkResponse({ description: 'Quote with locked rate, fees, and TTL' })
   async getQuote(@Request() req, @Query() dto: GetQuoteDto) {
     const user = req.user;
     return this.fxService.createQuote(
@@ -57,6 +66,12 @@ export class FxConversionController {
    */
   @Post('convert')
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiOperation({ summary: 'Execute a currency conversion at a locked quote rate' })
+  @ApiCreatedResponse({ description: 'Conversion executed successfully' })
+  @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key to prevent duplicate conversions (min 16 chars)', required: true })
   async executeConversion(@Request() req, @Body() dto: ExecuteConversionDto) {
     return this.fxService.executeConversion(req.user.id, dto);
   }
@@ -72,6 +87,8 @@ export class FxConversionController {
    * Does NOT lock a quote — purely informational.
    */
   @Get('fees')
+  @ApiOperation({ summary: 'Get FX fee breakdown (informational, no quote lock)' })
+  @ApiOkResponse({ description: 'Fee breakdown with mid-rate, markup and total cost' })
   async getFees(@Request() req, @Query() dto: GetFeesDto) {
     return this.fxService.getFeeBreakdown(
       dto.fromCurrency.toUpperCase(),
@@ -87,6 +104,8 @@ export class FxConversionController {
    * Paginated conversion history — newest first.
    */
   @Get('convert/history')
+  @ApiOperation({ summary: 'Get paginated FX conversion history' })
+  @ApiOkResponse({ description: 'Paginated conversion history' })
   async getHistory(@Request() req, @Query() dto: ConversionHistoryDto) {
     return this.fxService.getHistory(req.user.id, dto);
   }

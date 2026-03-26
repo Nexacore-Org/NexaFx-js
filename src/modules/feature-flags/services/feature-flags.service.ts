@@ -1,9 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FeatureFlagEntity } from '../entities/feature-flag.entity';
 import { CreateFeatureFlagDto } from '../dto/create-feature-flag.dto';
 import { UpdateFeatureFlagDto } from '../dto/update-feature-flag.dto';
+import { FeatureFlagEvaluationService } from './feature-flag-evaluation.service';
 
 @Injectable()
 export class FeatureFlagsService {
@@ -15,6 +17,8 @@ export class FeatureFlagsService {
   constructor(
     @InjectRepository(FeatureFlagEntity)
     private readonly repository: Repository<FeatureFlagEntity>,
+    @Optional() private readonly eventEmitter: EventEmitter2,
+    @Optional() private readonly evaluationService: FeatureFlagEvaluationService,
   ) {}
 
   /**
@@ -80,6 +84,7 @@ export class FeatureFlagsService {
     const saved = await this.repository.save(flag);
     this.invalidateCache();
     this.logger.log(`Feature flag created: ${saved.name}`);
+    this.emitFlagUpdated(saved);
     return saved;
   }
 
@@ -96,7 +101,9 @@ export class FeatureFlagsService {
       throw new Error(`Feature flag with id ${id} not found`);
     }
     this.invalidateCache();
+    this.evaluationService?.invalidateCacheForFlag(updated.name);
     this.logger.log(`Feature flag updated: ${updated.name}`);
+    this.emitFlagUpdated(updated);
     return updated;
   }
 
@@ -125,6 +132,19 @@ export class FeatureFlagsService {
   private invalidateCache(): void {
     this.cache.clear();
     this.lastCacheTime = Date.now();
+  }
+
+  /**
+   * Emit flag.updated event to the admin WebSocket channel and audit log.
+   */
+  private emitFlagUpdated(flag: FeatureFlagEntity): void {
+    this.eventEmitter?.emit('flag.updated', {
+      flagId: flag.id,
+      flagName: flag.name,
+      enabled: flag.enabled,
+      targetingRules: flag.targetingRules,
+      updatedAt: flag.updatedAt ?? new Date(),
+    });
   }
 
   /**

@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,7 +17,11 @@ import {
   ApiOperation,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiHeader,
 } from '@nestjs/swagger';
+import { Idempotent } from '../idempotency/idempotency.decorator';
+import { IdempotencyGuard } from '../idempotency/idempotency.guard';
+import { IdempotencyInterceptor } from '../idempotency/idempotency.interceptor';
 import { LedgerService } from './ledger.service';
 import {
   CreateDoubleEntryDto,
@@ -36,8 +41,12 @@ export class LedgerController {
 
   @Post('entries')
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiCreatedResponse({ description: 'Double-entry posted successfully' })
   @ApiOperation({ summary: 'Post a balanced double-entry transaction' })
+  @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key to prevent duplicate ledger entries (min 16 chars)', required: true })
   async postDoubleEntry(@Body() dto: CreateDoubleEntryDto) {
     return this.ledgerService.postDoubleEntry(dto);
   }
