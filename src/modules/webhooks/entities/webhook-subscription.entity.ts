@@ -28,6 +28,10 @@ export class WebhookSubscriptionEntity {
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status: WebhookStatus;
 
+  /** Optional JSONPath filter — only deliver events matching this condition */
+  @Column({ type: 'jsonb', nullable: true })
+  payloadFilter?: Record<string, any>;
+
   @CreateDateColumn()
   createdAt: Date;
 

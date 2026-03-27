@@ -40,6 +40,12 @@ export class WebhookDeliveryEntity {
   @Column({ type: 'timestamptz', nullable: true })
   nextRetryAt?: Date;
 
+  @Column({ type: 'int', nullable: true })
+  latencyMs?: number;
+
+  @Column({ type: 'boolean', default: false })
+  isReplay: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

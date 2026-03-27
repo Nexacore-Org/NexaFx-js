@@ -18,6 +18,7 @@ import { MarketDataService } from './services/market-data.service';
 import { FxModule } from '../modules/fx/fx.module';
 import { PriceBroadcastJob } from '../modules/fx/jobs/price-broadcast.job';
 import { AdminGuard } from '../modules/auth/guards/admin.guard';
+import { NotificationsModule as AppNotificationsModule } from '../modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { AdminGuard } from '../modules/auth/guards/admin.guard';
     EventEmitterModule.forRoot(),
     ConfigModule,
     FxModule,
+    AppNotificationsModule,
   ],
   providers: [
     NotificationsGateway,

@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { WebhooksController } from './webhooks.controller';
+import { WebhooksController, AdminWebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
 import { WebhookDispatcherService } from './webhook-dispatcher.service';
+import { WebhookFilterService } from './services/webhook-filter.service';
 import { TransactionWebhookListener } from './listeners/transaction-webhook.listener';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DeveloperPortalController } from './controllers/developer-portal.controller';
@@ -25,7 +26,7 @@ import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
     ]),
     NotificationsModule,
   ],
-  controllers: [WebhooksController, DeveloperPortalController, WebhookInboundController],
+  controllers: [WebhooksController, AdminWebhooksController, DeveloperPortalController, WebhookInboundController],
   providers: [
     WebhooksService,
     WebhookDispatcherService,
@@ -33,6 +34,7 @@ import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
     WebhookSandboxService,
     WebhookVerificationService,
     WebhookSignatureGuard,
+    WebhookFilterService,
   ],
   exports: [WebhookDispatcherService, WebhooksService],
 })
