@@ -1,23 +1,29 @@
-import { Controller, Get, Patch, Param, Body, UseGuards } from '@nestjs/common';
-// import { DeviceService } from '../device-trust./device.service';
-import { JwtAuthGuard } from '../../auth/guards/jwt.guard'; // adjust to your project
+import {
+  Controller,
+  Get,
+  Patch,
+  Param,
+  Body,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
+import { Request } from 'express';
+import { DeviceService } from '../services/device.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { AuditLog } from '../../admin-audit/decorators/audit-log.decorator';
 import { SkipAudit } from '../../admin-audit/decorators/skip-audit.decorator';
+import { DeviceTrustLevel } from '../entities/device.entity';
 
 @Controller('sessions/devices')
 @UseGuards(JwtAuthGuard)
 export class DeviceController {
-  // constructor(private readonly deviceService: DeviceService) {}
+  constructor(private readonly deviceService: DeviceService) {}
 
   @Get()
   @SkipAudit()
-  async listMyDevices() {
-    // ✅ Replace with your actual current user extraction
-    // const userId = req.user.id
-    const userId = 'TODO_FROM_AUTH_CONTEXT';
-    // const devices = await this.deviceService.listUserDevices(userId);
-
-    return { success: true, data: [] };
+  async listMyDevices(@Req() req: Request & { user: { sub: string } }) {
+    const devices = await this.deviceService.listUserDevices(req.user.sub);
+    return { success: true, data: devices };
   }
 
   @Patch(':id/trust')
@@ -29,9 +35,16 @@ export class DeviceController {
   })
   async updateTrust(
     @Param('id') id: string,
-    @Body() body: { trustLevel: 'trusted' | 'risky' },
+    @Body() body: { trustLevel: DeviceTrustLevel },
+    @Req() req: Request & { user: { sub: string } },
   ) {
-    // const updated = await this.deviceService.updateTrust(id, body);
-    return { success: true, data: {} };
+    const updated = await this.deviceService.updateTrust(
+      id,
+      req.user.sub,
+      body.trustLevel,
+      req.ip,
+      req.headers['user-agent'],
+    );
+    return { success: true, data: updated };
   }
 }

@@ -1,19 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-
 import { DeviceEntity } from './entities/device.entity';
-// import { DeviceTrustService } from './device-trust./device-trust.service';
-// import { DeviceService } from './device-trust./device.service';
+import { DeviceService } from './services/device.service';
 import { DeviceController } from './controllers/device.controller';
+import { AdminAuditModule } from '../admin-audit/admin-audit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DeviceEntity])],
+  imports: [TypeOrmModule.forFeature([DeviceEntity]), AdminAuditModule],
   controllers: [DeviceController],
-  providers: [
-    /* DeviceTrustService, DeviceService */
-  ],
-  exports: [
-    /* DeviceService */
-  ],
+  providers: [DeviceService],
+  exports: [DeviceService],
 })
 export class SessionsModule {}
