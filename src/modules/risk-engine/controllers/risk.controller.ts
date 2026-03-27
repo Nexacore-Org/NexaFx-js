@@ -34,4 +34,19 @@ export class RiskController {
   async checkTrade(@Body() trade: TradeRequestDto) {
     return this.riskGuard.checkTradeRisk(trade);
   }
+
+  @Get('stress-test')
+  async getMyStressResults(@Req() req: any) {
+    const utilization = await this.riskService.calculateMarginUtilization(req.user.id);
+    return { userId: req.user.id, currentUtilization: utilization, timestamp: new Date() };
+  }
+
+  @Post('admin/stress-test/:userId')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  async triggerManualStressTest(@Param('userId') userId: string) {
+    const utilization = await this.riskService.calculateMarginUtilization(userId);
+    await this.riskService.evaluateRiskLevel(userId, utilization);
+    return { success: true, observedUtilization: utilization };
+  }
 }

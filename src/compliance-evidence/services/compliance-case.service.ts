@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ComplianceCaseEntity, ComplianceCaseStatus } from '../entities/compliance-case.entity';
+import { CaseStatus, ComplianceCaseEntity, ComplianceCaseStatus } from '../entities/compliance-case.entity';
 
 @Injectable()
 export class ComplianceCaseService {
@@ -48,7 +48,7 @@ export class ComplianceCaseService {
       userId: params.userId,
       ruleTriggered: params.ruleTriggered,
       evidenceTransactionIds: params.evidenceTransactionIds,
-      status: 'OPEN',
+      status: CaseStatus.OPEN,
       caseDate,
     });
 
