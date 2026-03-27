@@ -203,6 +203,23 @@ export class AnonymizationService {
       }
     });
 
+    validateAggregationThreshold(count: number): void {
+    if (count < this.MIN_AGGREGATION_THRESHOLD) {
+      throw new ForbiddenException(
+        `Privacy Violation: Sample size (${count}) below threshold (${this.MIN_AGGREGATION_THRESHOLD}).`
+      );
+    }
+  }
+
+  detectPII(data: any[]): string[] {
+    if (!data || data.length === 0) return [];
+    
+    const forbiddenKeys = ['email', 'phoneNumber', 'name', 'firstName', 'lastName', 'address', 'taxId'];
+    const sampleKeys = Object.keys(data[0]);
+    
+    return sampleKeys.filter(key => forbiddenKeys.includes(key));
+  }
+
     return sanitized;
   }
 
