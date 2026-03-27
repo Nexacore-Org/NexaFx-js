@@ -1,48 +1,36 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { NotificationService } from '../services/notification.service';
+import { NotificationLogService } from '../services/notification-log.service';
 import { UpdateThrottleConfigDto, CreateThrottleRuleDto } from '../dto/update-throttle-config.dto';
+import { NotificationLogStatus } from '../entities/notification-log.entity';
 
 /**
- * Admin endpoints for managing notification throttle configurations
- * These allow runtime configuration of throttling rules without redeployment
+ * Admin endpoints for managing notification throttle configurations,
+ * viewing notification history, analytics, and per-user notifications.
  */
 @Controller('admin/notifications')
 export class AdminNotificationsController {
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly notificationLogService: NotificationLogService,
+  ) {}
 
-  /**
-   * Get all throttle configurations
-   */
+  // ─── Throttle management ──────────────────────────────────────────────────
+
   @Get('throttles')
   async getAllThrottleConfigs() {
     const configs = await this.notificationService.getAllThrottleConfigs();
-    return {
-      success: true,
-      data: configs,
-      count: configs.length,
-    };
+    return { success: true, data: configs, count: configs.length };
   }
 
-  /**
-   * Get throttle configuration for a specific notification type
-   */
   @Get('throttles/:type')
   async getThrottleConfig(@Param('type') type: string) {
     const config = await this.notificationService.getThrottleConfig(type);
-    return {
-      success: !!config,
-      data: config,
-    };
+    return { success: !!config, data: config };
   }
 
-  /**
-   * Update throttle configuration for a notification type
-   */
   @Patch('throttles/:type')
-  async updateThrottleConfig(
-    @Param('type') type: string,
-    @Body() dto: UpdateThrottleConfigDto,
-  ) {
+  async updateThrottleConfig(@Param('type') type: string, @Body() dto: UpdateThrottleConfigDto) {
     const updated = await this.notificationService.updateThrottleConfig(type, {
       maxBatchSize: dto.maxBatchSize,
       windowSeconds: dto.windowSeconds,
@@ -50,17 +38,9 @@ export class AdminNotificationsController {
       enabled: dto.enabled,
       metadata: dto.metadata,
     });
-
-    return {
-      success: true,
-      data: updated,
-      message: `Updated throttle configuration for ${type}`,
-    };
+    return { success: true, data: updated, message: `Updated throttle configuration for ${type}` };
   }
 
-  /**
-   * Create a new throttle rule for a notification type
-   */
   @Post('throttles')
   async createThrottleRule(@Body() dto: CreateThrottleRuleDto) {
     const created = await this.notificationService.updateThrottleConfig(dto.notificationType, {
@@ -70,43 +50,21 @@ export class AdminNotificationsController {
       enabled: dto.enabled ?? true,
       metadata: dto.metadata,
     });
-
-    return {
-      success: true,
-      data: created,
-      message: `Created throttle rule for ${dto.notificationType}`,
-    };
+    return { success: true, data: created, message: `Created throttle rule for ${dto.notificationType}` };
   }
 
-  /**
-   * Get current queue status for all notification types
-   */
   @Get('queue-status')
   async getQueueStatus() {
     const status = await this.notificationService.getQueueStatus();
-    return {
-      success: true,
-      data: status,
-      timestamp: new Date().toISOString(),
-    };
+    return { success: true, data: status, timestamp: new Date().toISOString() };
   }
 
-  /**
-   * Manually flush all queued notifications
-   */
   @Post('flush-all')
   async flushAll() {
     const flushed = await this.notificationService.flushAll();
-    return {
-      success: true,
-      data: flushed,
-      message: `Flushed ${flushed.length} notification batches`,
-    };
+    return { success: true, data: flushed, message: `Flushed ${flushed.length} notification batches` };
   }
 
-  /**
-   * Manually flush a specific notification type
-   */
   @Post('flush/:type')
   async flush(@Param('type') type: string) {
     const flushed = await this.notificationService.flush(type);
@@ -117,15 +75,47 @@ export class AdminNotificationsController {
     };
   }
 
-  /**
-   * Reset throttle state for a notification type
-   */
   @Post('reset/:type')
   async reset(@Param('type') type: string) {
     await this.notificationService.reset(type);
-    return {
-      success: true,
-      message: `Reset throttle state for ${type}`,
-    };
+    return { success: true, message: `Reset throttle state for ${type}` };
+  }
+
+  // ─── History & analytics ──────────────────────────────────────────────────
+
+  @Get('history')
+  async getHistory(
+    @Query('userId') userId?: string,
+    @Query('type') notificationType?: string,
+    @Query('channel') channel?: string,
+    @Query('status') status?: NotificationLogStatus,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const { logs, total } = await this.notificationLogService.getHistory({
+      userId,
+      notificationType,
+      channel,
+      status,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+      limit: limit ? parseInt(limit, 10) : 50,
+      offset: offset ? parseInt(offset, 10) : 0,
+    });
+    return { success: true, data: logs, total };
+  }
+
+  @Get('analytics')
+  async getAnalytics() {
+    const analytics = await this.notificationLogService.getAnalytics();
+    return { success: true, data: analytics, timestamp: new Date().toISOString() };
+  }
+
+  @Get('users/:id/notifications')
+  async getUserNotifications(@Param('id') userId: string) {
+    const logs = await this.notificationLogService.getUserNotifications(userId);
+    return { success: true, data: logs, total: logs.length };
   }
 }

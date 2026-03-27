@@ -5,6 +5,7 @@ import { queueConfig } from './queue.config';
 import { QUEUE_NAMES } from './queue.constants';
 import { QueueService } from './queue.service';
 import { QueueDashboardController } from './queue-dashboard.controller';
+import { NotificationsModule } from '../modules/notifications/notifications.module';
 
 // Processors
 import { RetryJobsProcessor } from './processors/retry-jobs.processor';
@@ -20,6 +21,7 @@ const QUEUE_DEFINITIONS = Object.values(QUEUE_NAMES).map((name) => ({
 @Module({
   imports: [
     ConfigModule.forFeature(queueConfig),
+    NotificationsModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
