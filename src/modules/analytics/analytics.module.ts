@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { ApiUsageLoggingMiddleware } from './middleware/api-usage-logging.middleware';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ApiUsageLogEntity } from './entities/api-usage-log.entity';
@@ -15,4 +16,8 @@ import { AnalyticsCleanupWorker } from './workers/analytics-cleanup.worker';
   controllers: [AnalyticsAdminController],
   exports: [ApiUsageService],
 })
-export class AnalyticsModule {}
+export class AnalyticsModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(ApiUsageLoggingMiddleware).forRoutes('*');
+  }
+}
