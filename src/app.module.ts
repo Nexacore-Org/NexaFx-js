@@ -35,6 +35,7 @@ import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
 import { VersioningModule } from './versioning/versioning.module';
 import { InsightsModule } from './exxagerated/exxagerated.module';
+import { ReferralsModule } from './modules/referrals/referrals.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -103,6 +104,7 @@ const enableBull =
     LedgerModule,
     VersioningModule,
     InsightsModule,
+    ReferralsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

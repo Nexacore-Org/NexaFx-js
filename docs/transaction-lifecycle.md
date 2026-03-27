@@ -2,49 +2,74 @@
 
 Transaction processing uses an **event-driven architecture**. Domain events are emitted only **after** the corresponding database transaction has committed, so listeners never see uncommitted data.
 
-## Event flow
+## Verified Event Sequence Diagram
+
+The following sequence has been verified by `test/transaction-event-chain.e2e-spec.ts`:
 
 ```
-                    ┌─────────────────────────────────────────────────────────┐
-                    │                  TransactionLifecycleService            │
-                    │  (runs in DB transaction, then emits after commit)      │
-                    └─────────────────────────────────────────────────────────┘
-                                                     │
-     ┌──────────────────────────────────────────────┼──────────────────────────────────────────────┐
-     │                                              │                                              │
-     ▼                                              ▼                                              ▼
-┌─────────────┐                            ┌─────────────────┐                            ┌─────────────────┐
-│ TRANSACTION │                            │ TRANSACTION     │                            │ TRANSACTION     │
-│ _CREATED    │                            │ _PROCESSING     │                            │ _COMPLETED /    │
-│             │                            │                 │                            │ _FAILED         │
-└──────┬──────┘                            └────────┬────────┘                            └────────┬────────┘
-       │                                                    │                                              │
-       │         ┌─────────────────────────────────────────┼─────────────────────────────────────────┐   │
-       │         │                                         │                                         │   │
-       ▼         ▼                                         ▼                                         ▼   ▼
-┌───────────────┐  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐
-│ Webhook       │  │ Webhook            │  │ Webhook            │  │ Snapshot           │  │ Retry (failed only)│
-│ dispatch      │  │ dispatch           │  │ dispatch           │  │ creation           │  │ job scheduling     │
-│ (created)     │  │ (processing)       │  │ (completed/failed) │  │ (completed/failed) │  │                    │
-└───────────────┘  └────────────────────┘  └────────────────────┘  └────────────────────┘  └────────────────────┘
+Client
+  │
+  ▼
+TransactionLifecycleService.create()
+  │  [DB transaction commits]
+  │── emit TRANSACTION_CREATED ──────────────┬──────────────────────────────────────────┐
+  │                                          ▼                                          ▼
+  │                               TransactionWebhookListener           (no snapshot on create)
+  │                                  └─ WebhookDispatcherService.dispatch()
+  │
+  ▼
+TransactionLifecycleService.markProcessing()   (optional)
+  │  [DB transaction commits]
+  └── emit TRANSACTION_PROCESSING ────────── TransactionWebhookListener
+                                               └─ WebhookDispatcherService.dispatch()
+
+TransactionLifecycleService.markCompleted()
+  │  [DB transaction commits]
+  └── emit TRANSACTION_COMPLETED ─────────────┬────────────────────────────────────────┐
+                                              ▼                                        ▼
+                                 TransactionWebhookListener          TransactionSnapshotListener
+                                  └─ WebhookDispatcherService          └─ TransactionSnapshotService
+                                       .dispatch()                          .createSnapshot()
+                                       (HMAC-signed)                        (status: SUCCESS)
+
+TransactionLifecycleService.markFailed()
+  │  [DB transaction commits]
+  └── emit TRANSACTION_FAILED ──────────────┬─────────────────────────────┬────────────┐
+                                            ▼                             ▼            ▼
+                               TransactionWebhookListener  TransactionSnapshotListener  TransactionRetryListener
+                                └─ WebhookDispatcherService  └─ createSnapshot()        └─ RetryService.createJob()
+                                     .dispatch()                 (status: FAILED)            (only when retryable=true)
+                                     (HMAC-signed)
 ```
 
-## Domain events
+## Domain Events
 
-| Event                   | When emitted                         | Payload highlights                          |
-|-------------------------|--------------------------------------|---------------------------------------------|
-| `transaction.created`   | After transaction row is committed   | `transactionId`, `amount`, `currency`, …   |
-| `transaction.processing`| After status is set to processing   | `transactionId`, `startedAt`                |
-| `transaction.completed` | After status is set to SUCCESS      | `transactionId`, `completedAt`, `durationMs`|
-| `transaction.failed`   | After status is set to FAILED       | `transactionId`, `errorMessage`, `retryable`|
+| Event                    | When emitted                        | Payload highlights                           |
+|--------------------------|-------------------------------------|----------------------------------------------|
+| `transaction.created`    | After transaction row is committed  | `transactionId`, `amount`, `currency`, `timestamp` |
+| `transaction.processing` | After status is set to processing   | `transactionId`, `startedAt`, `timestamp`    |
+| `transaction.completed`  | After status is set to SUCCESS      | `transactionId`, `completedAt`, `durationMs` |
+| `transaction.failed`     | After status is set to FAILED       | `transactionId`, `errorMessage`, `retryable` |
 
 All events include `transactionId` and `timestamp`. Events are fired only after the DB transaction commits.
 
 ## Listeners
 
-- **TransactionWebhookListener** (webhooks module): On each event, calls `WebhookDispatcherService.dispatch(eventName, payload)` so subscribers receive webhooks for `transaction.created`, `transaction.processing`, `transaction.completed`, `transaction.failed`.
-- **TransactionSnapshotListener** (transactions module): On `transaction.completed` and `transaction.failed`, creates a `TransactionExecutionSnapshotEntity` for audit/replay.
-- **TransactionRetryListener** (retry module): On `transaction.failed` when `retryable === true`, schedules a retry job via `RetryService.createJob(...)`.
+| Listener | Module | Handles | Action |
+|---|---|---|---|
+| `TransactionWebhookListener` | webhooks | all 4 events | `WebhookDispatcherService.dispatch(eventName, payload)` — HMAC-signed |
+| `TransactionSnapshotListener` | transactions | `completed`, `failed` | `TransactionSnapshotService.createSnapshot(...)` |
+| `TransactionRetryListener` | retry | `failed` (retryable=true only) | `RetryService.createJob(type='transfer.retry', ...)` |
+
+## Verified Behaviours (see test/transaction-event-chain.e2e-spec.ts)
+
+- `TRANSACTION_CREATED` event triggers webhook dispatch immediately after commit
+- `TRANSACTION_COMPLETED` triggers both webhook dispatch AND snapshot creation
+- `TRANSACTION_FAILED` with `retryable=true` creates a retry job in `RetryService`
+- `TRANSACTION_FAILED` with `retryable=false` does **not** create a retry job
+- Webhooks carry the correct event name for each lifecycle transition
+- Snapshot is created for both `COMPLETED` and `FAILED` transitions
+- 100 concurrent transactions complete without event-chain failures (see test/transaction-load.e2e-spec.ts)
 
 ## Usage
 
@@ -82,4 +107,6 @@ Webhook dispatch, snapshot creation, and retry scheduling happen asynchronously 
 
 ## Testing
 
-- **Unit/integration**: `transaction-lifecycle.service.spec.ts` verifies that each lifecycle method emits the correct event after the (mocked) transaction commits, and that the event sequence (e.g. created → processing → completed) is correct.
+- **Integration (event chain)**: `test/transaction-event-chain.e2e-spec.ts` verifies the full listener chain end-to-end using a mocked DataSource.
+- **Load test**: `test/transaction-load.e2e-spec.ts` verifies 100 concurrent transactions complete without event-chain failures.
+- **Unit**: `transaction-lifecycle.service.spec.ts` verifies that each lifecycle method emits the correct event after the (mocked) transaction commits, and that the event sequence (e.g. created → processing → completed) is correct.

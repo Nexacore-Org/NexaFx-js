@@ -5,12 +5,14 @@ import { AuthService } from './auth.service';
 import { SecretsModule } from '../secrets/secrets.module';
 import { JwtAuthGuard } from './guards/jwt.guard';
 import { AdminGuard } from './guards/admin.guard';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 @Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([UserEntity]),
     forwardRef(() => SecretsModule),
+    forwardRef(() => ReferralsModule),
   ],
   providers: [AuthService, JwtAuthGuard, AdminGuard],
   exports: [AuthService, JwtAuthGuard, AdminGuard],
