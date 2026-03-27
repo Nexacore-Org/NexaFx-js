@@ -3,13 +3,16 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { QUEUE_NAMES, JOB_NAMES, QUEUE_CONCURRENCY } from '../queue.constants';
+import { QUEUE_NAMES, JOB_NAMES, QUEUE_CONCURRENCY } from './queue.constants';
 import {
   ReconcileTransactionsJobData,
   ReconcileBalancesJobData,
   ReconcileLedgerJobData,
   JobResult,
-} from '../queue.interfaces';
+} from './queue.interfaces';
+import { ReconciliationService } from '../modules/reconciliation/services/reconciliation.service';
+import { WalletService } from '../modules/users/wallet.service';
+import { LedgerService } from '../double-entry-ledger/ledger.service';
 
 @Processor(QUEUE_NAMES.RECONCILIATION, {
   concurrency: QUEUE_CONCURRENCY[QUEUE_NAMES.RECONCILIATION],
@@ -18,16 +21,17 @@ export class ReconciliationProcessor extends WorkerHost {
   private readonly logger = new Logger(ReconciliationProcessor.name);
 
   constructor(
-    @InjectQueue(QUEUE_NAMES.DEAD_LETTER) private dlqQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.DEAD_LETTER) private readonly dlqQueue: Queue,
+    private readonly reconciliationService: ReconciliationService,
+    private readonly walletService: WalletService,
+    private readonly ledgerService: LedgerService,
   ) {
     super();
   }
 
   async process(job: Job): Promise<JobResult> {
     const start = Date.now();
-    this.logger.log(
-      `Processing reconciliation job [${job.name}] id=${job.id}`,
-    );
+    this.logger.log(`Processing reconciliation job [${job.name}] id=${job.id}`);
 
     try {
       let result: unknown;
@@ -76,10 +80,9 @@ export class ReconciliationProcessor extends WorkerHost {
     );
 
     await job.updateProgress(10);
-    // TODO: inject ReconciliationService
-    await this.simulateWork(500);
+    await this.reconciliationService.runReconciliation();
     await job.updateProgress(60);
-    await this.simulateWork(200);
+    const issues = await this.reconciliationService.getIssues({ page: 1, limit: 1000 });
     await job.updateProgress(100);
 
     return {
@@ -87,8 +90,8 @@ export class ReconciliationProcessor extends WorkerHost {
       endDate,
       accountId,
       reconciled: true,
-      discrepancies: 0,
-      totalProcessed: 0,
+      discrepancies: issues.data.filter((i) => i.status === 'ESCALATED').length,
+      totalProcessed: issues.meta.total,
     };
   }
 
@@ -100,15 +103,27 @@ export class ReconciliationProcessor extends WorkerHost {
     );
 
     await job.updateProgress(25);
-    // TODO: inject BalanceService
-    await this.simulateWork(300);
+
+    let mismatchCount = 0;
+    for (const accountId of accountIds) {
+      const wallets = await this.walletService.getWalletsByUser(accountId);
+      for (const wallet of wallets) {
+        if (wallet.availableBalance < 0) {
+          mismatchCount++;
+          this.logger.warn(
+            `Balance mismatch detected for wallet ${wallet.id} (user ${accountId}): availableBalance=${wallet.availableBalance}`,
+          );
+        }
+      }
+    }
+
     await job.updateProgress(100);
 
     return {
       accountIds,
       asOfDate,
       reconciled: true,
-      mismatchCount: 0,
+      mismatchCount,
     };
   }
 
@@ -120,15 +135,15 @@ export class ReconciliationProcessor extends WorkerHost {
     );
 
     await job.updateProgress(50);
-    // TODO: inject LedgerService
-    await this.simulateWork(400);
+    const result = await this.ledgerService.runIntegrityValidation();
     await job.updateProgress(100);
 
     return {
       ledgerId,
       period,
-      reconciled: true,
-      entriesVerified: 0,
+      reconciled: result.failed.length === 0,
+      entriesVerified: result.checked,
+      failedTransactions: result.failed,
     };
   }
 
@@ -166,9 +181,5 @@ export class ReconciliationProcessor extends WorkerHost {
     this.logger.log(
       `Reconciliation job [${job.name}] id=${job.id} completed in ${result.duration}ms`,
     );
-  }
-
-  private simulateWork(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
