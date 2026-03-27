@@ -6,12 +6,20 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { SupportTicket, TicketStatus } from './entities/support-ticket.entity';
+import { SupportTicket, TicketStatus, TicketPriority } from './entities/support-ticket.entity';
 import { SupportMessage } from './entities/support-message.entity';
 import { CreateSupportTicketDto } from './dto/create-support-ticket.dto';
 import { UpdateSupportTicketDto } from './dto/update-support-ticket.dto';
 import { CreateSupportMessageDto } from './dto/create-support-message.dto';
 import { QuerySupportTicketsDto } from './dto/query-support-tickets.dto';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+
+const SLA_HOURS: Record<TicketPriority, number> = {
+  [TicketPriority.URGENT]: 1,
+  [TicketPriority.HIGH]: 4,
+  [TicketPriority.MEDIUM]: 24,
+  [TicketPriority.LOW]: 72,
+};
 
 @Injectable()
 export class SupportService {
@@ -20,18 +28,27 @@ export class SupportService {
     private readonly ticketRepository: Repository<SupportTicket>,
     @InjectRepository(SupportMessage)
     private readonly messageRepository: Repository<SupportMessage>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async createTicket(
     userId: string,
     createTicketDto: CreateSupportTicketDto,
   ): Promise<SupportTicket> {
+    const priority = createTicketDto.priority ?? TicketPriority.MEDIUM;
+    const slaHours = SLA_HOURS[priority];
+    const slaDeadline = new Date(Date.now() + slaHours * 60 * 60 * 1000);
+
     const ticket = this.ticketRepository.create({
       ...createTicketDto,
       userId,
+      slaDeadline,
+      isEscalated: false,
     });
 
-    return this.ticketRepository.save(ticket);
+    const saved = await this.ticketRepository.save(ticket);
+    this.eventEmitter.emit('support.ticket.created', { ticket: saved });
+    return saved;
   }
 
   async getUserTickets(
@@ -188,6 +205,12 @@ export class SupportService {
       authorId: adminId,
     });
 
+    // Record first response time if this is the first admin reply
+    if (!ticket.firstResponseAt) {
+      ticket.firstResponseAt = new Date();
+      await this.ticketRepository.save(ticket);
+    }
+
     return this.messageRepository.save(message);
   }
 
@@ -223,5 +246,67 @@ export class SupportService {
     }
 
     await this.ticketRepository.remove(ticket);
+  }
+
+  async getAnalytics(): Promise<{
+    avgFirstResponseTimeMs: Record<string, number>;
+    slaBreachRateByPriority: Record<string, number>;
+  }> {
+    // Average first response time per priority
+    const firstResponseRaw = await this.ticketRepository
+      .createQueryBuilder('t')
+      .select('t.priority', 'priority')
+      .addSelect(
+        'AVG(EXTRACT(EPOCH FROM (t.first_response_at - t.created_at)) * 1000)',
+        'avgMs',
+      )
+      .where('t.first_response_at IS NOT NULL')
+      .groupBy('t.priority')
+      .getRawMany<{ priority: string; avgMs: string }>();
+
+    const avgFirstResponseTimeMs: Record<string, number> = {};
+    for (const row of firstResponseRaw) {
+      avgFirstResponseTimeMs[row.priority] = Math.round(parseFloat(row.avgMs));
+    }
+
+    // SLA breach rate = escalated tickets / total non-closed tickets per priority
+    const breachRaw = await this.ticketRepository
+      .createQueryBuilder('t')
+      .select('t.priority', 'priority')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect('SUM(CASE WHEN t.is_escalated = true THEN 1 ELSE 0 END)', 'breached')
+      .where('t.status NOT IN (:...statuses)', {
+        statuses: [TicketStatus.CLOSED, TicketStatus.RESOLVED],
+      })
+      .groupBy('t.priority')
+      .getRawMany<{ priority: string; total: string; breached: string }>();
+
+    const slaBreachRateByPriority: Record<string, number> = {};
+    for (const row of breachRaw) {
+      const total = parseInt(row.total, 10);
+      const breached = parseInt(row.breached, 10);
+      slaBreachRateByPriority[row.priority] = total > 0 ? Math.round((breached / total) * 100 * 100) / 100 : 0;
+    }
+
+    return { avgFirstResponseTimeMs, slaBreachRateByPriority };
+  }
+
+  async escalateBreachedTickets(): Promise<number> {
+    const now = new Date();
+    const breachWindow = new Date(now.getTime() - 30 * 60 * 1000); // 30 min past SLA
+
+    const result = await this.ticketRepository
+      .createQueryBuilder()
+      .update(SupportTicket)
+      .set({ isEscalated: true })
+      .where('sla_deadline IS NOT NULL')
+      .andWhere('sla_deadline < :breachWindow', { breachWindow })
+      .andWhere('is_escalated = false')
+      .andWhere('status NOT IN (:...statuses)', {
+        statuses: [TicketStatus.CLOSED, TicketStatus.RESOLVED],
+      })
+      .execute();
+
+    return result.affected ?? 0;
   }
 }

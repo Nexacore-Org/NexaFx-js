@@ -38,6 +38,7 @@ export const NOTIFICATION_CHANNELS = {
   USER: (userId: string) => `user:${userId}`,
   ADMIN: () => `admin:global`,
   TRANSACTION: (txId: string) => `transaction:${txId}`,
+  WALLET: (walletId: string) => `wallet:${walletId}`,
   FRAUD: () => `fraud:alerts`,
 } as const;
 
@@ -46,3 +47,5 @@ export const HEARTBEAT_INTERVAL_MS = 30_000;
 export const MISSED_EVENTS_TTL_SECONDS = 86_400; // 24 hours
 export const MAX_MISSED_EVENTS_PER_USER = 200;
 export const JWT_WS_HANDSHAKE_TIMEOUT_MS = 10_000;
+export const MAX_ROOM_SUBSCRIPTIONS = 10;
+export const WALLET_BALANCE_DEBOUNCE_MS = 100;

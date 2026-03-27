@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationService } from '../services/notification.service';
+import { NotificationLogService } from '../services/notification-log.service';
 
 /**
  * NotificationBatchJob processes and flushes notification batches on a schedule.
@@ -10,7 +11,10 @@ import { NotificationService } from '../services/notification.service';
 export class NotificationBatchJob {
   private readonly logger = new Logger(NotificationBatchJob.name);
 
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly notificationLogService: NotificationLogService,
+  ) {}
 
   /**
    * Process notification batches every 5 minutes
@@ -58,6 +62,19 @@ export class NotificationBatchJob {
       }
     } catch (err: any) {
       this.logger.error(`Error monitoring queue health: ${err.message}`);
+    }
+  }
+
+  /**
+   * Purge notification logs older than 90 days — runs daily at midnight.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async purgeOldLogs() {
+    try {
+      const deleted = await this.notificationLogService.purgeOld();
+      this.logger.log(`Purged ${deleted} old notification logs`);
+    } catch (err: any) {
+      this.logger.error(`Error purging notification logs: ${err.message}`);
     }
   }
 }

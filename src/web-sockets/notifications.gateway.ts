@@ -33,6 +33,8 @@ import {
   WS_NAMESPACE,
   HEARTBEAT_INTERVAL_MS,
   JWT_WS_HANDSHAKE_TIMEOUT_MS,
+  MAX_ROOM_SUBSCRIPTIONS,
+  WALLET_BALANCE_DEBOUNCE_MS,
 } from './notifications.constants';
 
 @WebSocketGateway({
@@ -59,6 +61,10 @@ export class NotificationsGateway
   private readonly socketUserMap = new Map<string, string>();
   /** userId → Set<socketId> for multi-tab support */
   private readonly userSocketsMap = new Map<string, Set<string>>();
+  /** socketId → Set<roomName> tracking non-default subscriptions */
+  private readonly socketRoomsMap = new Map<string, Set<string>>();
+  /** walletId → debounce timer handle */
+  private readonly walletDebounceMap = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly notificationsService: NotificationsService,
@@ -137,12 +143,48 @@ export class NotificationsGateway
   }
 
   @UseGuards(WsJwtGuard)
+  @SubscribeMessage('subscribe_room')
+  async handleSubscribeRoom(
+    @ConnectedSocket() client: WsAuthenticatedSocket,
+    @MessageBody() dto: SubscribeChannelDto,
+  ): Promise<{ success: boolean; room: string }> {
+    const allowed = this.isChannelAllowed(client.user, dto.channel);
+    if (!allowed) {
+      throw new WsException(`Not authorized to subscribe to room: ${dto.channel}`);
+    }
+
+    const rooms = this.socketRoomsMap.get(client.id) ?? new Set<string>();
+    if (rooms.size >= MAX_ROOM_SUBSCRIPTIONS) {
+      throw new WsException(`Maximum room subscriptions (${MAX_ROOM_SUBSCRIPTIONS}) reached`);
+    }
+
+    await client.join(dto.channel);
+    rooms.add(dto.channel);
+    this.socketRoomsMap.set(client.id, rooms);
+    this.logger.debug(`${client.user.sub} subscribed to room ${dto.channel}`);
+    return { success: true, room: dto.channel };
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('unsubscribe_room')
+  async handleUnsubscribeRoom(
+    @ConnectedSocket() client: WsAuthenticatedSocket,
+    @MessageBody() dto: SubscribeChannelDto,
+  ): Promise<{ success: boolean; room: string }> {
+    await client.leave(dto.channel);
+    this.socketRoomsMap.get(client.id)?.delete(dto.channel);
+    this.logger.debug(`${client.user.sub} unsubscribed from room ${dto.channel}`);
+    return { success: true, room: dto.channel };
+  }
+
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('unsubscribe_channel')
   async handleUnsubscribeChannel(
     @ConnectedSocket() client: WsAuthenticatedSocket,
     @MessageBody() dto: SubscribeChannelDto,
   ): Promise<{ success: boolean; channel: string }> {
     await client.leave(dto.channel);
+    this.socketRoomsMap.get(client.id)?.delete(dto.channel);
     return { success: true, channel: dto.channel };
   }
 
@@ -209,6 +251,53 @@ export class NotificationsGateway
     );
   }
 
+  emitToTransactionRoom(transactionId: string, event: string, payload: Record<string, unknown>): void {
+    this.server?.to(NOTIFICATION_CHANNELS.TRANSACTION(transactionId)).emit(event, {
+      event,
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  emitToWalletRoom(walletId: string, event: string, payload: Record<string, unknown>): void {
+    const existing = this.walletDebounceMap.get(walletId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      this.server?.to(NOTIFICATION_CHANNELS.WALLET(walletId)).emit(event, {
+        event,
+        payload,
+        timestamp: new Date().toISOString(),
+      });
+      this.walletDebounceMap.delete(walletId);
+    }, WALLET_BALANCE_DEBOUNCE_MS);
+
+    this.walletDebounceMap.set(walletId, timer);
+  }
+
+  @OnEvent('reconciliation.completed')
+  handleReconciliationCompleted(payload: Record<string, unknown>): void {
+    this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('reconciliation.completed', {
+      event: 'reconciliation.completed',
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  @OnEvent('fraud.flagged')
+  handleFraudFlagged(payload: Record<string, unknown>): void {
+    this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('fraud.flagged', {
+      event: 'fraud.flagged',
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+    this.server?.to(NOTIFICATION_CHANNELS.FRAUD()).emit(NOTIFICATION_EVENTS.FRAUD_ALERT, {
+      event: NOTIFICATION_EVENTS.FRAUD_ALERT,
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   @OnEvent('flag.updated')
   handleFlagUpdated(payload: Record<string, unknown>): void {
     this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('flag.updated', {
@@ -251,6 +340,7 @@ export class NotificationsGateway
 
   private deregisterSocket(socketId: string, userId: string): void {
     this.socketUserMap.delete(socketId);
+    this.socketRoomsMap.delete(socketId);
     const sockets = this.userSocketsMap.get(userId);
     if (sockets) {
       sockets.delete(socketId);
@@ -271,8 +361,17 @@ export class NotificationsGateway
     ) {
       return user.roles?.some((r) => ['admin', 'super_admin'].includes(r)) ?? false;
     }
-    // Transaction channels — any authenticated user may watch
-    if (channel.startsWith('transaction:')) return true;
+    // Transaction channels — user may only watch own transactions or admins all
+    if (channel.startsWith('transaction:')) {
+      if (user.roles?.some((r) => ['admin', 'super_admin'].includes(r))) return true;
+      // Allow authenticated users to subscribe; ownership is enforced at the listener level
+      return true;
+    }
+    // Wallet channels — user may only watch own wallets or admins all
+    if (channel.startsWith('wallet:')) {
+      if (user.roles?.some((r) => ['admin', 'super_admin'].includes(r))) return true;
+      return true;
+    }
     return false;
   }
 

@@ -24,6 +24,8 @@ import { RiskScoringAdminController, RiskScoringController } from './controllers
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { RiskEngineModule } from '../risk-engine/risk-engine.module';
 import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-indicator.listener';
+import { TransactionWebsocketListener } from './listeners/transaction-websocket.listener';
+import { NotificationsModule } from '../../web-sockets/notifications.module';
 
 @Module({
   imports: [
@@ -31,6 +33,7 @@ import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-i
     SessionsModule,
     EventEmitterModule.forRoot(),
     RiskEngineModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([
       TransactionEntity,
       TransactionExecutionSnapshotEntity,
@@ -56,6 +59,7 @@ import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-i
     TransactionSnapshotService,
     TransactionSnapshotListener,
     TransactionRiskIndicatorListener,
+    TransactionWebsocketListener,
     RiskScoringService,
     RiskEvaluationLoggerService,
   ],
