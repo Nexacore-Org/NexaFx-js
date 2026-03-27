@@ -26,6 +26,7 @@ import { WsJwtGuard, WsAuthenticatedSocket } from './guards/ws-jwt.guard';
 import { WsLoggingInterceptor } from './interceptors/ws-logging.interceptor';
 import { NotificationsService } from './notifications.service';
 import { NotificationsPersistenceService } from './notifications-persistence.service';
+import { NotificationCenterService } from '../modules/notifications/services/notification-center.service';
 import { MissedEventsRequestDto, SubscribeChannelDto } from './dto/notification.dto';
 import {
   NOTIFICATION_CHANNELS,
@@ -71,10 +72,12 @@ export class NotificationsGateway
     private readonly persistence: NotificationsPersistenceService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly notificationCenterService: NotificationCenterService,
   ) {}
 
   afterInit(server: Server): void {
     this.notificationsService.setServer(server);
+    this.notificationCenterService.setServer(server);
     this.logger.log(`WebSocket gateway initialized on namespace "${WS_NAMESPACE}"`);
   }
 

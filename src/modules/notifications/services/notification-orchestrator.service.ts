@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { NotificationService } from './notification.service';
 import { PushNotificationService } from './push-notification.service';
 import { SmsService } from './sms.service';
+import { NotificationPreferenceService, } from './notification-preference.service';
+import { DeliveryChannelPref } from '../entities/notification-preference.entity';
 import {
   NotificationDeliveryReceiptEntity,
   DeliveryChannel,
@@ -35,6 +37,7 @@ export class NotificationOrchestratorService {
     private readonly notificationService: NotificationService,
     private readonly pushService: PushNotificationService,
     private readonly smsService: SmsService,
+    private readonly preferenceService: NotificationPreferenceService,
     @InjectRepository(NotificationDeliveryReceiptEntity)
     private readonly receiptRepository: Repository<NotificationDeliveryReceiptEntity>,
   ) {}
@@ -46,15 +49,22 @@ export class NotificationOrchestratorService {
     const notificationId = `${type}:${userId}:${Date.now()}`;
 
     // 1. In-app / throttled channel
-    await this.notificationService.send({
-      type,
-      userId,
-      payload: { title, body, data, ...payload },
-    });
-    await this.persistReceipt(notificationId, userId, type, DeliveryChannel.IN_APP, DeliveryStatus.SUCCESS);
+    const inAppEnabled = await this.preferenceService.isChannelEnabled(userId, type, DeliveryChannelPref.IN_APP);
+    if (inAppEnabled) {
+      await this.notificationService.send({
+        type,
+        userId,
+        payload: { title, body, data, ...payload },
+      });
+      await this.persistReceipt(notificationId, userId, type, DeliveryChannel.IN_APP, DeliveryStatus.SUCCESS);
+    }
 
     // 2. Push channel (best-effort)
     let emailDelivered = true;
+    const pushEnabled = await this.preferenceService.isChannelEnabled(userId, type, DeliveryChannelPref.PUSH);
+    if (!pushEnabled) {
+      emailDelivered = false;
+    } else
     try {
       const results = await this.pushService.sendToUser(userId, {
         title,
@@ -84,7 +94,8 @@ export class NotificationOrchestratorService {
     }
 
     // 3. SMS fallback — only for CRITICAL urgency with failed push delivery
-    if (urgency === 'critical' && !emailDelivered && phoneNumber) {
+    const smsEnabled = await this.preferenceService.isChannelEnabled(userId, type, DeliveryChannelPref.SMS);
+    if (urgency === 'critical' && !emailDelivered && phoneNumber && smsEnabled) {
       try {
         const smsResult = await this.smsService.send({
           to: phoneNumber,

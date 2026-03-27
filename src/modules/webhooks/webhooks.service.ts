@@ -84,6 +84,10 @@ export class WebhooksService {
       .getMany();
   }
 
+  async getSubscriptionById(id: string): Promise<WebhookSubscriptionEntity | null> {
+    return this.subRepo.findOne({ where: { id } });
+  }
+
   async getSecretByDeliveryId(deliveryId: string): Promise<string | null> {
     const delivery = await this.deliveryRepo.findOne({ where: { id: deliveryId } });
     if (!delivery) {
