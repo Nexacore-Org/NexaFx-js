@@ -129,6 +129,35 @@ export default () => {
       batchSize: archiveBatchSize,
       cron: process.env.ARCHIVE_CRON || '0 3 * * *',
     },
+
+    // Push notification configuration
+    push: {
+      fcmServerKey: process.env.FCM_SERVER_KEY || '',
+      apnsKeyId: process.env.APNS_KEY_ID || '',
+      apnsTeamId: process.env.APNS_TEAM_ID || '',
+      apnsBundleId: process.env.APNS_BUNDLE_ID || '',
+      apnsPrivateKey: process.env.APNS_PRIVATE_KEY || '',
+    },
+
+    // Referral program configuration
+    referral: {
+      rewardAmount: parseFloat(process.env.REFERRAL_REWARD_AMOUNT || '10'),
+      maxReferrals: parseInt(process.env.REFERRAL_MAX_REFERRALS || '100', 10),
+      programActive: (process.env.REFERRAL_PROGRAM_ACTIVE || 'true') === 'true',
+    },
+
+    // AML monitoring configuration
+    aml: {
+      structuringThreshold: parseFloat(process.env.AML_STRUCTURING_THRESHOLD || '10000'),
+      structuringWindowHours: parseInt(process.env.AML_STRUCTURING_WINDOW_HOURS || '24', 10),
+      structuringMinCount: parseInt(process.env.AML_STRUCTURING_MIN_COUNT || '3', 10),
+      smurfingWindowHours: parseInt(process.env.AML_SMURFING_WINDOW_HOURS || '1', 10),
+      smurfingMinWallets: parseInt(process.env.AML_SMURFING_MIN_WALLETS || '3', 10),
+      smurfingAmountVariancePct: parseFloat(process.env.AML_SMURFING_VARIANCE_PCT || '5'),
+      velocityBurstWindowHours: parseInt(process.env.AML_VELOCITY_WINDOW_HOURS || '1', 10),
+      velocityBurstMaxCount: parseInt(process.env.AML_VELOCITY_MAX_COUNT || '10', 10),
+      riskScoreWeight: parseInt(process.env.AML_RISK_SCORE_WEIGHT || '30', 10),
+    },
   };
 };
 
