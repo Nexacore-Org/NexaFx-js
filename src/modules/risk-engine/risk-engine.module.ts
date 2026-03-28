@@ -9,6 +9,9 @@ import { StressTestService } from './services/stress-test.service';
 import { RiskGuardService } from './services/risk-guard.service';
 import { RiskManagerService } from './services/risk-manager.service';
 import { RiskController } from './controllers';
+import { RiskAnalyticsController } from './controllers/risk-analytics.controller';
+import { RiskAdminAnalyticsController } from './controllers/risk-admin-analytics.controller';
+import { RiskAnalyticsService } from './services/risk-analytics.service';
 import { TransactionEntity } from '../transactions/entities/transaction.entity';
 import { TransactionRiskEntity } from '../transactions/entities/transaction-risk.entity';
 import { RiskIndicatorsService } from '../risk/services/risk-indicators.service';
@@ -28,7 +31,7 @@ import { ExposureService } from './exposure.service';
     ]),
     NotificationsModule,
   ],
-  controllers: [RiskController],
+  controllers: [RiskController, RiskAnalyticsController, RiskAdminAnalyticsController],
   providers: [
     RiskCalculationService,
     StressTestService,
@@ -37,6 +40,7 @@ import { ExposureService } from './exposure.service';
     RiskIndicatorsService,
     AlertingService,
     ExposureService,
+    RiskAnalyticsService,
   ],
   exports: [
     RiskGuardService,

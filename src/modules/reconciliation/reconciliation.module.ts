@@ -6,6 +6,8 @@ import { ReconciliationIssueEntity } from './entities/reconciliation-issue.entit
 import { ReconciliationService } from './services/reconciliation.service';
 import { TransactionEntity } from '../transactions/entities/transaction.entity';
 import { ReconciliationAdminController } from './controllers/reconciliation-admin.controller';
+import { ReconciliationAnalyticsController } from './controllers/reconciliation-analytics.controller';
+import { ReconciliationAnalyticsService } from './services/reconciliation-analytics.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
@@ -15,8 +17,8 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     BlockchainModule,
     TypeOrmModule.forFeature([ReconciliationIssueEntity, TransactionEntity]),
   ],
-  providers: [ReconciliationService],
-  controllers: [ReconciliationAdminController],
+  providers: [ReconciliationService, ReconciliationAnalyticsService],
+  controllers: [ReconciliationAdminController, ReconciliationAnalyticsController],
   exports: [ReconciliationService],
 })
 export class ReconciliationModule {}
