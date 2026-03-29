@@ -1,18 +1,15 @@
 import { Request, Response } from "express";
-import { FraudAnalyticsService } from "../services/fraud-analytics.service";
+import { TransactionAnalyticsService } from "../services/transaction-analytics.service";
 
-const service = new FraudAnalyticsService();
+const service = new TransactionAnalyticsService();
 
-export async function getFraudAnalytics(req: Request, res: Response) {
-  const period = { from: new Date(req.query.from), to: new Date(req.query.to) };
-  const distribution = await service.getRiskDistribution(period);
-  const counts = await service.getFlagCounts(period);
-  const rules = await service.getRuleEffectiveness(period);
-  res.json({ distribution, counts, rules });
-}
+export async function getAdminTransactionAnalytics(req: Request, res: Response) {
+  const period = (req.query.period as "DAILY" | "WEEKLY" | "MONTHLY") || "DAILY";
 
-export async function getFraudHeatmap(req: Request, res: Response) {
-  const period = { from: new Date(req.query.from), to: new Date(req.query.to) };
-  const heatmap = await service.getHeatmap(period);
-  res.json({ heatmap });
+  const summary = await service.getSummary(null, period);
+  const comparison = await service.getPeriodComparison(null, period);
+  const categories = await service.getCategoryBreakdown(null, period);
+  const series = await service.getTimeSeries(null, period);
+
+  res.json({ summary, comparison, categories, series });
 }
