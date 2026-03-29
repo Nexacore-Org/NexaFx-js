@@ -32,8 +32,6 @@ import {
   NOTIFICATION_CHANNELS,
   NOTIFICATION_EVENTS,
   WS_NAMESPACE,
-  HEARTBEAT_INTERVAL_MS,
-  JWT_WS_HANDSHAKE_TIMEOUT_MS,
   MAX_ROOM_SUBSCRIPTIONS,
   WALLET_BALANCE_DEBOUNCE_MS,
 } from './notifications.constants';
@@ -58,13 +56,9 @@ export class NotificationsGateway
 
   private readonly logger = new Logger(NotificationsGateway.name);
 
-  /** socketId → userId for reverse lookup */
   private readonly socketUserMap = new Map<string, string>();
-  /** userId → Set<socketId> for multi-tab support */
   private readonly userSocketsMap = new Map<string, Set<string>>();
-  /** socketId → Set<roomName> tracking non-default subscriptions */
   private readonly socketRoomsMap = new Map<string, Set<string>>();
-  /** walletId → debounce timer handle */
   private readonly walletDebounceMap = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
@@ -81,8 +75,6 @@ export class NotificationsGateway
     this.logger.log(`WebSocket gateway initialized on namespace "${WS_NAMESPACE}"`);
   }
 
-  // ─── Connection lifecycle ─────────────────────────────────────────────────
-
   async handleConnection(client: Socket): Promise<void> {
     try {
       const user = await this.authenticateHandshake(client);
@@ -91,16 +83,13 @@ export class NotificationsGateway
       const userId = user.sub;
       this.registerSocket(client.id, userId);
 
-      // Join personal room
       await client.join(NOTIFICATION_CHANNELS.USER(userId));
 
-      // Join admin room if applicable
       if (user.roles?.includes('admin') || user.roles?.includes('super_admin')) {
         await client.join(NOTIFICATION_CHANNELS.ADMIN());
         await client.join(NOTIFICATION_CHANNELS.FRAUD());
       }
 
-      // ACK connection
       client.emit(NOTIFICATION_EVENTS.CONNECTION_ACK, {
         socketId: client.id,
         userId,
@@ -221,14 +210,12 @@ export class NotificationsGateway
     });
   }
 
-  // ─── Housekeeping cron ────────────────────────────────────────────────────
-
   @Cron(CronExpression.EVERY_HOUR)
   async pruneExpiredNotifications(): Promise<void> {
     await this.persistence.pruneExpired();
   }
 
-  // ─── Public helpers used by service layer ─────────────────────────────────
+  // ─── Helpers ──────────────────────────────────────────────────────────────
 
   getOnlineUserCount(): number {
     return this.userSocketsMap.size;
@@ -254,41 +241,9 @@ export class NotificationsGateway
     );
   }
 
-  emitToTransactionRoom(transactionId: string, event: string, payload: Record<string, unknown>): void {
-    this.server?.to(NOTIFICATION_CHANNELS.TRANSACTION(transactionId)).emit(event, {
-      event,
-      payload,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  emitToWalletRoom(walletId: string, event: string, payload: Record<string, unknown>): void {
-    const existing = this.walletDebounceMap.get(walletId);
-    if (existing) clearTimeout(existing);
-
-    const timer = setTimeout(() => {
-      this.server?.to(NOTIFICATION_CHANNELS.WALLET(walletId)).emit(event, {
-        event,
-        payload,
-        timestamp: new Date().toISOString(),
-      });
-      this.walletDebounceMap.delete(walletId);
-    }, WALLET_BALANCE_DEBOUNCE_MS);
-
-    this.walletDebounceMap.set(walletId, timer);
-  }
-
-  @OnEvent('reconciliation.completed')
-  handleReconciliationCompleted(payload: Record<string, unknown>): void {
-    this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('reconciliation.completed', {
-      event: 'reconciliation.completed',
-      payload,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
+  // ─── Fraud Events ─────────────────────────────────────────────────────────
   @OnEvent('fraud.flagged')
-  handleFraudFlagged(payload: Record<string, unknown>): void {
+  handleFraudFlagged(payload: Record<string, any>): void {
     this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('fraud.flagged', {
       event: 'fraud.flagged',
       payload,
@@ -299,6 +254,18 @@ export class NotificationsGateway
       payload,
       timestamp: new Date().toISOString(),
     });
+
+    // Emit high risk event if riskScore >= 81
+    if (payload['riskScore'] && payload['riskScore'] >= 81) {
+      this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('fraud.highRisk', {
+        event: 'fraud.highRisk',
+        payload,
+        timestamp: new Date().toISOString(),
+      });
+      this.logger.warn(
+        `High risk fraud transaction flagged (score=${payload['riskScore']}, txId=${payload['transactionId']})`,
+      );
+    }
   }
 
   @OnEvent('flag.updated')
@@ -355,22 +322,17 @@ export class NotificationsGateway
     user: WsAuthenticatedSocket['user'],
     channel: string,
   ): boolean {
-    // Always allow own user channel
     if (channel === NOTIFICATION_CHANNELS.USER(user.sub)) return true;
-    // Admin-only channels
     if (
       channel === NOTIFICATION_CHANNELS.ADMIN() ||
       channel === NOTIFICATION_CHANNELS.FRAUD()
     ) {
       return user.roles?.some((r) => ['admin', 'super_admin'].includes(r)) ?? false;
     }
-    // Transaction channels — user may only watch own transactions or admins all
     if (channel.startsWith('transaction:')) {
       if (user.roles?.some((r) => ['admin', 'super_admin'].includes(r))) return true;
-      // Allow authenticated users to subscribe; ownership is enforced at the listener level
       return true;
     }
-    // Wallet channels — user may only watch own wallets or admins all
     if (channel.startsWith('wallet:')) {
       if (user.roles?.some((r) => ['admin', 'super_admin'].includes(r))) return true;
       return true;
