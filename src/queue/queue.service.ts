@@ -224,6 +224,22 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  async getAllQueueDepths() {
+    const result: Record<string, any> = {};
+    for (const name of Object.values(QUEUE_NAMES)) {
+      const stats = await this.getQueueStats(name);
+      if (stats) {
+        result[name] = {
+          waiting: stats.waiting,
+          active: stats.active,
+          completed: stats.completed,
+          failed: stats.failed,
+        };
+      }
+    }
+    return result;
+  }
+
   async getFailedJobs(queueName: string, start = 0, end = 49) {
     const queue = this.getQueueByName(queueName);
     if (!queue) return [];
@@ -238,7 +254,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     return job.retry();
   }
 
-  async pauseQueue(queueName: string) {
+    async pauseQueue(queueName: string) {
     const queue = this.getQueueByName(queueName);
     if (!queue) throw new Error(`Queue ${queueName} not found`);
     return queue.pause();
