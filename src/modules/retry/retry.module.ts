@@ -7,11 +7,13 @@ import { RetryService } from './retry.services';
 import { RetryWorker } from './retry.worker';
 import { AdminRetryController } from './retry-admin.controller';
 import { TransactionRetryListener } from './listeners/transaction-retry.listener';
+import { TransactionsModule } from '../transactions/transactions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([RetryJobEntity]),
     ScheduleModule.forRoot(),
+    TransactionsModule,
   ],
   controllers: [AdminRetryController],
   providers: [RetryService, RetryWorker, TransactionRetryListener],

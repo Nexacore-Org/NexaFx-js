@@ -7,10 +7,8 @@ import {
   SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import {
-  RateLimitService,
-  RateLimitContext,
-} from '../services/rate-limit.service';
+import { RateLimitService, RateLimitContext } from '../services/rate-limit.service';
+import { RedisRateLimitService } from '../services/redis-rate-limit.service';
 import { UserTier, RiskLevel } from '../entities/rate-limit-rule.entity';
 
 export const RATE_LIMIT_KEY = 'rateLimit';
@@ -22,168 +20,121 @@ export interface RateLimitOptions {
   skipIf?: (context: ExecutionContext) => boolean;
 }
 
-/**
- * Decorator to skip rate limiting on a route
- */
 export const SkipRateLimit = () => SetMetadata(RATE_LIMIT_SKIP_KEY, true);
+export const RateLimit = (options?: RateLimitOptions) => SetMetadata(RATE_LIMIT_KEY, options || {});
 
-/**
- * Decorator to set custom rate limit options
- */
-export const RateLimit = (options?: RateLimitOptions) =>
-  SetMetadata(RATE_LIMIT_KEY, options || {});
+// Configurable defaults (can be overridden via env or admin API)
+const USER_LIMIT_PER_MIN = 100;
+const IP_LIMIT_PER_MIN = 200;
+const WINDOW_MS = 60_000;
 
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   constructor(
     private readonly rateLimitService: RateLimitService,
     private readonly reflector: Reflector,
+    private readonly redisRateLimit: RedisRateLimitService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // Check if rate limiting is skipped for this route
-    const skipRateLimit = this.reflector.getAllAndOverride<boolean>(
-      RATE_LIMIT_SKIP_KEY,
-      [context.getHandler(), context.getClass()],
-    );
-
-    if (skipRateLimit) {
-      return true;
-    }
+    const skipRateLimit = this.reflector.getAllAndOverride<boolean>(RATE_LIMIT_SKIP_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (skipRateLimit) return true;
 
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
 
-    // Get rate limit options from decorator
-    const options = this.reflector.getAllAndOverride<RateLimitOptions>(
-      RATE_LIMIT_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const options = this.reflector.getAllAndOverride<RateLimitOptions>(RATE_LIMIT_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (options?.skipIf?.(context)) return true;
 
-    // Check skip condition if provided
-    if (options?.skipIf && options.skipIf(context)) {
-      return true;
-    }
-
-    // Extract user information from request
-    // This assumes the JWT guard sets req.user
-    const userId = request.user?.id || request.user?.userId;
-    const userTier =
-      options?.tier ||
-      request.user?.tier ||
-      this.determineTierFromRequest(request);
-    const riskLevel =
-      options?.riskLevel ||
-      request.user?.riskLevel ||
-      this.determineRiskLevel(request);
-
-    // Get IP address
-    const ipAddress =
+    const userId: string | undefined = request.user?.id || request.user?.userId;
+    const userTier: UserTier = options?.tier || request.user?.tier || this.determineTier(request);
+    const riskLevel: RiskLevel | undefined = options?.riskLevel || request.user?.riskLevel || this.determineRiskLevel(request);
+    const ipAddress: string =
       request.ip ||
       request.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
       request.connection?.remoteAddress ||
       'unknown';
+    const route: string = request.route?.path || request.url;
+    const method: string = request.method;
 
-    // Get route and method
-    const route = request.route?.path || request.url;
-    const method = request.method;
+    let allowed: boolean;
+    let remaining: number;
+    let resetAt: Date;
+    let limit: number;
+    let retryAfterSecs: number;
 
-    // Create rate limit context
-    const rateLimitContext: RateLimitContext = {
-      userId,
-      tier: userTier,
-      riskLevel,
-      ipAddress,
-      route,
-      method,
-    };
+    if (this.redisRateLimit.isAvailable()) {
+      // Redis sliding window — per-user AND per-IP, both must pass
+      const [userResult, ipResult] = await Promise.all([
+        userId
+          ? this.redisRateLimit.checkAndIncrement(`rl:user:${userId}:${route}`, USER_LIMIT_PER_MIN, WINDOW_MS)
+          : Promise.resolve({ allowed: true, remaining: USER_LIMIT_PER_MIN, retryAfterMs: 0 }),
+        this.redisRateLimit.checkAndIncrement(`rl:ip:${ipAddress}:${route}`, IP_LIMIT_PER_MIN, WINDOW_MS),
+      ]);
 
-    // Check rate limit
-    const result = await this.rateLimitService.checkRateLimit(rateLimitContext);
+      allowed = userResult.allowed && ipResult.allowed;
+      remaining = Math.min(userResult.remaining, ipResult.remaining);
+      const retryAfterMs = Math.max(userResult.retryAfterMs, ipResult.retryAfterMs);
+      retryAfterSecs = Math.ceil(retryAfterMs / 1000);
+      limit = userId ? USER_LIMIT_PER_MIN : IP_LIMIT_PER_MIN;
+      resetAt = new Date(Date.now() + (retryAfterMs || WINDOW_MS));
+    } else {
+      // DB fallback
+      const rateLimitContext: RateLimitContext = { userId, tier: userTier, riskLevel, ipAddress, route, method };
+      const result = await this.rateLimitService.checkRateLimit(rateLimitContext);
+      allowed = result.allowed;
+      remaining = result.remaining;
+      resetAt = result.resetAt;
+      limit = result.limit;
+      retryAfterSecs = Math.ceil((resetAt.getTime() - Date.now()) / 1000);
 
-    // Set rate limit headers
-    response.setHeader('X-RateLimit-Limit', result.limit);
-    response.setHeader('X-RateLimit-Remaining', result.remaining);
-    response.setHeader(
-      'X-RateLimit-Reset',
-      Math.floor(result.resetAt.getTime() / 1000),
-    );
+      if (allowed) {
+        this.rateLimitService.incrementRequest(rateLimitContext).catch(() => {});
+      }
+    }
 
-    if (!result.allowed) {
-      // Log the violation (fire and forget)
+    // Standard rate-limit headers
+    response.setHeader('X-RateLimit-Limit', limit);
+    response.setHeader('X-RateLimit-Remaining', remaining);
+    response.setHeader('X-RateLimit-Reset', Math.floor(resetAt.getTime() / 1000));
+
+    if (!allowed) {
+      response.setHeader('Retry-After', retryAfterSecs);
+
       this.rateLimitService
-        .logViolation({
-          userId,
-          ipAddress,
-          route,
-          method,
-          tier: userTier,
-          limit: result.limit,
-          userAgent: request.headers['user-agent'],
-        })
-        .catch((err) =>
-          console.error('Failed to log rate limit violation:', err),
-        );
+        .logViolation({ userId, ipAddress, route, method, tier: userTier, limit, userAgent: request.headers['user-agent'] })
+        .catch(() => {});
 
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
           message: 'Rate limit exceeded. Please try again later.',
           error: 'Too Many Requests',
-          retryAfter: Math.ceil((result.resetAt.getTime() - Date.now()) / 1000),
+          retryAfter: retryAfterSecs,
         },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    // Increment the request count (fire and forget)
-    this.rateLimitService.incrementRequest(rateLimitContext).catch((err) => {
-      // Log error but don't block the request
-      console.error('Failed to increment rate limit counter:', err);
-    });
-
     return true;
   }
 
-  /**
-   * Determine user tier from request headers or other signals
-   */
-  private determineTierFromRequest(request: any): UserTier {
-    // Check for admin header
-    if (request.headers['x-admin'] === 'true') {
-      return 'admin';
-    }
-
-    // Check for tier header (if provided by auth system)
-    const tierHeader = request.headers['x-user-tier'];
-    if (
-      tierHeader &&
-      ['guest', 'standard', 'premium', 'admin'].includes(tierHeader)
-    ) {
-      return tierHeader as UserTier;
-    }
-
-    // Default to guest for unauthenticated requests
+  private determineTier(request: any): UserTier {
+    if (request.headers['x-admin'] === 'true') return 'admin';
+    const h = request.headers['x-user-tier'];
+    if (h && ['guest', 'standard', 'premium', 'admin'].includes(h)) return h as UserTier;
     return 'guest';
   }
 
-  /**
-   * Determine risk level from request or user context
-   */
   private determineRiskLevel(request: any): RiskLevel | undefined {
-    // Check for risk level header (if provided by auth system)
-    const riskHeader = request.headers['x-risk-level'];
-    if (riskHeader && ['low', 'medium', 'high'].includes(riskHeader)) {
-      return riskHeader as RiskLevel;
-    }
-
-    // Check user object for risk level
-    if (request.user?.riskLevel) {
-      return request.user.riskLevel;
-    }
-
-    // Could also check device trust level, IP reputation, etc.
-    // For now, return undefined (will match rules with null riskLevel)
-    return undefined;
+    const h = request.headers['x-risk-level'];
+    if (h && ['low', 'medium', 'high'].includes(h)) return h as RiskLevel;
+    return request.user?.riskLevel;
   }
 }
