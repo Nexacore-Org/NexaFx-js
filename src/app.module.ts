@@ -37,6 +37,8 @@ import { VersioningModule } from './versioning/versioning.module';
 import { InsightsModule } from './exxagerated/exxagerated.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
+import { KycModule } from './modules/kyc/kyc.module';
+import { WalletsModule } from './modules/wallets/wallets.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -107,6 +109,8 @@ const enableBull =
     InsightsModule,
     InsightsForecastModule,
     ReferralsModule,
+    KycModule,
+    WalletsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

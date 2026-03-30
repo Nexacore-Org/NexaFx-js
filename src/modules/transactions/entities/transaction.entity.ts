@@ -70,6 +70,12 @@ export class TransactionEntity {
   @JoinColumn({ name: 'categoryId' })
   category?: TransactionCategoryEntity;
 
+  @Column({ type: 'float', nullable: true })
+  categoryConfidence?: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  categoryOverriddenAt?: Date;
+
   @Column({ type: 'int', default: 0 })
   riskScore: number;
 
