@@ -4,8 +4,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { TransactionEntity } from '../entities/transaction.entity';
 import { SearchTransactionsDto } from '../dto/search-transactions.dto';
+import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { EnrichmentService } from '../../enrichment/enrichment.service';
 import { WalletAliasService } from './wallet-alias.service';
+import { TransactionLifecycleService } from './transaction-lifecycle.service';
+import { RiskScoringService } from './risk-scoring.service';
+import { FxAggregatorService } from '../../fx/fx-aggregator.service';
+import { WebhookDispatcherService } from '../../webhooks/webhook-dispatcher.service';
+
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN', 'JPY', 'BTC', 'ETH', 'USDT'];
 
 @Injectable()
 export class TransactionsService {
@@ -14,7 +21,68 @@ export class TransactionsService {
     private readonly txRepo: Repository<TransactionEntity>,
     private readonly enrichmentService: EnrichmentService,
     private readonly walletAliasService: WalletAliasService,
+    private readonly lifecycleService: TransactionLifecycleService,
+    private readonly riskScoringService: RiskScoringService,
+    private readonly fxAggregatorService: FxAggregatorService,
+    private readonly webhookDispatcher: WebhookDispatcherService,
   ) {}
+
+  async createTransaction(dto: CreateTransactionDto) {
+    if (!SUPPORTED_CURRENCIES.includes(dto.currency.toUpperCase())) {
+      throw new Error(`Unsupported currency: ${dto.currency}`);
+    }
+
+    let exchangeRate: number | undefined;
+    let convertedAmount: number | undefined;
+
+    if (dto.targetCurrency && dto.targetCurrency.toUpperCase() !== dto.currency.toUpperCase()) {
+      const pair = `${dto.currency.toUpperCase()}/${dto.targetCurrency.toUpperCase()}`;
+      exchangeRate = await this.fxAggregatorService.getValidatedRate(pair);
+      convertedAmount = Number((dto.amount * exchangeRate).toFixed(8));
+    }
+
+    const transaction = await this.lifecycleService.create({
+      amount: dto.amount,
+      currency: dto.currency.toUpperCase(),
+      description: dto.description,
+      walletId: dto.walletId,
+      toAddress: dto.toAddress,
+      fromAddress: dto.fromAddress,
+      externalId: dto.externalId,
+      metadata: {
+        ...dto.metadata,
+        ...(exchangeRate !== undefined ? { exchangeRate, convertedAmount, targetCurrency: dto.targetCurrency } : {}),
+      },
+    });
+
+    // Transition to PROCESSING after creation
+    setImmediate(() => {
+      this.lifecycleService.markProcessing(transaction.id).catch(() => {});
+    });
+
+    // Risk scoring runs asynchronously — never blocks response
+    setImmediate(() => {
+      this.riskScoringService.evaluateRisk?.(transaction.id)?.catch?.(() => {});
+    });
+
+    // Emit webhook after commit
+    setImmediate(() => {
+      this.webhookDispatcher.dispatch('transaction.created', {
+        transactionId: transaction.id,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        status: transaction.status,
+      }).catch(() => {});
+    });
+
+    return {
+      success: true,
+      data: {
+        ...transaction,
+        ...(exchangeRate !== undefined ? { exchangeRate, convertedAmount } : {}),
+      },
+    };
+  }
 
   // ✅ NEW: FTS Search with wallet aliases
   async search(dto: SearchTransactionsDto, userId?: string) {
