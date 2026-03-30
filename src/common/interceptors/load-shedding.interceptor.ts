@@ -4,7 +4,7 @@ import * as os from 'os';
 
 @Injectable()
 export class LoadSheddingInterceptor implements NestInterceptor {
-  private readonly CPU_THRESHOLD = 0.90; // 90% CPU limit
+  private readonly CPU_THRESHOLD = 0; // 90% CPU limit
 
   intercept(context: ExecutionContext, next: CallHandler) {
     const load = os.loadavg()[0] / os.cpus().length;
