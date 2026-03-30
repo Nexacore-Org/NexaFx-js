@@ -15,6 +15,7 @@ import { TransactionCategoryEntity } from './entities/transaction-category.entit
 import { TransactionRiskEntity } from './entities/transaction-risk.entity';
 import { CategoriesController } from './controllers/categories.controller';
 import { CategoriesService } from './services/categories.service';
+import { CategorizationService } from './services/categorization.service';
 import { TransactionLifecycleService } from './services/transaction-lifecycle.service';
 import { TransactionSnapshotService } from './services/transaction-snapshot.service';
 import { TransactionSnapshotListener } from './listeners/transaction-snapshot.listener';
@@ -54,6 +55,7 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
     TransactionReplayService,
     TransactionsService,
     CategoriesService,
+    CategorizationService,
     WalletAliasService,
     TransactionLifecycleService,
     TransactionSnapshotService,
@@ -66,6 +68,7 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
   exports: [
     TransactionsService,
     CategoriesService,
+    CategorizationService,
     WalletAliasService,
     TransactionLifecycleService,
     TransactionSnapshotService,

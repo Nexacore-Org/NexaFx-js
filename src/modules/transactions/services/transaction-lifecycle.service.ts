@@ -16,6 +16,7 @@ import type {
   TransactionCompletedPayload,
   TransactionFailedPayload,
 } from '../events';
+import { CategorizationService } from './categorization.service';
 
 export interface CreateTransactionInput {
   amount: number;
@@ -43,6 +44,7 @@ export class TransactionLifecycleService {
     private readonly eventEmitter: EventEmitter2,
     @InjectRepository(TransactionEntity)
     private readonly txRepo: Repository<TransactionEntity>,
+    private readonly categorizationService: CategorizationService,
   ) {}
 
   /**
@@ -76,6 +78,9 @@ export class TransactionLifecycleService {
       metadata: transaction!.metadata,
       payload: transaction!.payload,
     } as TransactionCreatedPayload);
+
+    // Trigger auto-categorization asynchronously post-commit
+    this.categorizationService.triggerAutoCategorizationAsync(transaction!.id);
 
     return transaction!;
   }

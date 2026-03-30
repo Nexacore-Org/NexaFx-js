@@ -37,6 +37,8 @@ import { VersioningModule } from './versioning/versioning.module';
 import { InsightsModule } from './exxagerated/exxagerated.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
+import { KycModule } from './modules/kyc/kyc.module';
+import { WalletsModule } from './modules/wallets/wallets.module';
 import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
 
 const enableBull =
@@ -108,6 +110,8 @@ const enableBull =
     InsightsModule,
     InsightsForecastModule,
     ReferralsModule,
+    KycModule,
+    WalletsModule,
     ScheduledTransactionsModule,
   ],
   controllers: [AppController],

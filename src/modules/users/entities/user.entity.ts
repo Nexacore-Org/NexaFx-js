@@ -41,4 +41,16 @@ export class UserEntity {
 
   @DeleteDateColumn() // Soft delete column
   deletedAt?: Date;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  passwordResetTokenHash?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  passwordResetExpiry?: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  emailVerifiedAt?: Date;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  emailVerificationTokenHash?: string;
 }
