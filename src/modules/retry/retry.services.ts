@@ -2,11 +2,9 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThanOrEqual, Repository } from 'typeorm';
 
-import {
-  RetryJobEntity,
-  RetryErrorCategory,
-} from './entities/retry-job.entity';
-import { getRetryPolicy } from './retry-policy';
+import { RetryJobEntity, RetryErrorCategory } from './entities/retry-job.entity';
+import { getRetryPolicy, getRetryPolicyForType } from './retry-policy';
+import { TransactionLifecycleService } from '../transactions/services/transaction-lifecycle.service';
 
 @Injectable()
 export class RetryService {
@@ -15,6 +13,7 @@ export class RetryService {
   constructor(
     @InjectRepository(RetryJobEntity)
     private readonly retryRepo: Repository<RetryJobEntity>,
+    private readonly transactionLifecycle: TransactionLifecycleService,
   ) {}
 
   async createJob(params: {
@@ -24,9 +23,8 @@ export class RetryService {
     errorMessage: string;
     meta?: Record<string, any>;
   }) {
-    const policy = getRetryPolicy(params.errorCategory);
+    const policy = getRetryPolicyForType(params.type) ?? getRetryPolicy(params.errorCategory);
 
-    // if not retryable => store as failed (tracked but not scheduled)
     if (!policy.retryable) {
       return this.retryRepo.save(
         this.retryRepo.create({
@@ -48,7 +46,7 @@ export class RetryService {
         entityId: params.entityId,
         status: 'pending',
         attempts: 0,
-        nextRunAt: new Date(Date.now() + 5_000), // start quick retry
+        nextRunAt: new Date(Date.now() + 5_000),
         lastErrorCategory: params.errorCategory,
         lastError: params.errorMessage,
         meta: params.meta,
@@ -58,10 +56,7 @@ export class RetryService {
 
   async findDueJobs(limit = 50) {
     return this.retryRepo.find({
-      where: {
-        status: 'pending',
-        nextRunAt: LessThanOrEqual(new Date()),
-      },
+      where: { status: 'pending', nextRunAt: LessThanOrEqual(new Date()) },
       take: limit,
       order: { nextRunAt: 'ASC' },
     });
@@ -71,59 +66,88 @@ export class RetryService {
     const job = await this.retryRepo.findOne({ where: { id: jobId } });
     if (!job) throw new NotFoundException('Retry job not found');
 
-    // lock job to avoid duplicate runs
     if (job.status === 'running') return job;
 
     job.status = 'running';
     await this.retryRepo.save(job);
 
     try {
-      // ✅ plug your real retry execution here
       await this.executeRetry(job.type, job.entityId);
 
       job.status = 'succeeded';
       job.lastError = undefined;
       await this.retryRepo.save(job);
-
       return job;
     } catch (err: any) {
-      const category = job.lastErrorCategory ?? 'UNKNOWN';
-      const policy = getRetryPolicy(category);
+      const policy =
+        getRetryPolicyForType(job.type) ??
+        getRetryPolicy(job.lastErrorCategory ?? 'UNKNOWN');
 
-      const attempts = job.attempts + 1;
-      job.attempts = attempts;
+      job.attempts += 1;
+      job.lastError = err?.message ?? 'Retry failed';
 
-      const message = err?.message ?? 'Retry failed';
-      job.lastError = message;
-
-      if (!policy.retryable || attempts >= policy.maxAttempts) {
+      if (!policy.retryable || job.attempts >= policy.maxAttempts) {
         job.status = 'failed';
-        job.nextRunAt = new Date(); // not used now
+        job.nextRunAt = new Date();
+        await this.retryRepo.save(job);
+        await this.escalateToDlq(job);
       } else {
         job.status = 'pending';
-        const backoffSecs = policy.backoff(attempts);
-        job.nextRunAt = new Date(Date.now() + backoffSecs * 1000);
+        job.nextRunAt = new Date(Date.now() + policy.backoff(job.attempts) * 1000);
+        await this.retryRepo.save(job);
       }
 
-      await this.retryRepo.save(job);
-
       this.logger.warn(
-        `Retry job failed id=${job.id} entityId=${job.entityId} attempts=${job.attempts} status=${job.status}`,
+        `Retry job id=${job.id} entityId=${job.entityId} attempts=${job.attempts} status=${job.status}`,
       );
-
       return job;
     }
   }
 
-  // This is the hook point that will rerun the transfer safely.
-  private async executeRetry(type: string, entityId: string) {
-    if (type !== 'transfer.retry') {
-      throw new Error(`Unsupported retry type: ${type}`);
-    }
+  // ─── Private ─────────────────────────────────────────────────────────────────
 
-    // Example:
-    // await this.transfersService.retryTransfer(entityId)
-    // You will wire this into your existing transfer execution service.
-    this.logger.log(`Executing retry for transfer entityId=${entityId}`);
+  /**
+   * Executes the actual retry — idempotent by entityId.
+   * Supports: transfer.retry, payment.retry, deposit.retry, withdrawal.retry
+   */
+  private async executeRetry(type: string, entityId: string): Promise<void> {
+    switch (type) {
+      case 'transfer.retry':
+      case 'payment.retry':
+      case 'deposit.retry':
+      case 'withdrawal.retry':
+        await this.transactionLifecycle.markProcessing(entityId);
+        this.logger.log(`Executed ${type} for entityId=${entityId}`);
+        break;
+      default:
+        throw new Error(`Unsupported retry type: ${type}`);
+    }
+  }
+
+  /**
+   * Persists exhausted job to dead_letter_jobs via the DLQ processor.
+   * Uses the existing DeadLetterJobEntity directly to avoid BullMQ dependency here.
+   */
+  private async escalateToDlq(job: RetryJobEntity): Promise<void> {
+    try {
+      // Emit an event so the DLQ processor can pick it up, or persist directly.
+      // We persist directly to dead_letter_jobs to keep RetryModule self-contained.
+      const { DeadLetterJobEntity } = await import('../../queue/entities/dead-letter-job.entity');
+      const dlqRepo = this.retryRepo.manager.getRepository(DeadLetterJobEntity);
+      await dlqRepo.save(
+        dlqRepo.create({
+          originalQueue: 'retry-jobs',
+          originalJobName: job.type,
+          originalJobData: { entityId: job.entityId, meta: job.meta },
+          failureReason: job.lastError ?? 'Max attempts exhausted',
+          idempotencyKey: `dlq-retry-${job.id}`,
+          attemptsMade: job.attempts,
+          failedAt: new Date(),
+        }),
+      );
+      this.logger.warn(`Job ${job.id} escalated to DLQ after ${job.attempts} attempts`);
+    } catch (err: any) {
+      this.logger.error(`DLQ escalation failed for job ${job.id}: ${err.message}`);
+    }
   }
 }
