@@ -7,6 +7,7 @@ import {
   RiskLevel,
 } from '../entities/rate-limit-rule.entity';
 import { RateLimitTrackerEntity } from '../entities/rate-limit-tracker.entity';
+import { RateLimitViolationLogEntity } from '../entities/rate-limit-violation-log.entity';
 
 export interface RateLimitContext {
   userId?: string;
@@ -34,6 +35,8 @@ export class RateLimitService {
     private readonly ruleRepository: Repository<RateLimitRuleEntity>,
     @InjectRepository(RateLimitTrackerEntity)
     private readonly trackerRepository: Repository<RateLimitTrackerEntity>,
+    @InjectRepository(RateLimitViolationLogEntity)
+    private readonly violationLogRepository: Repository<RateLimitViolationLogEntity>,
   ) {}
 
   /**
@@ -267,9 +270,23 @@ export class RateLimitService {
   /**
    * Get current rate limit status for a user/IP
    */
-  async getRateLimitStatus(
-    context: RateLimitContext,
-  ): Promise<RateLimitResult> {
+  async getRateLimitStatus(context: RateLimitContext): Promise<RateLimitResult> {
     return this.checkRateLimit(context);
+  }
+
+  async logViolation(params: {
+    userId?: string;
+    ipAddress?: string;
+    route: string;
+    method: string;
+    tier?: string;
+    limit?: number;
+    userAgent?: string;
+  }): Promise<void> {
+    try {
+      await this.violationLogRepository.save(this.violationLogRepository.create(params));
+    } catch (err: any) {
+      this.logger.error(`Failed to log rate limit violation: ${err.message}`);
+    }
   }
 }

@@ -15,13 +15,21 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiParam,
+  ApiBody,
 } from '@nestjs/swagger';
+import { IsString, MinLength } from 'class-validator';
 import { TransactionApprovalService } from './transaction-approval.service';
 import { ApproveTransactionDto, RejectTransactionDto } from '../dto/approval.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+
+class ForceApproveDto {
+  @IsString()
+  @MinLength(5)
+  reason: string;
+}
 
 @ApiTags('Transaction Approvals')
 @ApiBearerAuth()
@@ -49,9 +57,10 @@ export class TransactionApprovalController {
       { id: user.id, email: user.email, role: user.role },
       dto,
     );
-
     return {
-      message: `Transaction ${transaction.status === 'APPROVED' ? 'fully approved and queued for processing' : 'approval recorded'}`,
+      message: transaction.status === 'APPROVED'
+        ? 'Transaction fully approved and queued for processing'
+        : 'Approval recorded',
       approvalId: approval.id,
       transactionId: transaction.id,
       transactionStatus: transaction.status,
@@ -81,7 +90,6 @@ export class TransactionApprovalController {
       { id: user.id, email: user.email, role: user.role },
       dto,
     );
-
     return {
       message: 'Transaction rejected',
       approvalId: approval.id,
@@ -95,9 +103,9 @@ export class TransactionApprovalController {
 
   @Get(':id/approvals')
   @Roles('admin', 'compliance_officer', 'finance_manager')
-  @ApiOperation({ summary: 'Get all approval actions for a transaction' })
+  @ApiOperation({ summary: 'Get full approval history for a transaction' })
   @ApiParam({ name: 'id', description: 'Transaction UUID' })
-  @ApiResponse({ status: 200, description: 'List of approval actions' })
+  @ApiResponse({ status: 200, description: 'List of approval actions with decision and timestamp' })
   async getApprovals(@Param('id', ParseUUIDPipe) id: string) {
     const approvals = await this.approvalService.getApprovals(id);
     return { transactionId: id, approvals };
@@ -110,5 +118,31 @@ export class TransactionApprovalController {
   async getPendingApprovals() {
     const transactions = await this.approvalService.getPendingApprovalTransactions();
     return { count: transactions.length, transactions };
+  }
+
+  @Post('admin/:id/force-approve')
+  @Roles('admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Admin force-approve bypassing quorum (audit-logged with reason)' })
+  @ApiParam({ name: 'id', description: 'Transaction UUID' })
+  @ApiBody({ type: ForceApproveDto })
+  @ApiResponse({ status: 200, description: 'Transaction force-approved' })
+  @ApiResponse({ status: 400, description: 'Transaction not in PENDING_APPROVAL state' })
+  @ApiResponse({ status: 404, description: 'Transaction not found' })
+  async forceApprove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ForceApproveDto,
+    @CurrentUser() user: { id: string; email: string; role: string },
+  ) {
+    const transaction = await this.approvalService.adminForceApprove(
+      id,
+      { id: user.id, email: user.email, role: user.role },
+      dto.reason,
+    );
+    return {
+      message: 'Transaction force-approved by admin',
+      transactionId: transaction.id,
+      transactionStatus: transaction.status,
+    };
   }
 }
