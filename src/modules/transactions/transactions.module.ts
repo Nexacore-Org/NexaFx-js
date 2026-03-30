@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
 import { EnrichmentModule } from '../enrichment/enrichment.module';
 import { SessionsModule } from '../sessions/sessions.module';
+import { FxModule } from '../fx/fx.module';
+import { WebhooksModule } from '../webhooks/webhooks.module';
+import { IdempotencyModule } from '../../idempotency/idempotency.module';
 import { AdminTransactionsController } from './contorllers/admin-transactions.controller';
 import { TransactionReplayService } from './services/transaction-replay.service';
 import { TransactionsService } from './services/transactions.service';
 import { WalletAliasService } from './services/wallet-alias.service';
+import { ReceiptService } from './services/receipt.service';
 import { TransactionsController } from './contorllers/transactions.controller';
 import { WalletAliasController } from './controllers/wallet-alias.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -32,6 +36,9 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
   imports: [
     EnrichmentModule,
     SessionsModule,
+    FxModule,
+    WebhooksModule,
+    IdempotencyModule,
     EventEmitterModule.forRoot(),
     RiskEngineModule,
     NotificationsModule,
@@ -64,6 +71,7 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
     TransactionWebsocketListener,
     RiskScoringService,
     RiskEvaluationLoggerService,
+    ReceiptService,
   ],
   exports: [
     TransactionsService,
@@ -74,6 +82,7 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
     TransactionSnapshotService,
     RiskScoringService,
     RiskEvaluationLoggerService,
+    ReceiptService,
   ],
 })
 export class TransactionsModule {}

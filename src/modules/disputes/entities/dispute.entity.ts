@@ -7,11 +7,13 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type DisputeSubjectType = 'ESCROW';
-export type DisputeStatus = 'OPEN' | 'RESOLVED' | 'CLOSED';
+export type DisputeSubjectType = 'ESCROW' | 'TRANSACTION';
+export type DisputeStatus = 'OPEN' | 'UNDER_REVIEW' | 'RESOLVED' | 'REJECTED' | 'TIMED_OUT' | 'CLOSED';
 
 @Entity('disputes')
 @Index('idx_disputes_subject', ['subjectType', 'subjectId'])
+@Index('idx_disputes_initiator', ['initiatorUserId'])
+@Index('idx_disputes_status', ['status'])
 export class DisputeEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -34,11 +36,20 @@ export class DisputeEntity {
   @Column({ type: 'text' })
   reason: string;
 
+  @Column({ type: 'text', nullable: true })
+  resolutionNote?: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  evidenceFileIds?: string[] | null;
+
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, any> | null;
 
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt?: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  autoCloseAt?: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

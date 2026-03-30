@@ -1,10 +1,19 @@
-import { Controller, Get, Query, Param, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiParam } from '@nestjs/swagger';
+import {
+  Body, Controller, Get, Post, Query, Param, UseGuards, Request,
+  Headers, HttpCode, HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiParam,
+  ApiCreatedResponse, ApiHeader,
+} from '@nestjs/swagger';
 import { TransactionsService } from '../services/transactions.service';
 import { SearchTransactionsDto } from '../dto/search-transactions.dto';
+import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { EnrichmentService } from '../../enrichment/enrichment.service';
+import { ReceiptService } from '../services/receipt.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { SkipAudit } from '../../admin-audit/decorators/skip-audit.decorator';
+import { IdempotencyService } from '../../../idempotency/idempotency.service';
 
 @ApiTags('Transactions')
 @ApiBearerAuth('access-token')
@@ -14,7 +23,37 @@ export class TransactionsController {
   constructor(
     private readonly txService: TransactionsService,
     private readonly enrichmentService: EnrichmentService,
+    private readonly idempotencyService: IdempotencyService,
+    private readonly receiptService: ReceiptService,
   ) {}
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a new transaction' })
+  @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key to prevent duplicate submissions', required: false })
+  @ApiCreatedResponse({ description: 'Transaction created' })
+  async create(
+    @Body() dto: CreateTransactionDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    if (idempotencyKey) {
+      const existing = await this.idempotencyService.findByKey(idempotencyKey);
+      if (existing) return existing.response;
+    }
+
+    const result = await this.txService.createTransaction(dto);
+
+    if (idempotencyKey) {
+      await this.idempotencyService.store(
+        idempotencyKey,
+        this.idempotencyService.hashRequest('POST', '/transactions', dto),
+        result,
+        201,
+      );
+    }
+
+    return result;
+  }
 
   @Get('search')
   @SkipAudit()
@@ -25,6 +64,14 @@ export class TransactionsController {
     return this.txService.search(query, userId);
   }
 
+  @Get(':id/receipt')
+  @ApiOperation({ summary: 'Get formatted receipt for a transaction' })
+  @ApiParam({ name: 'id', description: 'Transaction UUID' })
+  async getReceipt(@Param('id') id: string) {
+    const receipt = await this.receiptService.generateReceipt(id);
+    return { success: true, data: receipt };
+  }
+
   @Get(':id/enrichment')
   @SkipAudit()
   @ApiOperation({ summary: 'Get enrichment metadata for a transaction' })
@@ -32,10 +79,6 @@ export class TransactionsController {
   @ApiOkResponse({ description: 'Enrichment data for the transaction' })
   async getEnrichment(@Param('id') id: string) {
     const enrichment = await this.enrichmentService.getEnrichment(id);
-
-    return {
-      success: true,
-      data: enrichment,
-    };
+    return { success: true, data: enrichment };
   }
 }
