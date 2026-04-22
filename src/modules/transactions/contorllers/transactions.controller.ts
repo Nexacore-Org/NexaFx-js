@@ -12,6 +12,7 @@ import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { EnrichmentService } from '../../enrichment/enrichment.service';
 import { ReceiptService } from '../services/receipt.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
+import { RiskPreTradeGuard } from '../../risk-engine/services/risk-pre-trade.guard';
 import { SkipAudit } from '../../admin-audit/decorators/skip-audit.decorator';
 import { IdempotencyService } from '../../../idempotency/idempotency.service';
 
@@ -29,6 +30,7 @@ export class TransactionsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RiskPreTradeGuard)
   @ApiOperation({ summary: 'Create a new transaction' })
   @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key to prevent duplicate submissions', required: false })
   @ApiCreatedResponse({ description: 'Transaction created' })
