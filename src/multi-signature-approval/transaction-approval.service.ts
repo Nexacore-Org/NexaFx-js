@@ -8,14 +8,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Transaction, TransactionStatus } from '../entities/transaction.entity';
-import { TransactionApproval, ApprovalDecision } from '../entities/transaction-approval.entity';
+import { Transaction, TransactionStatus } from './transaction.entity';
+import { TransactionApproval, ApprovalDecision } from './transaction-approval.entity';
 import {
   DEFAULT_APPROVAL_THRESHOLDS,
   HIGH_VALUE_THRESHOLD_USD,
   HIGH_VALUE_REQUIRED_APPROVALS,
 } from './approval-thresholds.config';
-import { ApproveTransactionDto, RejectTransactionDto } from '../dto/approval.dto';
+import { ApproveTransactionDto, RejectTransactionDto } from './approval.dto';
 import { NotificationService } from '../modules/notifications/services/notification.service';
 
 export interface ApproverContext {
