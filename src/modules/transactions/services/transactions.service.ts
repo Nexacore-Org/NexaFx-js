@@ -13,6 +13,7 @@ import { FxAggregatorService } from '../../fx/fx-aggregator.service';
 import { WebhookDispatcherService } from '../../webhooks/webhook-dispatcher.service';
 import { AdminAuditService, AuditContext } from '../../admin-audit/admin-audit.service';
 import { ActorType } from '../../admin-audit/entities/admin-audit-log.entity';
+import { TransactionAnnotationService } from './transaction-annotation.service';
 
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN', 'JPY', 'BTC', 'ETH', 'USDT'];
 
@@ -28,6 +29,7 @@ export class TransactionsService {
     private readonly fxAggregatorService: FxAggregatorService,
     private readonly webhookDispatcher: WebhookDispatcherService,
     private readonly adminAuditService: AdminAuditService,
+    private readonly annotationService: TransactionAnnotationService,
   ) {}
 
   async createTransaction(dto: CreateTransactionDto, auditContext?: AuditContext) {
@@ -148,6 +150,36 @@ export class TransactionsService {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const offset = (page - 1) * limit;
+
+    // Handle tag search
+    if (dto.tag && userId) {
+      const tagResult = await this.annotationService.searchTransactionsByTag(userId, dto.tag, page, limit);
+      return {
+        success: true,
+        data: tagResult.transactions,
+        meta: {
+          page,
+          limit,
+          total: tagResult.total,
+          totalPages: Math.ceil(tagResult.total / limit),
+        },
+      };
+    }
+
+    // Handle notes search
+    if (dto.notes && userId) {
+      const notesResult = await this.annotationService.searchTransactionsByNotes(userId, dto.notes, page, limit);
+      return {
+        success: true,
+        data: notesResult.transactions,
+        meta: {
+          page,
+          limit,
+          total: notesResult.total,
+          totalPages: Math.ceil(notesResult.total / limit),
+        },
+      };
+    }
 
     const qb = this.txRepo.createQueryBuilder('t');
 

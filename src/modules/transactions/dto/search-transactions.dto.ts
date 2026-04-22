@@ -57,4 +57,14 @@ export class SearchTransactionsDto {
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @ApiPropertyOptional({ description: 'Search by tag name', example: 'groceries' })
+  @IsOptional()
+  @IsString()
+  tag?: string;
+
+  @ApiPropertyOptional({ description: 'Search by note content', example: 'coffee' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
