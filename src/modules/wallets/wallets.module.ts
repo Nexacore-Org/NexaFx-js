@@ -5,8 +5,10 @@ import { WalletBalanceService } from './services/wallet-balance.service';
 import { StatementService } from './services/statement.service';
 import { BeneficiaryService } from './services/beneficiary.service';
 import { PortfolioService } from './services/portfolio.service';
+import { WalletKeyEncryptionService } from './services/wallet-key-encryption.service';
 import { WalletController } from './controllers/wallet.controller';
 import { BeneficiaryController } from './controllers/beneficiary.controller';
+import { AdminWalletController } from './controllers/admin-wallet.controller';
 import { SpendCapGuard } from './guards/spend-cap.guard';
 import { TransactionEntity } from '../transactions/entities/transaction.entity';
 import { WalletEntity } from '../users/entities/wallet.entity';
@@ -24,8 +26,8 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     CacheModule.register(),
     BlockchainModule,
   ],
-  controllers: [WalletController, BeneficiaryController],
-  providers: [WalletBalanceService, StatementService, BeneficiaryService, WalletAliasService, SpendCapGuard, WalletSyncJob, PortfolioService, PortfolioSnapshotJob],
-  exports: [WalletBalanceService, StatementService, BeneficiaryService, SpendCapGuard, PortfolioService],
+  controllers: [WalletController, BeneficiaryController, AdminWalletController],
+  providers: [WalletBalanceService, StatementService, BeneficiaryService, WalletAliasService, SpendCapGuard, WalletSyncJob, PortfolioService, PortfolioSnapshotJob, WalletKeyEncryptionService],
+  exports: [WalletBalanceService, StatementService, BeneficiaryService, SpendCapGuard, PortfolioService, WalletKeyEncryptionService],
 })
 export class WalletsModule {}

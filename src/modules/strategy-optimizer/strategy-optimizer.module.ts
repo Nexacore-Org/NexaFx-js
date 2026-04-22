@@ -8,6 +8,7 @@ import { OptimizationService } from './services/optimization.service';
 import { MetricsCollectorService } from './services/metrics-collector.service';
 import { RegimeDetectionService } from './services/regime-detection.service';
 import { StrategyManagerService } from './services/strategy-manager.service';
+import { BacktestEngineService } from './services/backtest-engine.service';
 import { StrategyAdminController } from './controllers/strategy-admin.controller';
 
 @Module({
@@ -25,7 +26,8 @@ import { StrategyAdminController } from './controllers/strategy-admin.controller
     MetricsCollectorService,
     RegimeDetectionService,
     StrategyManagerService,
+    BacktestEngineService,
   ],
-  exports: [StrategyManagerService],
+  exports: [StrategyManagerService, BacktestEngineService],
 })
 export class StrategyOptimizerModule {}
