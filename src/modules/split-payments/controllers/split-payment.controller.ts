@@ -1,16 +1,19 @@
 import { Controller, Post, Get, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { ApiOperation, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SplitPaymentService } from '../services/split-payment.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SplitPayment } from '../entities/split-payment.entity';
 
+@ApiTags('Split Payments')
+@ApiBearerAuth('access-token')
 @Controller('split-payments')
 @UseGuards(JwtAuthGuard)
 export class SplitPaymentController {
   constructor(
     private readonly splitService: SplitPaymentService,
-    @InjectRepository(SplitPayment) private splitRepo: Repository<SplitPayment>
+    @InjectRepository(SplitPayment) private splitRepo: Repository<SplitPayment>,
   ) {}
 
   @Post()
@@ -28,9 +31,15 @@ export class SplitPaymentController {
     return this.splitRepo.find({
       where: [
         { initiatorId: req.user.id },
-        { contributions: { participantId: req.user.id } }
+        { contributions: { participantId: req.user.id } },
       ],
-      relations: ['contributions']
+      relations: ['contributions'],
     });
+  }
+
+  @Get('analytics')
+  @ApiOperation({ summary: 'Get split payment analytics' })
+  async analytics() {
+    return this.splitService.getAnalytics();
   }
 }

@@ -1,8 +1,8 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
-import { SplitPayment, SplitStatus } from './split-payment.entity';
-import { SplitContribution } from './split-contribution.entity';
+import { SplitPayment, SplitStatus } from '../entities/split-payment.entity';
+import { SplitContribution } from '../entities/split-contribution.entity';
 
 @Injectable()
 export class SplitPaymentService {
@@ -13,46 +13,37 @@ export class SplitPaymentService {
   ) {}
 
   async createSplit(initiatorId: string, totalAmount: number, participants: string[]) {
-    const totalPeople = participants.length + 1; // Include initiator
+    const totalPeople = participants.length + 1;
     const baseShare = Math.floor((totalAmount / totalPeople) * 100) / 100;
-    const remainder = Number((totalAmount - (baseShare * totalPeople)).toFixed(2));
+    const remainder = Number((totalAmount - baseShare * totalPeople).toFixed(2));
 
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      const split = this.splitRepo.create({
+    return this.dataSource.transaction(async (manager) => {
+      const split = manager.create(SplitPayment, {
         initiatorId,
         totalAmount,
-        expiryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 48h limit
+        expiryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
       });
-      const savedSplit = await queryRunner.manager.save(split);
+      const savedSplit = await manager.save(split);
 
       const contributions = [
-        // Initiator takes the base share plus any rounding remainder
-        this.contribRepo.create({ 
-          splitPayment: savedSplit, 
-          participantId: initiatorId, 
-          amount: baseShare + remainder, 
-          hasPaid: true // Initiator is considered "paid" by default
+        manager.create(SplitContribution, {
+          splitPayment: savedSplit,
+          participantId: initiatorId,
+          amount: baseShare + remainder,
+          hasPaid: true,
         }),
-        ...participants.map(pId => this.contribRepo.create({ 
-          splitPayment: savedSplit, 
-          participantId: pId, 
-          amount: baseShare 
-        }))
+        ...participants.map((pId) =>
+          manager.create(SplitContribution, {
+            splitPayment: savedSplit,
+            participantId: pId,
+            amount: baseShare,
+          }),
+        ),
       ];
 
-      await queryRunner.manager.save(contributions);
-      await queryRunner.commitTransaction();
+      await manager.save(contributions);
       return savedSplit;
-    } catch (err) {
-      await queryRunner.rollbackTransaction();
-      throw err;
-    } finally {
-      await queryRunner.release();
-    }
+    });
   }
 
   async processContribution(splitId: string, userId: string) {
@@ -61,18 +52,18 @@ export class SplitPaymentService {
       relations: ['splitPayment'],
     });
 
-    if (!contribution || contribution.hasPaid) throw new BadRequestException('Invalid or completed contribution');
-    if (contribution.splitPayment.status !== SplitStatus.PENDING) throw new BadRequestException('Split is no longer active');
+    if (!contribution || contribution.hasPaid)
+      throw new BadRequestException('Invalid or completed contribution');
+    if (contribution.splitPayment.status !== SplitStatus.PENDING)
+      throw new BadRequestException('Split is no longer active');
 
-    // Atomic Transfer Logic
-    return await this.dataSource.transaction(async (manager) => {
+    return this.dataSource.transaction(async (manager) => {
       contribution.hasPaid = true;
       contribution.transactionId = `tx_split_${Date.now()}`;
       await manager.save(contribution);
 
-      // Check if this was the last payment
       const remaining = await manager.count(SplitContribution, {
-        where: { splitPayment: { id: splitId }, hasPaid: false }
+        where: { splitPayment: { id: splitId }, hasPaid: false },
       });
 
       if (remaining === 0) {
@@ -83,18 +74,135 @@ export class SplitPaymentService {
     });
   }
 
-  async handleExpiry() {
+  /**
+   * Atomically process expiry refunds for a single split.
+   * All refund records are created in one transaction — all succeed or all fail.
+   */
+  async processExpiryRefund(splitId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const split = await manager.findOne(SplitPayment, {
+        where: { id: splitId },
+        relations: ['contributions'],
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!split || split.status !== SplitStatus.PENDING) return;
+
+      // Only refund non-initiator participants who already paid
+      const toRefund = split.contributions.filter(
+        (c) => c.hasPaid && c.participantId !== split.initiatorId,
+      );
+
+      for (const contrib of toRefund) {
+        // Use same idempotency key pattern as original contribution
+        const refundTxId = `tx_refund_${contrib.transactionId ?? contrib.id}`;
+        contrib.transactionId = refundTxId;
+        await manager.save(contrib);
+      }
+
+      split.status = SplitStatus.EXPIRED;
+      await manager.save(split);
+    });
+  }
+
+  /**
+   * Run expiry check: find all expired PENDING splits and process refunds atomically.
+   */
+  async handleExpiry(): Promise<void> {
     const expiredSplits = await this.splitRepo.find({
       where: { status: SplitStatus.PENDING, expiryDate: LessThan(new Date()) },
-      relations: ['contributions']
+      select: ['id'],
     });
 
-    for (const split of expiredSplits) {
-      // Logic for reversals: return funds to participants who already paid
-      const paidContributions = split.contributions.filter(c => c.hasPaid && c.participantId !== split.initiatorId);
-      // ... execute reversal transactions ...
-      split.status = SplitStatus.EXPIRED;
-      await this.splitRepo.save(split);
+    for (const { id } of expiredSplits) {
+      await this.processExpiryRefund(id);
     }
+  }
+
+  /**
+   * Admin: cancel a split and trigger refunds for paid participants.
+   */
+  async adminCancel(splitId: string): Promise<SplitPayment> {
+    await this.dataSource.transaction(async (manager) => {
+      const split = await manager.findOne(SplitPayment, {
+        where: { id: splitId },
+        relations: ['contributions'],
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!split) throw new NotFoundException('Split payment not found');
+      if (split.status !== SplitStatus.PENDING)
+        throw new BadRequestException('Only PENDING splits can be cancelled');
+
+      const toRefund = split.contributions.filter(
+        (c) => c.hasPaid && c.participantId !== split.initiatorId,
+      );
+
+      for (const contrib of toRefund) {
+        contrib.transactionId = `tx_refund_admin_${contrib.id}`;
+        await manager.save(contrib);
+      }
+
+      split.status = SplitStatus.EXPIRED;
+      await manager.save(split);
+    });
+
+    return this.splitRepo.findOne({ where: { id: splitId }, relations: ['contributions'] });
+  }
+
+  /**
+   * Admin: list all splits with optional status filter.
+   */
+  async adminList(
+    status?: SplitStatus,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: SplitPayment[]; total: number }> {
+    const where = status ? { status } : {};
+    const [data, total] = await this.splitRepo.findAndCount({
+      where,
+      relations: ['contributions'],
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { data, total };
+  }
+
+  /**
+   * Analytics: total collected, avg participants, completion rate, expiry rate.
+   */
+  async getAnalytics(): Promise<{
+    totalCollected: number;
+    avgParticipants: number;
+    completionRate: number;
+    expiryRate: number;
+  }> {
+    const all = await this.splitRepo.find({ relations: ['contributions'] });
+
+    if (all.length === 0) {
+      return { totalCollected: 0, avgParticipants: 0, completionRate: 0, expiryRate: 0 };
+    }
+
+    let totalCollected = 0;
+    let totalParticipants = 0;
+    let completed = 0;
+    let expired = 0;
+
+    for (const split of all) {
+      const paidContribs = split.contributions.filter((c) => c.hasPaid);
+      totalCollected += paidContribs.reduce((sum, c) => sum + Number(c.amount), 0);
+      totalParticipants += split.contributions.length;
+      if (split.status === SplitStatus.COMPLETED) completed++;
+      if (split.status === SplitStatus.EXPIRED) expired++;
+    }
+
+    const settled = completed + expired;
+    return {
+      totalCollected,
+      avgParticipants: totalParticipants / all.length,
+      completionRate: settled > 0 ? completed / settled : 0,
+      expiryRate: settled > 0 ? expired / settled : 0,
+    };
   }
 }

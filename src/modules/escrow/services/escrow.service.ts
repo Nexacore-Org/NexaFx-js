@@ -119,6 +119,9 @@ export class EscrowService {
           releaseParty: dto.releaseParty,
           autoReleaseAt,
           releaseCondition: dto.releaseCondition ?? null,
+          releaseConditions: dto.releaseConditions
+            ? dto.releaseConditions.map((c) => ({ ...c, met: false }))
+            : null,
           metadata: dto.metadata ?? null,
           lockTransactionId: lockTransaction.id,
         }),
@@ -293,6 +296,97 @@ export class EscrowService {
     }
 
     return escrow;
+  }
+
+  /**
+   * Mark a release condition as met for a multi-party escrow.
+   * If all conditions are met, auto-releases the escrow.
+   */
+  async fulfillCondition(escrowId: string, actorUserId: string): Promise<EscrowEntity> {
+    const escrow = await this.findById(escrowId);
+
+    if (!escrow.releaseConditions || escrow.releaseConditions.length === 0) {
+      throw new BadRequestException('This escrow has no multi-party release conditions');
+    }
+    if (escrow.status !== 'PENDING_RELEASE') {
+      throw new ConflictException('Escrow is not pending release');
+    }
+
+    const condition = escrow.releaseConditions.find((c) => c.party === actorUserId && !c.met);
+    if (!condition) {
+      throw new BadRequestException('No unfulfilled condition found for this actor');
+    }
+
+    condition.met = true;
+    await this.escrowRepository.update(escrowId, { releaseConditions: escrow.releaseConditions });
+
+    const allMet = escrow.releaseConditions.every((c) => c.met);
+    if (allMet) {
+      const result = await this.applySettlement(escrowId, actorUserId, 'RELEASED', 'All conditions met');
+      await this.afterStateChange(result);
+      return this.findById(escrowId);
+    }
+
+    return this.findById(escrowId);
+  }
+
+  /**
+   * Get user's active and completed escrows with pagination.
+   */
+  async findByUser(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: EscrowEntity[]; total: number }> {
+    const [data, total] = await this.escrowRepository.findAndCount({
+      where: [{ senderUserId: userId }, { beneficiaryUserId: userId }],
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { data, total };
+  }
+
+  /**
+   * Analytics: total locked value by currency, avg duration, release vs dispute rate.
+   */
+  async getAnalytics(): Promise<{
+    totalLockedByCurrency: Record<string, number>;
+    avgDurationDays: number;
+    releaseRate: number;
+    disputeRate: number;
+  }> {
+    const all = await this.escrowRepository.find();
+
+    const totalLockedByCurrency: Record<string, number> = {};
+    let totalDurationDays = 0;
+    let durationCount = 0;
+    let released = 0;
+    let disputed = 0;
+
+    for (const e of all) {
+      if (e.status === 'PENDING_RELEASE') {
+        const currency = e.currency.toUpperCase();
+        totalLockedByCurrency[currency] = (totalLockedByCurrency[currency] ?? 0) + Number(e.amount);
+      }
+      if ((e.status === 'RELEASED' || e.status === 'AUTO_RELEASED') && e.releasedAt) {
+        const days = (e.releasedAt.getTime() - e.createdAt.getTime()) / 86400000;
+        totalDurationDays += days;
+        durationCount++;
+        released++;
+      }
+      if (e.status === 'DISPUTED') {
+        disputed++;
+      }
+    }
+
+    const settled = released + disputed;
+    return {
+      totalLockedByCurrency,
+      avgDurationDays: durationCount > 0 ? totalDurationDays / durationCount : 0,
+      releaseRate: settled > 0 ? released / settled : 0,
+      disputeRate: settled > 0 ? disputed / settled : 0,
+    };
   }
 
   async findSchedulableEscrows(): Promise<EscrowEntity[]> {

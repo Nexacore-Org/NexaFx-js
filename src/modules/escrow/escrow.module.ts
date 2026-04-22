@@ -8,6 +8,7 @@ import { WalletEntity } from '../users/entities/wallet.entity';
 import { DisputesModule } from '../disputes/disputes.module';
 import { DisputeEntity } from '../disputes/entities/dispute.entity';
 import { EscrowController } from './controllers/escrow.controller';
+import { EscrowAdminController } from './controllers/escrow-admin.controller';
 import { EscrowEntity } from './entities/escrow.entity';
 import { AutoReleaseJob } from './jobs/auto-release.job';
 import { EscrowService } from './services/escrow.service';
@@ -20,7 +21,7 @@ import { EscrowService } from './services/escrow.service';
     DisputesModule,
     AuthModule,
   ],
-  controllers: [EscrowController],
+  controllers: [EscrowController, EscrowAdminController],
   providers: [EscrowService, AutoReleaseJob],
   exports: [EscrowService],
 })
