@@ -368,6 +368,33 @@ export class LoyaltyService {
     return result;
   }
 
+  // ── Tier Stats (admin) ─────────────────────────────────────────────────────
+
+  async getTierStats(): Promise<Record<string, number>> {
+    const rows = await this.accountRepo
+      .createQueryBuilder('a')
+      .select('a.tier', 'tier')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('a.tier')
+      .getRawMany<{ tier: string; count: string }>();
+
+    const stats: Record<string, number> = {};
+    for (const row of rows) {
+      stats[row.tier] = parseInt(row.count, 10);
+    }
+    return stats;
+  }
+
+  // ── Program Config (admin) ─────────────────────────────────────────────────
+
+  getProgramConfig() {
+    return this.earnRules.getConfig();
+  }
+
+  updateProgramConfig(config: Partial<ReturnType<typeof this.earnRules.getConfig>>) {
+    return this.earnRules.updateConfig(config);
+  }
+
   // ── Redemption Analytics (admin) ───────────────────────────────────────────
 
   async getRedemptionAnalytics(): Promise<{

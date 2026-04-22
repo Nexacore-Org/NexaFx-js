@@ -53,6 +53,11 @@ export class EarnRulesService {
     this.config = { ...this.config, ...partial };
   }
 
+  updateConfig(partial: Partial<EarnRateConfig>): Readonly<EarnRateConfig> {
+    this.config = { ...this.config, ...partial };
+    return this.config;
+  }
+
   getConfig(): Readonly<EarnRateConfig> {
     return this.config;
   }
