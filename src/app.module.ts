@@ -129,6 +129,7 @@ const enableBull =
     KycModule,
     WalletsModule,
     ScheduledTransactionsModule,
+    DisputesModule,
     EscrowModule,
     SplitPaymentsModule,
     SubscriptionsModule,

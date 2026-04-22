@@ -176,4 +176,40 @@ export class TransactionLifecycleService {
 
     return transaction;
   }
+
+  /**
+   * Reverse a transaction. Checks if transaction is disputed before allowing reversal.
+   */
+  async reverse(
+    transactionId: string,
+    reason: string,
+  ): Promise<TransactionEntity> {
+    let transaction: TransactionEntity | null = null;
+
+    await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(TransactionEntity);
+      transaction = await repo.findOne({ where: { id: transactionId } });
+      if (!transaction) throw new Error(`Transaction not found: ${transactionId}`);
+
+      // Check if transaction is disputed
+      if (transaction.metadata?.disputed) {
+        throw new Error(`Cannot reverse disputed transaction: ${transactionId}`);
+      }
+
+      // Mark as reversed in metadata
+      await repo.update(
+        { id: transactionId },
+        {
+          metadata: { ...(transaction.metadata ?? {}), reversed: true, reversedAt: new Date(), reverseReason: reason },
+          updatedAt: new Date()
+        },
+      );
+      transaction = await repo.findOne({ where: { id: transactionId } });
+    });
+
+    // Emit reversal event if needed
+    // this.eventEmitter.emit(TRANSACTION_REVERSED, { transactionId, reason });
+
+    return transaction!;
+  }
 }
