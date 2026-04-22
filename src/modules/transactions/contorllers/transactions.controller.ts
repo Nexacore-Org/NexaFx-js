@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Post, Query, Param, UseGuards, Request,
+  Body, Controller, Get, Post, Query, Param, UseGuards, UseInterceptors, Request,
   Headers, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import {
@@ -14,6 +14,9 @@ import { ReceiptService } from '../services/receipt.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { SkipAudit } from '../../admin-audit/decorators/skip-audit.decorator';
 import { IdempotencyService } from '../../../idempotency/idempotency.service';
+import { IdempotencyGuard } from '../../../idempotency/idempotency.guard';
+import { IdempotencyInterceptor } from '../../../idempotency/idempotency.interceptor';
+import { Idempotent } from '../../../idempotency/idempotency.decorator';
 
 @ApiTags('Transactions')
 @ApiBearerAuth('access-token')
@@ -29,8 +32,11 @@ export class TransactionsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Create a new transaction' })
-  @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key to prevent duplicate submissions', required: false })
+  @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key (min 16 chars) to prevent duplicate submissions', required: true })
   @ApiCreatedResponse({ description: 'Transaction created' })
   async create(
     @Body() dto: CreateTransactionDto,

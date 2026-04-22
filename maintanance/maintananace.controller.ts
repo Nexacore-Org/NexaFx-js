@@ -16,25 +16,16 @@ import {
 } from '@nestjs/swagger';
 import { MaintenanceService } from './maintenance.service';
 import { UpdateMaintenanceDto, EnableMaintenanceDto } from './dto/update-maintenance.dto';
-
-// Import your actual auth guard
-// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-// import { RolesGuard } from '../auth/guards/roles.guard';
-// import { Roles } from '../auth/decorators/roles.decorator';
+import { AdminGuard } from '../src/modules/auth/guards/admin.guard';
 
 @ApiTags('Maintenance')
 @Controller('maintenance')
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard, RolesGuard)
 export class MaintenanceController {
   constructor(private readonly maintenanceService: MaintenanceService) {}
 
   @Get('status')
   @ApiOperation({ summary: 'Get current maintenance status' })
-  @ApiResponse({
-    status: 200,
-    description: 'Returns current maintenance configuration',
-  })
+  @ApiResponse({ status: 200, description: 'Returns current maintenance configuration' })
   async getStatus() {
     const config = await this.maintenanceService.getMaintenanceConfig();
     return {
@@ -46,13 +37,10 @@ export class MaintenanceController {
   }
 
   @Post('enable')
-  // @Roles('admin', 'superadmin')
+  @UseGuards(AdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enable maintenance mode' })
-  @ApiResponse({
-    status: 200,
-    description: 'Maintenance mode enabled successfully',
-  })
+  @ApiResponse({ status: 200, description: 'Maintenance mode enabled successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   async enableMaintenance(@Body() enableDto: EnableMaintenanceDto) {
     const config = await this.maintenanceService.enableMaintenance(enableDto);
@@ -68,28 +56,21 @@ export class MaintenanceController {
   }
 
   @Post('disable')
-  // @Roles('admin', 'superadmin')
+  @UseGuards(AdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Disable maintenance mode' })
-  @ApiResponse({
-    status: 200,
-    description: 'Maintenance mode disabled successfully',
-  })
+  @ApiResponse({ status: 200, description: 'Maintenance mode disabled successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   async disableMaintenance() {
     await this.maintenanceService.disableMaintenance();
-    return {
-      message: 'Maintenance mode disabled',
-    };
+    return { message: 'Maintenance mode disabled' };
   }
 
   @Put('config')
-  // @Roles('admin', 'superadmin')
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update maintenance configuration' })
-  @ApiResponse({
-    status: 200,
-    description: 'Configuration updated successfully',
-  })
+  @ApiResponse({ status: 200, description: 'Configuration updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   async updateConfig(@Body() updateDto: UpdateMaintenanceDto) {
     const config = await this.maintenanceService.updateConfig(updateDto);
