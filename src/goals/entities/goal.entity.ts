@@ -4,9 +4,9 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
+  OneToMany,
 } from 'typeorm';
+import { GoalContribution } from './goal-contribution.entity';
 
 export enum GoalStatus {
   ACTIVE = 'active',
@@ -30,10 +30,10 @@ export class Goal {
   description: string;
 
   @Column({ type: 'decimal', precision: 15, scale: 2 })
-  targetAmount: number;
+  targetAmount: string;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-  currentAmount: number;
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: '0' })
+  currentAmount: string;
 
   @Column({ type: 'varchar', length: 3, default: 'USD' })
   currency: string;
@@ -41,15 +41,31 @@ export class Goal {
   @Column({ type: 'timestamp', nullable: true })
   deadline: Date;
 
-  @Column({
-    type: 'enum',
-    enum: GoalStatus,
-    default: GoalStatus.ACTIVE,
-  })
+  @Column({ type: 'enum', enum: GoalStatus, default: GoalStatus.ACTIVE })
   status: GoalStatus;
 
-  @Column({ type: 'uuid', nullable: true })
-  linkedWalletId: string;
+  @Column({ name: 'linked_wallet_id', type: 'uuid', nullable: true })
+  linkedWalletId: string | null;
+
+  // Round-up rule
+  @Column({ name: 'round_up_enabled', default: false })
+  roundUpEnabled: boolean;
+
+  @Column({ name: 'round_up_unit', type: 'int', nullable: true })
+  roundUpUnit: number | null;
+
+  // Milestone bitmask: bit0=25%, bit1=50%, bit2=75%, bit3=100%
+  @Column({ name: 'milestones_notified', type: 'int', default: 0 })
+  milestonesNotified: number;
+
+  @Column({ name: 'is_completed', default: false })
+  isCompleted: boolean;
+
+  @Column({ name: 'completed_at', nullable: true })
+  completedAt: Date | null;
+
+  @OneToMany(() => GoalContribution, (c) => c.goal, { cascade: ['insert'] })
+  contributions: GoalContribution[];
 
   @CreateDateColumn()
   createdAt: Date;
@@ -57,16 +73,9 @@ export class Goal {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  // Virtual field for progress percentage
   get progressPercentage(): number {
-    if (this.targetAmount <= 0) return 0;
-    const progress = (Number(this.currentAmount) / Number(this.targetAmount)) * 100;
-    return Math.min(progress, 100);
-  }
-
-  // Virtual field to check if goal is overdue
-  get isOverdue(): boolean {
-    if (!this.deadline) return false;
-    return new Date() > new Date(this.deadline) && this.status === GoalStatus.ACTIVE;
+    const target = parseFloat(this.targetAmount as any);
+    if (!target) return 0;
+    return Math.min((parseFloat(this.currentAmount as any) / target) * 100, 100);
   }
 }
