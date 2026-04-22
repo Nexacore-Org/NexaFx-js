@@ -76,4 +76,13 @@ export class ReferralController {
   async updateConfig(@Body() dto: UpdateReferralConfigDto) {
     return this.referralService.updateProgramConfig(dto);
   }
+
+  /**
+   * GET /referrals/leaderboard
+   * Top 10 referrers by conversion count for the current month.
+   */
+  @Get('leaderboard')
+  async leaderboard() {
+    return this.referralService.getLeaderboard();
+  }
 }

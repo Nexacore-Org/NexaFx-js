@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { ReferralEntity } from '../entities/referral.entity';
 import { ReferralRewardEntity } from '../entities/referral-reward.entity';
+import { ReferralFraudService } from './referral-fraud.service';
 
 export interface ReferralStats {
   referredCount: number;
@@ -36,6 +37,7 @@ export class ReferralService {
     private readonly rewardRepo: Repository<ReferralRewardEntity>,
     private readonly configService: ConfigService,
     private readonly dataSource: DataSource,
+    private readonly fraudService: ReferralFraudService,
   ) {}
 
   /**
@@ -189,5 +191,118 @@ export class ReferralService {
   /** Generate a random 8-character alphanumeric code */
   private generateUniqueCode(): string {
     return randomBytes(6).toString('base64url').slice(0, 8).toUpperCase();
+  }
+
+  /**
+   * Disburse reward to referrer's wallet.
+   * Called after fraud check passes or admin approves.
+   */
+  async disburseReward(rewardId: string): Promise<ReferralRewardEntity> {
+    const reward = await this.rewardRepo.findOne({ where: { id: rewardId } });
+    if (!reward) throw new NotFoundException(`Reward ${rewardId} not found`);
+    if (reward.disbursed) return reward; // idempotent
+
+    // TODO: integrate with wallet service to credit amount
+    reward.disbursed = true;
+    reward.status = 'disbursed';
+    reward.disbursedAt = new Date();
+    return this.rewardRepo.save(reward);
+  }
+
+  /**
+   * Admin: approve a flagged referral reward and disburse it.
+   */
+  async approveReward(referralId: string): Promise<ReferralRewardEntity> {
+    const referral = await this.referralRepo.findOne({ where: { id: referralId } });
+    if (!referral) throw new NotFoundException(`Referral ${referralId} not found`);
+
+    // Move referral to converted
+    referral.status = 'converted';
+    referral.convertedAt = referral.convertedAt ?? new Date();
+    await this.referralRepo.save(referral);
+
+    const reward = await this.rewardRepo.findOne({ where: { referralId } });
+    if (!reward) throw new NotFoundException(`No reward found for referral ${referralId}`);
+
+    return this.disburseReward(reward.id);
+  }
+
+  /**
+   * GET /referrals/leaderboard — top 10 referrers by conversion count this month.
+   */
+  async getLeaderboard(): Promise<{ referrerId: string; conversions: number }[]> {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const rows = await this.referralRepo
+      .createQueryBuilder('r')
+      .select('r.referrerId', 'referrerId')
+      .addSelect('COUNT(*)', 'conversions')
+      .where('r.status = :status', { status: 'converted' })
+      .andWhere('r.convertedAt >= :start', { start: startOfMonth })
+      .groupBy('r.referrerId')
+      .orderBy('conversions', 'DESC')
+      .limit(10)
+      .getRawMany();
+
+    return rows.map((r) => ({ referrerId: r.referrerId, conversions: parseInt(r.conversions, 10) }));
+  }
+
+  /**
+   * Convert referral with fraud detection.
+   */
+  async convertReferralWithFraudCheck(
+    referredUserId: string,
+    referredIp?: string,
+    referredDevice?: string,
+  ): Promise<void> {
+    const referral = await this.referralRepo.findOne({
+      where: { referredId: referredUserId, status: 'pending' },
+    });
+    if (!referral) return;
+
+    const config = this.getProgramConfig();
+
+    await this.dataSource.transaction(async (manager) => {
+      const referralManager = manager.getRepository(ReferralEntity);
+      const rewardManager = manager.getRepository(ReferralRewardEntity);
+
+      const locked = await referralManager.findOne({ where: { id: referral.id, status: 'pending' } });
+      if (!locked) return;
+
+      // Fraud check
+      const { flagged } = await this.fraudService.checkFraud(
+        locked.id,
+        locked.referrerIp ?? null,
+        referredIp ?? null,
+        locked.referrerDevice ?? null,
+        referredDevice ?? null,
+      );
+
+      if (!flagged) {
+        locked.status = 'converted';
+        locked.convertedAt = new Date();
+      }
+      // if flagged, status is already set to pending_review by fraudService
+
+      await referralManager.save(locked);
+
+      const existingReward = await rewardManager.findOne({ where: { referralId: referral.id } });
+      if (!existingReward) {
+        const reward = rewardManager.create({
+          referrerId: locked.referrerId,
+          referralId: locked.id,
+          amount: config.rewardAmount,
+          currency: 'USD',
+          disbursed: false,
+          status: flagged ? 'pending_review' : 'pending',
+        });
+        const saved = await rewardManager.save(reward);
+        if (!flagged) {
+          await this.disburseReward(saved.id);
+        }
+      }
+    });
   }
 }

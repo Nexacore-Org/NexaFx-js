@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { Subscription, SubscriptionStatus } from '../entities/subscription.entity';
 import { Invoice, InvoiceStatus } from '../entities/invoice.entity';
 import { SubscriptionPlan } from '../entities/subscription-plan.entity';
+import { UsageTrackerService } from './usage-tracker.service';
 
 @Injectable()
 export class BillingService {
@@ -13,6 +14,7 @@ export class BillingService {
     @InjectRepository(Subscription) private subRepo: Repository<Subscription>,
     @InjectRepository(Invoice) private invoiceRepo: Repository<Invoice>,
     private dataSource: DataSource,
+    private usageTracker: UsageTrackerService,
   ) {}
 
   async calculateProration(currentSub: Subscription, newPlan: SubscriptionPlan): Promise<number> {
@@ -32,17 +34,21 @@ export class BillingService {
     await queryRunner.startTransaction();
 
     try {
+      // Calculate overage charges
+      const overageAmount = this.calculateOverage(subscription);
+      const totalAmount = Number(subscription.plan.price) + overageAmount;
+
       // 1. Create Immutable Invoice
       const invoice = this.invoiceRepo.create({
         subscriptionId: subscription.id,
         userId: subscription.userId,
-        amount: subscription.plan.price,
+        amount: totalAmount,
         status: InvoiceStatus.PENDING,
       });
       await queryRunner.manager.save(invoice);
 
       // 2. Attempt Wallet Debit (Mocking wallet service integration)
-      const success = await this.debitUserWallet(subscription.userId, subscription.plan.price);
+      const success = await this.debitUserWallet(subscription.userId, totalAmount);
 
       if (success) {
         invoice.status = InvoiceStatus.PAID;
@@ -50,6 +56,8 @@ export class BillingService {
         subscription.currentPeriodStart = new Date();
         subscription.currentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         subscription.failedAttemptCount = 0;
+        // Reset usage counters for new billing period
+        this.usageTracker.resetUsage(subscription.userId);
       } else {
         await this.handleFailedPayment(subscription, invoice);
       }
@@ -63,6 +71,23 @@ export class BillingService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /** Calculate overage charges based on current usage vs plan limits */
+  calculateOverage(subscription: Subscription): number {
+    if (!subscription.plan?.usageLimits || !subscription.plan?.overageFees) return 0;
+
+    const usage = this.usageTracker.getUsage(subscription.userId);
+    let total = 0;
+
+    for (const [limitType, limit] of Object.entries(subscription.plan.usageLimits)) {
+      const used = usage[limitType] ?? 0;
+      const overage = Math.max(0, used - limit);
+      const fee = (subscription.plan.overageFees[limitType] ?? 0) * overage;
+      total += fee;
+    }
+
+    return total;
   }
 
   private async handleFailedPayment(sub: Subscription, invoice: Invoice) {

@@ -7,7 +7,7 @@ import {
   Index,
 } from 'typeorm';
 
-export type ReferralStatus = 'pending' | 'converted' | 'expired';
+export type ReferralStatus = 'pending' | 'converted' | 'expired' | 'pending_review';
 
 @Entity('referrals')
 @Index('idx_referrals_referrer_id', ['referrerId'])
@@ -35,6 +35,26 @@ export class ReferralEntity {
   /** Set when the referred user completes their first transaction */
   @Column({ type: 'timestamp', nullable: true })
   convertedAt?: Date;
+
+  /** IP address of the referrer at time of referral creation */
+  @Column({ type: 'varchar', length: 45, nullable: true })
+  referrerIp?: string;
+
+  /** IP address of the referred user at registration */
+  @Column({ type: 'varchar', length: 45, nullable: true })
+  referredIp?: string;
+
+  /** Device fingerprint of the referrer */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  referrerDevice?: string;
+
+  /** Device fingerprint of the referred user */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  referredDevice?: string;
+
+  /** JSON-encoded fraud signals when status is pending_review */
+  @Column({ type: 'text', nullable: true })
+  fraudSignals?: string;
 
   @CreateDateColumn()
   createdAt: Date;

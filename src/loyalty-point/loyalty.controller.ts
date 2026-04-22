@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -48,5 +49,27 @@ export class LoyaltyController {
   @HttpCode(HttpStatus.OK)
   async redeem(@Request() req, @Body() dto: RedeemPointsDto) {
     return this.loyaltyService.redeemPoints(req.user.id, dto);
+  }
+
+  /**
+   * GET /loyalty/history
+   * Paginated EARN/REDEEM/EXPIRE transaction history.
+   */
+  @Get('history')
+  async history(
+    @Request() req,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.loyaltyService.getHistory(req.user.id, parseInt(page, 10), parseInt(limit, 10));
+  }
+
+  /**
+   * GET /loyalty/balance/trend
+   * Daily balance snapshots for the last 90 days.
+   */
+  @Get('balance/trend')
+  async balanceTrend(@Request() req) {
+    return this.loyaltyService.getBalanceTrend(req.user.id);
   }
 }
