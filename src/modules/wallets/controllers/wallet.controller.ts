@@ -1,5 +1,6 @@
-import { Controller, Get, Param, Query, Request, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Param, Query, Request, UseGuards, BadRequestException, Res } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Response } from 'express';
 import { WalletBalanceService } from '../services/wallet-balance.service';
 import { StatementService } from '../services/statement.service';
 import { PortfolioService } from '../services/portfolio.service';
@@ -74,5 +75,30 @@ export class WalletController {
       new Date(to),
     );
     return { success: true, data: statement, checksum: statement.checksum };
+  }
+
+  @Get(':id/statement/pdf')
+  @ApiOperation({ summary: 'Download wallet statement as PDF' })
+  @ApiParam({ name: 'id', description: 'Wallet UUID' })
+  @ApiQuery({ name: 'from', required: true })
+  @ApiQuery({ name: 'to', required: true })
+  async getStatementPdf(
+    @Param('id') walletId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Res() res: Response,
+  ) {
+    if (!from || !to) throw new BadRequestException('from and to query params are required');
+    const { pdf, checksum } = await this.statementService.generateStatementPdf(
+      walletId,
+      new Date(from),
+      new Date(to),
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="statement-${walletId}.pdf"`,
+      'X-Checksum': checksum,
+    });
+    res.send(pdf);
   }
 }

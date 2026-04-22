@@ -2,6 +2,8 @@
 
 Transaction processing uses an **event-driven architecture**. Domain events are emitted only **after** the corresponding database transaction has committed, so listeners never see uncommitted data.
 
+> **Verified**: The full event chain is covered by `test/transaction-event-chain.e2e-spec.ts` (unit/integration) and `test/transaction-load.e2e-spec.ts` (100 concurrent transactions). See issue #470.
+
 ## Verified Event Sequence Diagram
 
 The following sequence has been verified by `test/transaction-event-chain.e2e-spec.ts`:

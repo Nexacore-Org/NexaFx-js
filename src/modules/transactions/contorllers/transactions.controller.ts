@@ -1,11 +1,12 @@
 import {
   Body, Controller, Get, Post, Query, Param, UseGuards, Request,
-  Headers, HttpCode, HttpStatus,
+  Headers, HttpCode, HttpStatus, Res,
 } from '@nestjs/common';
 import {
   ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiParam,
   ApiCreatedResponse, ApiHeader,
 } from '@nestjs/swagger';
+import { Response } from 'express';
 import { TransactionsService } from '../services/transactions.service';
 import { SearchTransactionsDto } from '../dto/search-transactions.dto';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
@@ -70,6 +71,19 @@ export class TransactionsController {
   async getReceipt(@Param('id') id: string) {
     const receipt = await this.receiptService.generateReceipt(id);
     return { success: true, data: receipt };
+  }
+
+  @Get(':id/receipt/pdf')
+  @ApiOperation({ summary: 'Download transaction receipt as PDF' })
+  @ApiParam({ name: 'id', description: 'Transaction UUID' })
+  async getReceiptPdf(@Param('id') id: string, @Res() res: Response) {
+    const { pdf, checksum } = await this.receiptService.generateReceiptPdf(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="receipt-${id}.pdf"`,
+      'X-Checksum': checksum,
+    });
+    res.send(pdf);
   }
 
   @Get(':id/enrichment')
