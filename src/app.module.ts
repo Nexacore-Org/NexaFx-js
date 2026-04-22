@@ -43,6 +43,16 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { CardsModule } from './modules/cards/cards.module';
+import { FxModule } from './modules/fx/fx.module';
+import { BankingModule } from './banking/banking.module';
+import { LoyaltyModule } from './loyalty-point/loyalty.module';
+import { DisputesModule } from './modules/disputes/disputes.module';
+import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { CacheModule } from './modules/cache/cache.module';
+import { MailModule } from './modules/mail/mail.module';
+import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -119,6 +129,16 @@ const enableBull =
     ScheduledTransactionsModule,
     EscrowModule,
     SplitPaymentsModule,
+    SubscriptionsModule,
+    CardsModule,
+    FxModule,
+    BankingModule,
+    LoyaltyModule,
+    DisputesModule,
+    BlockchainModule,
+    CacheModule,
+    MailModule,
+    TransactionApprovalModule,
   ],
   controllers: [AppController],
   providers: [AppService],
