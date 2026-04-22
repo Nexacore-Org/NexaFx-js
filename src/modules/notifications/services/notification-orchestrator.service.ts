@@ -5,7 +5,8 @@ import { NotificationService } from './notification.service';
 import { PushNotificationService } from './push-notification.service';
 import { SmsService } from './sms.service';
 import { NotificationPreferenceService, } from './notification-preference.service';
-import { DeliveryChannelPref } from '../entities/notification-preference.entity';
+import { NotificationLogService } from './notification-log.service';
+import { NotificationLogStatus } from '../entities/notification-log.entity';
 import {
   NotificationDeliveryReceiptEntity,
   DeliveryChannel,
@@ -38,6 +39,7 @@ export class NotificationOrchestratorService {
     private readonly pushService: PushNotificationService,
     private readonly smsService: SmsService,
     private readonly preferenceService: NotificationPreferenceService,
+    private readonly notificationLogService: NotificationLogService,
     @InjectRepository(NotificationDeliveryReceiptEntity)
     private readonly receiptRepository: Repository<NotificationDeliveryReceiptEntity>,
   ) {}
@@ -48,15 +50,56 @@ export class NotificationOrchestratorService {
     // Generate a stable notification ID for receipt correlation
     const notificationId = `${type}:${userId}:${Date.now()}`;
 
+    // Log the notification attempt (fire-and-forget)
+    this.notificationLogService.logAsync({
+      userId,
+      notificationType: type,
+      channel: 'multi_channel',
+      status: NotificationLogStatus.SENT,
+      payload: { title, body: body.substring(0, 200), urgency, channels: ['in_app', 'push', 'sms'] },
+    });
+
     // 1. In-app / throttled channel
     const inAppEnabled = await this.preferenceService.isChannelEnabled(userId, type, DeliveryChannelPref.IN_APP);
     if (inAppEnabled) {
-      await this.notificationService.send({
-        type,
+      try {
+        await this.notificationService.send({
+          type,
+          userId,
+          payload: { title, body, data, ...payload },
+        });
+        await this.persistReceipt(notificationId, userId, type, DeliveryChannel.IN_APP, DeliveryStatus.SUCCESS);
+        
+        // Log successful in-app delivery
+        this.notificationLogService.logAsync({
+          userId,
+          notificationType: type,
+          channel: DeliveryChannel.IN_APP,
+          status: NotificationLogStatus.SENT,
+          payload: { title, body: body.substring(0, 100) },
+        });
+      } catch (error: any) {
+        await this.persistReceipt(notificationId, userId, type, DeliveryChannel.IN_APP, DeliveryStatus.FAILED, error.message);
+        
+        // Log failed in-app delivery
+        this.notificationLogService.logAsync({
+          userId,
+          notificationType: type,
+          channel: DeliveryChannel.IN_APP,
+          status: NotificationLogStatus.FAILED,
+          errorMessage: error.message,
+          payload: { title, body: body.substring(0, 100) },
+        });
+      }
+    } else {
+      // Log throttled in-app notification
+      this.notificationLogService.logAsync({
         userId,
-        payload: { title, body, data, ...payload },
+        notificationType: type,
+        channel: DeliveryChannel.IN_APP,
+        status: NotificationLogStatus.THROTTLED,
+        payload: { title, body: body.substring(0, 100) },
       });
-      await this.persistReceipt(notificationId, userId, type, DeliveryChannel.IN_APP, DeliveryStatus.SUCCESS);
     }
 
     // 2. Push channel (best-effort)
@@ -64,6 +107,14 @@ export class NotificationOrchestratorService {
     const pushEnabled = await this.preferenceService.isChannelEnabled(userId, type, DeliveryChannelPref.PUSH);
     if (!pushEnabled) {
       emailDelivered = false;
+      // Log disabled push channel
+      this.notificationLogService.logAsync({
+        userId,
+        notificationType: type,
+        channel: DeliveryChannel.PUSH,
+        status: NotificationLogStatus.THROTTLED,
+        payload: { title, body: body.substring(0, 100), reason: 'user_disabled' },
+      });
     } else
     try {
       const results = await this.pushService.sendToUser(userId, {
@@ -81,19 +132,45 @@ export class NotificationOrchestratorService {
         );
         for (const r of failed) {
           await this.persistReceipt(notificationId, userId, type, DeliveryChannel.PUSH, DeliveryStatus.FAILED, r.error);
+          // Log failed push delivery
+          this.notificationLogService.logAsync({
+            userId,
+            notificationType: type,
+            channel: DeliveryChannel.PUSH,
+            status: NotificationLogStatus.FAILED,
+            errorMessage: r.error,
+            payload: { title, body: body.substring(0, 100) },
+          });
         }
       } else {
         for (const _r of results) {
           await this.persistReceipt(notificationId, userId, type, DeliveryChannel.PUSH, DeliveryStatus.SUCCESS);
+          // Log successful push delivery
+          this.notificationLogService.logAsync({
+            userId,
+            notificationType: type,
+            channel: DeliveryChannel.PUSH,
+            status: NotificationLogStatus.SENT,
+            payload: { title, body: body.substring(0, 100) },
+          });
         }
       }
     } catch (err: any) {
       emailDelivered = false;
       this.logger.error(`Push delivery error for user ${userId}: ${err?.message}`, err?.stack);
       await this.persistReceipt(notificationId, userId, type, DeliveryChannel.PUSH, DeliveryStatus.FAILED, err?.message);
+      // Log push delivery error
+      this.notificationLogService.logAsync({
+        userId,
+        notificationType: type,
+        channel: DeliveryChannel.PUSH,
+        status: NotificationLogStatus.FAILED,
+        errorMessage: err.message,
+        payload: { title, body: body.substring(0, 100) },
+      });
     }
 
-    // 3. SMS fallback — only for CRITICAL urgency with failed push delivery
+    // 3. SMS fallback - only for CRITICAL urgency with failed push delivery
     const smsEnabled = await this.preferenceService.isChannelEnabled(userId, type, DeliveryChannelPref.SMS);
     if (urgency === 'critical' && !emailDelivered && phoneNumber && smsEnabled) {
       try {
@@ -112,6 +189,16 @@ export class NotificationOrchestratorService {
           smsResult.messageId,
         );
 
+        // Log SMS delivery attempt
+        this.notificationLogService.logAsync({
+          userId,
+          notificationType: type,
+          channel: DeliveryChannel.SMS,
+          status: smsResult.success ? NotificationLogStatus.SENT : NotificationLogStatus.FAILED,
+          errorMessage: smsResult.error || null,
+          payload: { title, body: body.substring(0, 100), fallback: true },
+        });
+
         if (!smsResult.success) {
           this.logger.error(`SMS fallback failed for user ${userId}: ${smsResult.error}`);
         } else {
@@ -120,7 +207,27 @@ export class NotificationOrchestratorService {
       } catch (err: any) {
         this.logger.error(`SMS fallback error for user ${userId}: ${err?.message}`, err?.stack);
         await this.persistReceipt(notificationId, userId, type, DeliveryChannel.SMS, DeliveryStatus.FAILED, err?.message);
+        
+        // Log SMS delivery error
+        this.notificationLogService.logAsync({
+          userId,
+          notificationType: type,
+          channel: DeliveryChannel.SMS,
+          status: NotificationLogStatus.FAILED,
+          errorMessage: err.message,
+          payload: { title, body: body.substring(0, 100), fallback: true },
+        });
       }
+    } else if (urgency === 'critical' && !emailDelivered) {
+      // Log why SMS was not sent
+      const reason = !phoneNumber ? 'no_phone_number' : !smsEnabled ? 'sms_disabled' : 'not_critical';
+      this.notificationLogService.logAsync({
+        userId,
+        notificationType: type,
+        channel: DeliveryChannel.SMS,
+        status: NotificationLogStatus.THROTTLED,
+        payload: { title, body: body.substring(0, 100), fallback: true, reason },
+      });
     }
   }
 

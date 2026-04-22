@@ -15,6 +15,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TRADE_COMPLETED_EVENT } from '../../risk-engine/services/risk-refresh.job';
 import { AdminAuditService, AuditContext } from '../../admin-audit/admin-audit.service';
 import { ActorType } from '../../admin-audit/entities/admin-audit-log.entity';
+import { TransactionAnnotationService } from './transaction-annotation.service';
 
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN', 'JPY', 'BTC', 'ETH', 'USDT'];
 
@@ -31,6 +32,7 @@ export class TransactionsService {
     private readonly webhookDispatcher: WebhookDispatcherService,
     private readonly eventEmitter: EventEmitter2,
     private readonly adminAuditService: AdminAuditService,
+    private readonly annotationService: TransactionAnnotationService,
   ) {}
 
   async createTransaction(dto: CreateTransactionDto, auditContext?: AuditContext) {
@@ -163,6 +165,36 @@ export class TransactionsService {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const offset = (page - 1) * limit;
+
+    // Handle tag search
+    if (dto.tag && userId) {
+      const tagResult = await this.annotationService.searchTransactionsByTag(userId, dto.tag, page, limit);
+      return {
+        success: true,
+        data: tagResult.transactions,
+        meta: {
+          page,
+          limit,
+          total: tagResult.total,
+          totalPages: Math.ceil(tagResult.total / limit),
+        },
+      };
+    }
+
+    // Handle notes search
+    if (dto.notes && userId) {
+      const notesResult = await this.annotationService.searchTransactionsByNotes(userId, dto.notes, page, limit);
+      return {
+        success: true,
+        data: notesResult.transactions,
+        meta: {
+          page,
+          limit,
+          total: notesResult.total,
+          totalPages: Math.ceil(notesResult.total / limit),
+        },
+      };
+    }
 
     const qb = this.txRepo.createQueryBuilder('t');
 
