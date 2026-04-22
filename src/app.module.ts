@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule';
+import { EscrowModule } from './modules/escrow/escrow.module';
+import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -47,6 +50,7 @@ const enableBull =
 @Module({
   imports: [
     ConfigModule,
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: () => ({
@@ -113,6 +117,8 @@ const enableBull =
     KycModule,
     WalletsModule,
     ScheduledTransactionsModule,
+    EscrowModule,
+    SplitPaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

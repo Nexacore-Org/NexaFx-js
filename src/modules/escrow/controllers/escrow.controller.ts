@@ -112,6 +112,26 @@ export class EscrowController {
     };
   }
 
+  @Get()
+  @ApiOperation({ summary: "Get current user's escrows (active and completed) with pagination" })
+  async list(
+    @Request() req: any,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    const userId = this.getUserId(req);
+    return this.escrowService.findByUser(userId, parseInt(page, 10) || 1, parseInt(limit, 10) || 20);
+  }
+
+  @Post(':id/fulfill-condition')
+  @ApiOperation({ summary: 'Fulfill a multi-party release condition for an escrow' })
+  @ApiParam({ name: 'id', description: 'Escrow UUID' })
+  async fulfillCondition(@Param('id', new ParseUUIDPipe()) id: string, @Request() req: any) {
+    const userId = this.getUserId(req);
+    const escrow = await this.escrowService.fulfillCondition(id, userId);
+    return { success: true, data: escrow };
+  }
+
   private getUserId(req: any): string {
     const userId = req.user?.id ?? req.user?.sub ?? req.headers['x-user-id'];
     if (!userId) {

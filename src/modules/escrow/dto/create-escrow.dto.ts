@@ -31,5 +31,8 @@ export class CreateEscrowDto {
   releaseCondition?: string;
 
   @IsOptional()
+  releaseConditions?: Array<{ party: string; amount: number }>;
+
+  @IsOptional()
   metadata?: Record<string, any>;
 }

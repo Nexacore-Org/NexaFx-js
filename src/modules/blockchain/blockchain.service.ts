@@ -165,4 +165,61 @@ export class BlockchainService implements IBlockchainService {
       return false;
     }
   }
+
+  /**
+   * Get on-chain balance for a given address
+   * Uses eth_getBalance JSON-RPC method
+   * @returns Balance as a decimal string in ETH (wei converted)
+   */
+  async getBalance(address: string): Promise<string> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(this.rpcUrl, {
+          jsonrpc: '2.0',
+          method: 'eth_getBalance',
+          params: [address, 'latest'],
+          id: 1,
+        }),
+      );
+
+      const balanceHex: string = response.data.result;
+      // Convert from wei (hex) to ETH string
+      const balanceWei = BigInt(balanceHex);
+      const balanceEth = Number(balanceWei) / 1e18;
+      return balanceEth.toFixed(18);
+    } catch (error) {
+      this.logger.error(`Failed to get balance for address ${address}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Broadcast a signed transaction to the network
+   * Uses eth_sendRawTransaction JSON-RPC method
+   * @param signedTx Hex-encoded signed transaction
+   * @returns Transaction hash
+   */
+  async broadcastTransaction(signedTx: string): Promise<string> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(this.rpcUrl, {
+          jsonrpc: '2.0',
+          method: 'eth_sendRawTransaction',
+          params: [signedTx],
+          id: 1,
+        }),
+      );
+
+      if (response.data.error) {
+        throw new Error(`RPC error: ${response.data.error.message}`);
+      }
+
+      const txHash: string = response.data.result;
+      this.logger.log(`Transaction broadcast successfully: ${txHash}`);
+      return txHash;
+    } catch (error) {
+      this.logger.error('Failed to broadcast transaction:', error);
+      throw error;
+    }
+  }
 }

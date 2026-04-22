@@ -53,6 +53,14 @@ export class EscrowEntity {
   @Column({ type: 'text', nullable: true })
   releaseCondition?: string | null;
 
+  /**
+   * Multi-party release conditions. Each entry specifies a party (userId) and
+   * the amount they must approve before funds are disbursed.
+   * All conditions must be met (met=true) before settlement.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  releaseConditions?: Array<{ party: string; amount: number; met: boolean }> | null;
+
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, any> | null;
 
