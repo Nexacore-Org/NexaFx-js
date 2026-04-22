@@ -31,6 +31,9 @@ export class ReferralRewardEntity {
   @Column({ type: 'boolean', default: false })
   disbursed: boolean;
 
+  @Column({ type: 'varchar', length: 20, default: 'pending' })
+  status: 'pending' | 'disbursed' | 'pending_review';
+
   @Column({ type: 'timestamp', nullable: true })
   disbursedAt?: Date;
 

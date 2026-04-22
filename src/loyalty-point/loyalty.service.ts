@@ -305,6 +305,106 @@ export class LoyaltyService {
     return result;
   }
 
+  // ── History ────────────────────────────────────────────────────────────────
+
+  /** GET /loyalty/history — paginated EARN/REDEEM/EXPIRE transaction history */
+  async getHistory(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: LoyaltyTransaction[]; total: number; page: number; limit: number }> {
+    const account = await this.accountRepo.findOne({ where: { userId } });
+    if (!account) throw new NotFoundException('Loyalty account not found');
+
+    const [data, total] = await this.txRepo.findAndCount({
+      where: { accountId: account.id },
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    return { data, total, page, limit };
+  }
+
+  // ── Balance Trend ──────────────────────────────────────────────────────────
+
+  /**
+   * GET /loyalty/balance/trend — daily balance snapshots for last 90 days.
+   * Derives snapshots from transaction history (no separate snapshot table needed).
+   */
+  async getBalanceTrend(userId: string): Promise<{ date: string; balance: number }[]> {
+    const account = await this.accountRepo.findOne({ where: { userId } });
+    if (!account) throw new NotFoundException('Loyalty account not found');
+
+    const since = new Date();
+    since.setDate(since.getDate() - 90);
+
+    const txs = await this.txRepo.find({
+      where: { accountId: account.id },
+      order: { createdAt: 'ASC' },
+    });
+
+    // Build daily snapshots by replaying transactions
+    const dailyMap = new Map<string, number>();
+    let runningBalance = 0;
+
+    for (const tx of txs) {
+      runningBalance = tx.balanceAfter;
+      const dateKey = tx.createdAt.toISOString().split('T')[0];
+      dailyMap.set(dateKey, runningBalance);
+    }
+
+    // Fill in the last 90 days
+    const result: { date: string; balance: number }[] = [];
+    let lastBalance = 0;
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      if (dailyMap.has(key)) lastBalance = dailyMap.get(key)!;
+      result.push({ date: key, balance: lastBalance });
+    }
+
+    return result;
+  }
+
+  // ── Redemption Analytics (admin) ───────────────────────────────────────────
+
+  async getRedemptionAnalytics(): Promise<{
+    mostPopularRewardType: string | null;
+    avgRedemptionSize: number;
+    totalRedeemedThisMonth: number;
+  }> {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const redeemTxs = await this.txRepo
+      .createQueryBuilder('tx')
+      .where('tx.type = :type', { type: LoyaltyTxType.REDEEM })
+      .andWhere('tx.createdAt >= :start', { start: startOfMonth })
+      .getMany();
+
+    const totalRedeemedThisMonth = redeemTxs.reduce((sum, tx) => sum + Math.abs(tx.points), 0);
+    const avgRedemptionSize = redeemTxs.length > 0 ? totalRedeemedThisMonth / redeemTxs.length : 0;
+
+    // Count by reward type
+    const typeCounts = new Map<string, number>();
+    for (const tx of redeemTxs) {
+      if (tx.rewardType) {
+        typeCounts.set(tx.rewardType, (typeCounts.get(tx.rewardType) ?? 0) + 1);
+      }
+    }
+
+    let mostPopularRewardType: string | null = null;
+    let maxCount = 0;
+    for (const [type, count] of typeCounts.entries()) {
+      if (count > maxCount) { maxCount = count; mostPopularRewardType = type; }
+    }
+
+    return { mostPopularRewardType, avgRedemptionSize, totalRedeemedThisMonth };
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   private buildReward(rewardType: RedemptionRewardType): RewardDetail {

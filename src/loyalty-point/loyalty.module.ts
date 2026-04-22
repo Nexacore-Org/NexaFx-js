@@ -3,25 +3,25 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
-import { LoyaltyAccount } from './entities/loyalty-account.entity';
-import { LoyaltyTransaction } from './entities/loyalty-transaction.entity';
+import { LoyaltyAccount } from './loyalty-account.entity';
+import { LoyaltyTransaction } from './loyalty-transaction.entity';
+import { LoyaltyBalanceSnapshot } from './entities/loyalty-balance-snapshot.entity';
 
-import { LoyaltyService } from './services/loyalty.service';
-import { EarnRulesService } from './services/earn-rules.service';
+import { LoyaltyService } from './loyalty.service';
+import { EarnRulesService } from './earn-rules.service';
 
-import { LoyaltyController } from './controllers/loyalty.controller';
-import { PointsExpiryJob } from './jobs/points-expiry.job';
-import { TierChangedListener } from './listeners/tier-changed.listener';
+import { LoyaltyController } from './loyalty.controller';
+import { LoyaltyAdminController } from './controllers/loyalty-admin.controller';
+import { PointsExpiryJob } from './points-expiry.job';
+import { TierChangedListener } from './tier-changed.listener';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([LoyaltyAccount, LoyaltyTransaction]),
-    // ScheduleModule and EventEmitterModule are typically registered once in
-    // AppModule; import here only if this module is loaded standalone.
+    TypeOrmModule.forFeature([LoyaltyAccount, LoyaltyTransaction, LoyaltyBalanceSnapshot]),
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
   ],
-  controllers: [LoyaltyController],
+  controllers: [LoyaltyController, LoyaltyAdminController],
   providers: [
     LoyaltyService,
     EarnRulesService,
