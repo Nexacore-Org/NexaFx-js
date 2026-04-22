@@ -205,4 +205,47 @@ export class GoalsController {
     const userId = req.user?.id || req.user?.userId || 'demo-user-id';
     return this.goalsService.calculateWalletProgress(id, userId);
   }
+
+  // ── Round-up rule ──────────────────────────────────────────────────────────
+
+  @Patch(':id/round-up-rule')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enable or disable automatic round-up contributions for a goal' })
+  @ApiParam({ name: 'id', description: 'Goal UUID' })
+  updateRoundUpRule(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: import('./dto/round-up.dto').UpdateRoundUpRuleDto,
+  ) {
+    const userId = req.user?.id || req.user?.userId || 'demo-user-id';
+    return this.goalsService.updateRoundUpRule(id, userId, dto);
+  }
+
+  // ── Contribution history ───────────────────────────────────────────────────
+
+  @Get(':id/contributions')
+  @ApiOperation({ summary: 'Get paginated contribution history for a goal' })
+  @ApiParam({ name: 'id', description: 'Goal UUID' })
+  getContributions(
+    @Request() req,
+    @Param('id') id: string,
+    @Query() query: import('./dto/round-up.dto').GetContributionsDto,
+  ) {
+    const userId = req.user?.id || req.user?.userId || 'demo-user-id';
+    return this.goalsService.getContributions(id, userId, query);
+  }
+
+  // ── Goal completion ────────────────────────────────────────────────────────
+
+  @Patch(':id/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark a goal as completed (requires linked wallet and target reached)' })
+  @ApiParam({ name: 'id', description: 'Goal UUID' })
+  completeGoal(
+    @Request() req,
+    @Param('id') id: string,
+  ) {
+    const userId = req.user?.id || req.user?.userId || 'demo-user-id';
+    return this.goalsService.completeGoal(id, userId);
+  }
 }

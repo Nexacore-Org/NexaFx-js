@@ -19,11 +19,11 @@ import {
 } from '@nestjs/swagger';
 import { IsString, MinLength } from 'class-validator';
 import { TransactionApprovalService } from './transaction-approval.service';
-import { ApproveTransactionDto, RejectTransactionDto } from '../dto/approval.dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../auth/guards/roles.guard';
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { ApproveTransactionDto, RejectTransactionDto } from './approval.dto';
+import { JwtAuthGuard } from '../modules/auth/guards/jwt.guard';
+import { RolesGuard } from '../modules/auth/guards/roles.guard';
+import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 
 class ForceApproveDto {
   @IsString()

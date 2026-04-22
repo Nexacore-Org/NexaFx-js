@@ -7,15 +7,24 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Goal, GoalStatus } from './entities/goal.entity';
+import { GoalContribution } from './entities/goal-contribution.entity';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { GoalResponseDto, GoalListResponseDto } from './dto/goal-response.dto';
+import {
+  UpdateRoundUpRuleDto,
+  GetContributionsDto,
+  PaginatedContributionsDto,
+  ContributionResponseDto,
+} from './dto/round-up.dto';
 
 @Injectable()
 export class GoalsService {
   constructor(
     @InjectRepository(Goal)
     private readonly goalRepository: Repository<Goal>,
+    @InjectRepository(GoalContribution)
+    private readonly contributionRepository: Repository<GoalContribution>,
   ) {}
 
   async create(userId: string, createGoalDto: CreateGoalDto): Promise<GoalResponseDto> {
@@ -245,20 +254,80 @@ export class GoalsService {
     }
   }
 
+  // ── Round-up rule ─────────────────────────────────────────────────────────
+
+  async updateRoundUpRule(goalId: string, userId: string, dto: UpdateRoundUpRuleDto): Promise<Goal> {
+    const goal = await this.goalRepository.findOne({ where: { id: goalId, userId } });
+    if (!goal) throw new NotFoundException(`Goal ${goalId} not found`);
+
+    if (dto.enabled) {
+      if (!dto.unit) throw new BadRequestException('round_up_unit is required when enabling round-up');
+      if (!dto.linkedWalletId && !goal.linkedWalletId) {
+        throw new BadRequestException('linkedWalletId is required when enabling round-up for the first time');
+      }
+      goal.roundUpEnabled = true;
+      goal.roundUpUnit = dto.unit;
+      if (dto.linkedWalletId) goal.linkedWalletId = dto.linkedWalletId;
+    } else {
+      goal.roundUpEnabled = false;
+    }
+
+    return this.goalRepository.save(goal);
+  }
+
+  // ── Contribution history ───────────────────────────────────────────────────
+
+  async getContributions(goalId: string, userId: string, query: GetContributionsDto): Promise<PaginatedContributionsDto> {
+    const goal = await this.goalRepository.findOne({ where: { id: goalId, userId } });
+    if (!goal) throw new NotFoundException(`Goal ${goalId} not found`);
+
+    const { page = 1, limit = 20 } = query;
+    const [rows, total] = await this.contributionRepository.findAndCount({
+      where: { goalId },
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    const data: ContributionResponseDto[] = rows.map((c) => ({
+      id: c.id,
+      amount: c.amount,
+      currency: c.currency,
+      source: c.source,
+      transactionId: c.transactionId,
+      progressSnapshot: c.progressSnapshot,
+      createdAt: c.createdAt,
+    }));
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  // ── Goal completion workflow ───────────────────────────────────────────────
+
+  async completeGoal(goalId: string, userId: string): Promise<Goal> {
+    const goal = await this.goalRepository.findOne({ where: { id: goalId, userId } });
+    if (!goal) throw new NotFoundException(`Goal ${goalId} not found`);
+    if (goal.isCompleted) throw new BadRequestException('Goal is already completed');
+    if (!goal.linkedWalletId) throw new BadRequestException('A linked wallet is required to complete this goal');
+
+    const current = parseFloat(goal.currentAmount as any);
+    const target = parseFloat(goal.targetAmount as any);
+    if (current < target) {
+      throw new BadRequestException(`Goal target not yet reached (${current} / ${target})`);
+    }
+
+    goal.isCompleted = true;
+    goal.completedAt = new Date();
+    goal.status = GoalStatus.COMPLETED;
+    return this.goalRepository.save(goal);
+  }
+
   private calculateSummary(goals: Goal[]) {
     const activeGoals = goals.filter(g => g.status === GoalStatus.ACTIVE);
     const completedGoals = goals.filter(g => g.status === GoalStatus.COMPLETED);
 
-    const totalTargetAmount = goals.reduce(
-      (sum, goal) => sum + Number(goal.targetAmount),
-      0,
-    );
-
-    const totalCurrentAmount = goals.reduce(
-      (sum, goal) => sum + Number(goal.currentAmount),
-      0,
-    );
-
+    const totalTargetAmount = goals.reduce((sum, goal) => sum + Number(goal.targetAmount), 0);
+    const totalCurrentAmount = goals.reduce((sum, goal) => sum + Number(goal.currentAmount), 0);
     const averageProgress =
       goals.length > 0
         ? goals.reduce((sum, goal) => sum + goal.progressPercentage, 0) / goals.length

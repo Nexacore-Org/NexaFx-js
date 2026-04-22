@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import * as crypto from 'crypto';
@@ -6,41 +6,95 @@ import { UserEntity } from '../users/entities/user.entity';
 import { ReferralService } from '../referrals/services/referral.service';
 import { MailService } from '../mail/services/mail.service';
 import { ConfigService } from '@nestjs/config';
+import { AdminAuditService, AuditContext } from '../admin-audit/admin-audit.service';
+import { ActorType } from '../admin-audit/entities/admin-audit-log.entity';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     private readonly referralService: ReferralService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    private readonly adminAuditService: AdminAuditService,
   ) {}
 
   /**
    * Validates if a user is active (not soft-deleted) and can login
    */
-  async validateUserForLogin(userId: string): Promise<UserEntity> {
+  async validateUserForLogin(userId: string, auditContext?: AuditContext): Promise<UserEntity> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
       withDeleted: true, // Include soft deleted records to check if user is deleted
     });
 
     if (!user) {
+      // Log failed login attempt
+      if (auditContext) {
+        await this.logAuthEvent(auditContext, 'LOGIN_FAILED', userId, 'User not found');
+      }
       throw new UnauthorizedException('User not found');
     }
 
     // Check if user is soft deleted
     if (user.deletedAt) {
+      if (auditContext) {
+        await this.logAuthEvent(auditContext, 'LOGIN_FAILED', user.id, 'Account has been deactivated');
+      }
       throw new UnauthorizedException('Account has been deactivated');
     }
 
     // Check if user status is active
     if (user.status === 'suspended' || user.status === 'deleted') {
+      if (auditContext) {
+        await this.logAuthEvent(auditContext, 'LOGIN_FAILED', user.id, 'Account is suspended');
+      }
       throw new UnauthorizedException('Account is suspended');
     }
 
+    // Log successful login
+    if (auditContext) {
+      await this.logAuthEvent(auditContext, 'LOGIN', user.id);
+    }
+
     return user;
+  }
+
+  /**
+   * Logs user logout
+   */
+  async logUserLogout(userId: string, auditContext?: AuditContext): Promise<void> {
+    if (auditContext) {
+      await this.logAuthEvent(auditContext, 'LOGOUT', userId);
+    }
+  }
+
+  /**
+   * Helper method to log auth events
+   */
+  private async logAuthEvent(
+    context: AuditContext,
+    action: string,
+    userId: string,
+    reason?: string,
+  ): Promise<void> {
+    try {
+      await this.adminAuditService.logAuthEvent(context, {
+        userId,
+        action: action as any,
+        success: !reason,
+        reason,
+        metadata: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to log auth event: ${error.message}`, error.stack);
+      // Never block the primary operation
+    }
   }
 
   /**
@@ -73,7 +127,7 @@ export class AuthService {
     }
   }
 
-  async forgotPassword(email: string): Promise<void> {
+  async forgotPassword(email: string, auditContext?: AuditContext): Promise<void> {
     const user = await this.userRepository.findOne({ where: { email, deletedAt: IsNull() } });
     if (!user) return; // Don't reveal whether email exists
 
@@ -86,12 +140,17 @@ export class AuthService {
       passwordResetExpiry: expiry,
     });
 
+    // Log password reset request
+    if (auditContext) {
+      await this.logAuthEvent(auditContext, 'PASSWORD_RESET', user.id);
+    }
+
     const baseUrl = this.configService.get<string>('APP_URL', 'http://localhost:3000');
     const resetUrl = `${baseUrl}/auth/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
     await this.mailService.sendPasswordReset(email, resetUrl);
   }
 
-  async resetPassword(email: string, token: string, newPasswordHash: string): Promise<void> {
+  async resetPassword(email: string, token: string, newPasswordHash: string, auditContext?: AuditContext): Promise<void> {
     const user = await this.userRepository.findOne({ where: { email, deletedAt: IsNull() } });
     if (!user || !user.passwordResetTokenHash || !user.passwordResetExpiry) {
       throw new BadRequestException('Invalid or expired reset token');
@@ -111,6 +170,11 @@ export class AuthService {
       passwordResetTokenHash: undefined,
       passwordResetExpiry: undefined,
     });
+
+    // Log password reset completion
+    if (auditContext) {
+      await this.logAuthEvent(auditContext, 'PASSWORD_RESET_COMPLETED', user.id);
+    }
   }
 
   async sendEmailVerification(userId: string, email: string): Promise<void> {
@@ -124,7 +188,7 @@ export class AuthService {
     await this.mailService.sendEmailVerification(email, verifyUrl);
   }
 
-  async verifyEmail(userId: string, token: string): Promise<void> {
+  async verifyEmail(userId: string, token: string, auditContext?: AuditContext): Promise<void> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user || !user.emailVerificationTokenHash) {
       throw new BadRequestException('Invalid verification token');
@@ -139,5 +203,10 @@ export class AuthService {
       emailVerifiedAt: new Date(),
       emailVerificationTokenHash: undefined,
     });
+
+    // Log email verification
+    if (auditContext) {
+      await this.logAuthEvent(auditContext, 'EMAIL_VERIFIED', userId);
+    }
   }
 }

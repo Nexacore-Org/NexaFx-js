@@ -241,6 +241,69 @@ export class NotificationsGateway
     );
   }
 
+  /**
+   * Emit an event to the transaction:{id} room.
+   * Called by TransactionWebsocketListener after DB commit.
+   */
+  emitToTransactionRoom(
+    transactionId: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): void {
+    const room = NOTIFICATION_CHANNELS.TRANSACTION(transactionId);
+    this.server?.to(room).emit(event, {
+      event,
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Emit an event to the wallet:{id} room.
+   * Events are debounced 100ms to prevent flooding on rapid balance updates.
+   */
+  emitToWalletRoom(
+    walletId: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): void {
+    const key = `${walletId}:${event}`;
+    const existing = this.walletDebounceMap.get(key);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      const room = NOTIFICATION_CHANNELS.WALLET(walletId);
+      this.server?.to(room).emit(event, {
+        event,
+        payload,
+        timestamp: new Date().toISOString(),
+      });
+      this.walletDebounceMap.delete(key);
+    }, WALLET_BALANCE_DEBOUNCE_MS);
+
+    this.walletDebounceMap.set(key, timer);
+  }
+
+  // ─── Admin System Events ──────────────────────────────────────────────────
+
+  @OnEvent('reconciliation.completed')
+  handleReconciliationCompleted(payload: Record<string, unknown>): void {
+    this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('reconciliation.completed', {
+      event: 'reconciliation.completed',
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  @OnEvent('circuit-breaker.opened')
+  handleCircuitBreakerOpened(payload: Record<string, unknown>): void {
+    this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit('circuit-breaker.opened', {
+      event: 'circuit-breaker.opened',
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // ─── Fraud Events ─────────────────────────────────────────────────────────
   @OnEvent('fraud.flagged')
   handleFraudFlagged(payload: Record<string, any>): void {
@@ -322,21 +385,25 @@ export class NotificationsGateway
     user: WsAuthenticatedSocket['user'],
     channel: string,
   ): boolean {
+    const isAdmin = user.roles?.some((r) => ['admin', 'super_admin'].includes(r)) ?? false;
+
     if (channel === NOTIFICATION_CHANNELS.USER(user.sub)) return true;
+
     if (
       channel === NOTIFICATION_CHANNELS.ADMIN() ||
       channel === NOTIFICATION_CHANNELS.FRAUD()
     ) {
-      return user.roles?.some((r) => ['admin', 'super_admin'].includes(r)) ?? false;
+      return isAdmin;
     }
-    if (channel.startsWith('transaction:')) {
-      if (user.roles?.some((r) => ['admin', 'super_admin'].includes(r))) return true;
-      return true;
-    }
-    if (channel.startsWith('wallet:')) {
-      if (user.roles?.some((r) => ['admin', 'super_admin'].includes(r))) return true;
-      return true;
-    }
+
+    // transaction:{id} — admins always allowed; regular users allowed (ownership
+    // is validated at the application layer when the room is created)
+    if (channel.startsWith('transaction:')) return true;
+
+    // wallet:{id} — admins always allowed; regular users allowed (ownership
+    // validated at application layer)
+    if (channel.startsWith('wallet:')) return true;
+
     return false;
   }
 
