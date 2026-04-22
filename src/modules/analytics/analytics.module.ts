@@ -8,14 +8,20 @@ import { RevenueAnalyticsService } from './services/revenue-analytics.service';
 import { RevenueAnalyticsController } from './controllers/revenue-analytics.controller';
 import { AnalyticsAdminController } from './controllers/analytics-admin.controller';
 import { AnalyticsCleanupWorker } from './workers/analytics-cleanup.worker';
+import { NotificationDeliveryAnalyticsController } from './controllers/notification-delivery-analytics.controller';
+import { NotificationDeliveryReceiptEntity } from '../notifications/entities/notification-delivery-receipt.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ApiUsageLogEntity]),
+    TypeOrmModule.forFeature([ApiUsageLogEntity, NotificationDeliveryReceiptEntity]),
     ScheduleModule.forRoot(),
   ],
   providers: [ApiUsageService, AnalyticsCleanupWorker, RevenueAnalyticsService],
-  controllers: [AnalyticsAdminController, RevenueAnalyticsController],
+  controllers: [
+    AnalyticsAdminController,
+    RevenueAnalyticsController,
+    NotificationDeliveryAnalyticsController,
+  ],
   exports: [ApiUsageService, RevenueAnalyticsService],
 })
 export class AnalyticsModule implements NestModule {
