@@ -37,6 +37,14 @@ export class WalletEntity {
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, any>;
 
+  /** AES-256-GCM encrypted private key — format: base64(iv):base64(authTag+ciphertext) */
+  @Column({ type: 'text', nullable: true, select: false })
+  privateKeyEncrypted?: string;
+
+  /** Monotonic key version — incremented on each rotation */
+  @Column({ type: 'int', default: 1 })
+  keyVersion: number;
+
   @Column({ type: 'decimal', precision: 18, scale: 8, default: 0 })
   availableBalance: number;
 
