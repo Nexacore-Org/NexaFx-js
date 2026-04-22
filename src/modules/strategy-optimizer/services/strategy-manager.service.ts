@@ -6,6 +6,7 @@ import { StrategyVersion } from '../entities/strategy-version.entity';
 import { OptimizationService } from './optimization.service';
 import { RegimeDetectionService } from './regime-detection.service';
 import { MetricsCollectorService } from './metrics-collector.service';
+import { RiskState } from '../../risk-engine/entities/risk-state.entity';
 
 @Injectable()
 export class StrategyManagerService {
@@ -16,14 +17,25 @@ export class StrategyManagerService {
     private readonly strategyRepo: Repository<Strategy>,
     @InjectRepository(StrategyVersion)
     private readonly versionRepo: Repository<StrategyVersion>,
+    @InjectRepository(RiskState)
+    private readonly riskStateRepo: Repository<RiskState>,
     private readonly optimizationService: OptimizationService,
     private readonly regimeService: RegimeDetectionService,
     private readonly metricsService: MetricsCollectorService,
   ) {}
 
+  /**
+   * Returns the max position size for a user from RiskState (re-reads from DB per spec).
+   */
+  async getMaxPositionSize(userId: string): Promise<number> {
+    const state = await this.riskStateRepo.findOne({ where: { userId } });
+    return state ? Number(state.maxPositionSize) : 0;
+  }
+
   async evaluateAndAdapt(
     strategyId: string,
     historicalData: any[],
+    userId?: string,
   ): Promise<void> {
     const strategy = await this.strategyRepo.findOne({
       where: { id: strategyId },
@@ -34,6 +46,9 @@ export class StrategyManagerService {
       this.logger.error(`Strategy with ID ${strategyId} not found`);
       return;
     }
+
+    // Read position limits from RiskState (re-read from DB per spec)
+    const maxPositionSize = userId ? await this.getMaxPositionSize(userId) : null;
 
     // 1. Detect Regime
     const prices = historicalData.map((d) => d.close); // Assuming data structure

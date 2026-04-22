@@ -26,7 +26,7 @@ export class NexaFxWebSocketClient {
       );
     }
 
-    const socket = this.client.createWebSocket(this.buildURL(token));
+    const socket = this.client.createWebSocket(this.buildURL(token, '/ws/prices'));
 
     socket.onopen = () => {
       socket.send(
@@ -48,13 +48,42 @@ export class NexaFxWebSocketClient {
     return () => socket.close(1000, 'client unsubscribe');
   }
 
-  private buildURL(token: string): string {
+  subscribeToTransactions(
+    transactionId: string,
+    onUpdate: (event: { type: string; transactionId: string; status: string; timestamp: string }) => void,
+  ): () => void {
+    const token = this.client.getAccessToken();
+    if (!token) {
+      throw new NexaFxAuthError('A JWT access token is required for transaction subscriptions.');
+    }
+
+    const socket = this.client.createWebSocket(this.buildURL(token, `/ws/transactions/${transactionId}`));
+
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ type: 'subscribe', channel: `transaction:${transactionId}` }));
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.transactionId === transactionId) {
+          onUpdate(payload);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    return () => socket.close(1000, 'client unsubscribe');
+  }
+
+  private buildURL(token: string, path = '/ws/prices'): string {
     const rawBase =
       this.client.options.websocketURL || this.client.options.baseURL;
     const url = new URL(rawBase);
 
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.pathname = '/ws/prices';
+    url.pathname = path;
     url.searchParams.set('access_token', token);
 
     return url.toString();

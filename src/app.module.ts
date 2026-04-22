@@ -33,6 +33,7 @@ import { SecretsModule } from './modules/secrets/secrets.module';
 import { DataArchiveModule } from './modules/data-archive/data-archive.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { GoalsModule } from './goals/goal.module';
+import { GoalsMarketplaceModule } from './goal/goals.module';
 import { AnnouncementsModule } from './announcement/announcement.module';
 import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
@@ -117,6 +118,7 @@ const enableBull =
     DataArchiveModule,
     IdempotencyModule,
     GoalsModule,
+    GoalsMarketplaceModule,
     AnnouncementsModule,
     ComplianceModule,
     LedgerModule,
@@ -127,6 +129,7 @@ const enableBull =
     KycModule,
     WalletsModule,
     ScheduledTransactionsModule,
+    DisputesModule,
     EscrowModule,
     SplitPaymentsModule,
     SubscriptionsModule,

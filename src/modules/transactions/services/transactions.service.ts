@@ -11,6 +11,8 @@ import { TransactionLifecycleService } from './transaction-lifecycle.service';
 import { RiskScoringService } from './risk-scoring.service';
 import { FxAggregatorService } from '../../fx/fx-aggregator.service';
 import { WebhookDispatcherService } from '../../webhooks/webhook-dispatcher.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { TRADE_COMPLETED_EVENT } from '../../risk-engine/services/risk-refresh.job';
 import { AdminAuditService, AuditContext } from '../../admin-audit/admin-audit.service';
 import { ActorType } from '../../admin-audit/entities/admin-audit-log.entity';
 import { TransactionAnnotationService } from './transaction-annotation.service';
@@ -28,6 +30,7 @@ export class TransactionsService {
     private readonly riskScoringService: RiskScoringService,
     private readonly fxAggregatorService: FxAggregatorService,
     private readonly webhookDispatcher: WebhookDispatcherService,
+    private readonly eventEmitter: EventEmitter2,
     private readonly adminAuditService: AdminAuditService,
     private readonly annotationService: TransactionAnnotationService,
   ) {}
@@ -134,6 +137,18 @@ export class TransactionsService {
         currency: transaction.currency,
         status: transaction.status,
       }).catch(() => {});
+    });
+
+    // Post-trade risk state refresh
+    setImmediate(() => {
+      const userId = (dto as any).userId ?? (dto as any).walletId;
+      if (userId) {
+        this.eventEmitter.emit(TRADE_COMPLETED_EVENT, {
+          tradeId: transaction.id,
+          userId,
+          pnl: 0,
+        });
+      }
     });
 
     return {

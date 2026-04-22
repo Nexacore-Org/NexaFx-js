@@ -4,6 +4,7 @@ import { Strategy } from './entities/strategy.entity';
 import { StrategyParameter } from './entities/strategy-parameter.entity';
 import { StrategyVersion } from './entities/strategy-version.entity';
 import { PerformanceMetric } from './entities/performance-metric.entity';
+import { RiskState } from '../risk-engine/entities/risk-state.entity';
 import { OptimizationService } from './services/optimization.service';
 import { MetricsCollectorService } from './services/metrics-collector.service';
 import { RegimeDetectionService } from './services/regime-detection.service';
@@ -17,6 +18,7 @@ import { StrategyAdminController } from './controllers/strategy-admin.controller
       StrategyParameter,
       StrategyVersion,
       PerformanceMetric,
+      RiskState,
     ]),
   ],
   controllers: [StrategyAdminController],

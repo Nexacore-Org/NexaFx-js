@@ -1,11 +1,13 @@
 import {
   Body, Controller, Get, Post, Query, Param, UseGuards, Request,
   Headers, HttpCode, HttpStatus, Delete,
+  Headers, HttpCode, HttpStatus, Res,
 } from '@nestjs/common';
 import {
   ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiParam,
   ApiCreatedResponse, ApiHeader, ApiBody,
 } from '@nestjs/swagger';
+import { Response } from 'express';
 import { TransactionsService } from '../services/transactions.service';
 import { TransactionAnnotationService } from '../services/transaction-annotation.service';
 import { SearchTransactionsDto } from '../dto/search-transactions.dto';
@@ -16,6 +18,7 @@ import { BulkTagDto } from '../dto/bulk-tag.dto';
 import { EnrichmentService } from '../../enrichment/enrichment.service';
 import { ReceiptService } from '../services/receipt.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
+import { RiskPreTradeGuard } from '../../risk-engine/services/risk-pre-trade.guard';
 import { SkipAudit } from '../../admin-audit/decorators/skip-audit.decorator';
 import { IdempotencyService } from '../../../idempotency/idempotency.service';
 
@@ -34,6 +37,7 @@ export class TransactionsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RiskPreTradeGuard)
   @ApiOperation({ summary: 'Create a new transaction' })
   @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key to prevent duplicate submissions', required: false })
   @ApiCreatedResponse({ description: 'Transaction created' })
@@ -75,6 +79,19 @@ export class TransactionsController {
   async getReceipt(@Param('id') id: string) {
     const receipt = await this.receiptService.generateReceipt(id);
     return { success: true, data: receipt };
+  }
+
+  @Get(':id/receipt/pdf')
+  @ApiOperation({ summary: 'Download transaction receipt as PDF' })
+  @ApiParam({ name: 'id', description: 'Transaction UUID' })
+  async getReceiptPdf(@Param('id') id: string, @Res() res: Response) {
+    const { pdf, checksum } = await this.receiptService.generateReceiptPdf(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="receipt-${id}.pdf"`,
+      'X-Checksum': checksum,
+    });
+    res.send(pdf);
   }
 
   @Get(':id/enrichment')

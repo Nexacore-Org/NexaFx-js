@@ -10,6 +10,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { DisputeEntity } from '../entities/dispute.entity';
 import { TransactionEntity } from '../../transactions/entities/transaction.entity';
 import { OpenDisputeDto, ResolveDisputeDto } from '../dto/dispute.dto';
+import { NotificationService } from '../../notifications/services/notification.service';
 
 @Injectable()
 export class DisputesService {
@@ -19,7 +20,40 @@ export class DisputesService {
     @InjectRepository(TransactionEntity)
     private readonly txRepo: Repository<TransactionEntity>,
     private readonly dataSource: DataSource,
+    private readonly notificationService: NotificationService,
   ) {}
+
+  private async sendDisputeNotification(dispute: DisputeEntity, action: string) {
+    // Notify initiator
+    await this.notificationService.send({
+      type: 'dispute.status_changed',
+      userId: dispute.initiatorUserId,
+      payload: {
+        disputeId: dispute.id,
+        subjectType: dispute.subjectType,
+        subjectId: dispute.subjectId,
+        status: dispute.status,
+        action,
+        resolutionNote: dispute.resolutionNote,
+      },
+    });
+
+    // Notify counterparty if exists
+    if (dispute.counterpartyUserId) {
+      await this.notificationService.send({
+        type: 'dispute.status_changed',
+        userId: dispute.counterpartyUserId,
+        payload: {
+          disputeId: dispute.id,
+          subjectType: dispute.subjectType,
+          subjectId: dispute.subjectId,
+          status: dispute.status,
+          action,
+          resolutionNote: dispute.resolutionNote,
+        },
+      });
+    }
+  }
 
   async openTransactionDispute(
     transactionId: string,
@@ -59,21 +93,49 @@ export class DisputesService {
       dispute = await manager.save(DisputeEntity, dispute);
     });
 
+    // Send notification
+    await this.sendDisputeNotification(dispute, 'opened');
+
     return dispute!;
   }
 
-  async getUserDisputes(userId: string): Promise<DisputeEntity[]> {
-    return this.disputeRepo.find({
+  async getUserDisputes(userId: string): Promise<any[]> {
+    const disputes = await this.disputeRepo.find({
       where: { initiatorUserId: userId },
       order: { createdAt: 'DESC' },
     });
+
+    // Enrich with transaction details
+    const enriched = await Promise.all(
+      disputes.map(async (dispute) => {
+        let transaction = null;
+        if (dispute.subjectType === 'TRANSACTION') {
+          transaction = await this.txRepo.findOne({ where: { id: dispute.subjectId } });
+        }
+        return {
+          ...dispute,
+          transaction,
+        };
+      }),
+    );
+
+    return enriched;
   }
 
-  async getDisputeById(id: string, userId: string): Promise<DisputeEntity> {
+  async getDisputeById(id: string, userId: string): Promise<any> {
     const dispute = await this.disputeRepo.findOne({ where: { id } });
     if (!dispute) throw new NotFoundException('Dispute not found');
     if (dispute.initiatorUserId !== userId) throw new ForbiddenException();
-    return dispute;
+
+    let transaction = null;
+    if (dispute.subjectType === 'TRANSACTION') {
+      transaction = await this.txRepo.findOne({ where: { id: dispute.subjectId } });
+    }
+
+    return {
+      ...dispute,
+      transaction,
+    };
   }
 
   async adminResolveDispute(
@@ -87,14 +149,24 @@ export class DisputesService {
     dispute.resolutionNote = dto.resolutionNote;
     dispute.resolvedAt = new Date();
 
-    return this.disputeRepo.save(dispute);
+    dispute = await this.disputeRepo.save(dispute);
+
+    // Send notification
+    await this.sendDisputeNotification(dispute, dto.action.toLowerCase());
+
+    return dispute;
   }
 
   async adminUpdateStatus(id: string, status: 'UNDER_REVIEW'): Promise<DisputeEntity> {
     const dispute = await this.disputeRepo.findOne({ where: { id } });
     if (!dispute) throw new NotFoundException('Dispute not found');
     dispute.status = status;
-    return this.disputeRepo.save(dispute);
+    dispute = await this.disputeRepo.save(dispute);
+
+    // Send notification
+    await this.sendDisputeNotification(dispute, 'under_review');
+
+    return dispute;
   }
 
   /** Auto-close disputes older than 30 days — runs daily */
@@ -111,6 +183,9 @@ export class DisputesService {
       dispute.status = 'TIMED_OUT';
       dispute.resolvedAt = now;
       await this.disputeRepo.save(dispute);
+
+      // Send notification
+      await this.sendDisputeNotification(dispute, 'timed_out');
     }
   }
 
