@@ -43,6 +43,8 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
+import { DisputesModule } from './modules/disputes/disputes.module';
+import { DisputesModule } from './modules/disputes/disputes.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -117,6 +119,7 @@ const enableBull =
     KycModule,
     WalletsModule,
     ScheduledTransactionsModule,
+    DisputesModule,
     EscrowModule,
     SplitPaymentsModule,
   ],
