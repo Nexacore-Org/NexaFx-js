@@ -10,6 +10,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { SuspendUserDto } from './dto/suspend-user.dto';
 import { ToggleFeatureFlagDto } from './dto/toggle-feature-flag.dto';
@@ -22,6 +23,8 @@ import { AuditLog } from '../admin-audit/decorators/audit-log.decorator';
 import { SkipAudit } from '../admin-audit/decorators/skip-audit.decorator';
 import { ActivityTimelineService } from '../users/services/activity-timeline.service';
 
+@ApiTags('Admin')
+@ApiBearerAuth('access-token')
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {

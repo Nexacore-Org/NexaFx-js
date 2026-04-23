@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TerminusModule } from '@nestjs/terminus';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '../../config/config.module';
 import { ConfigService } from '@nestjs/config';
 import { HealthController } from './controllers/health.controller';

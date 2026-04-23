@@ -5,7 +5,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ApiUsageLogEntity } from './entities/api-usage-log.entity';
 import { ApiUsageService } from './services/api-usage.service';
 import { RevenueAnalyticsService } from './services/revenue-analytics.service';
+import { ErrorAnalyticsService } from './services/error-analytics.service';
 import { RevenueAnalyticsController } from './controllers/revenue-analytics.controller';
+import { AnalyticsAdminController } from './controllers/analytics-admin.controller';
+import { AdminAnalyticsController } from './controllers/admin-analytics.controller';
 import { AnalyticsAdminController } from './controllers/admin-analytics.controller';
 import { AnalyticsCleanupWorker } from './workers/analytics-cleanup.worker';
 import { NotificationDeliveryAnalyticsController } from './controllers/notification-delivery-analytics.controller';
@@ -39,12 +42,15 @@ import { TenantsModule } from '../tenants/tenants.module';
     TransactionAnalyticsService,
     FraudAnalyticsService,
   ],
+  providers: [ApiUsageService, AnalyticsCleanupWorker, RevenueAnalyticsService, ErrorAnalyticsService],
   controllers: [
     AnalyticsController,
     AnalyticsAdminController,
+    AdminAnalyticsController,
     RevenueAnalyticsController,
     NotificationDeliveryAnalyticsController,
   ],
+  exports: [ApiUsageService, RevenueAnalyticsService, ErrorAnalyticsService],
   exports: [
     ApiUsageService,
     RevenueAnalyticsService,
