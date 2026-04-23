@@ -233,11 +233,7 @@ export class NotificationsGateway
   emitDashboardAlert(payload: Record<string, unknown>): void {
     this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit(
       NOTIFICATION_EVENTS.DASHBOARD_ALERT,
-      {
-        event: NOTIFICATION_EVENTS.DASHBOARD_ALERT,
-        payload,
-        timestamp: new Date().toISOString(),
-      },
+      payload,
     );
   }
 

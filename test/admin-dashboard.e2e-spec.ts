@@ -265,4 +265,42 @@ describe('Admin Dashboard API (integration)', () => {
       }),
     );
   });
+
+  it('uses the required WebSocket payload structure', async () => {
+    await controller.getDashboard();
+
+    expect(notificationsGateway.emitDashboardAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alertType: expect.any(String),
+        severity: expect.any(String),
+        entityId: expect.any(String),
+        entityType: expect.any(String),
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('invalidates cache when a new CRITICAL alert is detected', async () => {
+    const buildSystemHealthSpy = jest.spyOn(dashboardService as any, 'buildSystemHealthSection');
+
+    // Reset mocks for this test
+    buildSystemHealthSpy.mockReset();
+
+    // First call: system is healthy (no critical alert)
+    const healthyHealth = { ...systemHealth, status: 'healthy' as const, circuitBreakers: [] };
+    buildSystemHealthSpy.mockResolvedValue(healthyHealth);
+
+    await controller.getDashboard();
+    expect(buildSystemHealthSpy).toHaveBeenCalledTimes(1);
+
+    // Second call: system becomes unhealthy (new critical alert)
+    buildSystemHealthSpy.mockResolvedValue(systemHealth); // systemHealth is unhealthy (critical)
+
+    await controller.getDashboard();
+    expect(buildSystemHealthSpy).toHaveBeenCalledTimes(2);
+
+    // Third call: cache should have been invalidated by the second call's critical alert
+    await controller.getDashboard();
+    expect(buildSystemHealthSpy).toHaveBeenCalledTimes(3);
+  });
 });
