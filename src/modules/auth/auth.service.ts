@@ -6,6 +6,8 @@ import { UserEntity } from '../users/entities/user.entity';
 import { ReferralService } from '../referrals/services/referral.service';
 import { MailService } from '../mail/services/mail.service';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { DeviceService, RegisterDeviceDto } from '../sessions/services/device.service';
 import { AdminAuditService, AuditContext } from '../admin-audit/admin-audit.service';
 import { ActorType } from '../admin-audit/entities/admin-audit-log.entity';
 
@@ -19,6 +21,8 @@ export class AuthService {
     private readonly referralService: ReferralService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
+    private readonly deviceService: DeviceService,
     private readonly adminAuditService: AdminAuditService,
   ) {}
 
@@ -61,6 +65,81 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * Registers a new user and sends verification email.
+   */
+  async register(
+    userData: { email: string; passwordHash: string; firstName: string; lastName: string },
+    referralCode?: string,
+    auditContext?: AuditContext,
+  ): Promise<{ user: UserEntity; accessToken: string }> {
+    const existing = await this.userRepository.findOne({ where: { email: userData.email } });
+    if (existing) {
+      throw new BadRequestException('Email already registered');
+    }
+
+    const user = this.userRepository.create({
+      ...userData,
+      status: 'active',
+    });
+    const saved = await this.userRepository.save(user);
+
+    // Link referral (non-blocking)
+    await this.linkReferralOnRegistration(saved.id, referralCode);
+
+    // Send verification email
+    await this.sendEmailVerification(saved.id, saved.email);
+
+    // Audit
+    if (auditContext) {
+      await this.logAuthEvent(auditContext, 'REGISTER', saved.id);
+    }
+
+    const accessToken = this.jwtService.sign({ sub: saved.id, email: saved.email });
+    return { user: saved, accessToken };
+  }
+
+  /**
+   * Logins a user and tracks device. Sends notification for new devices.
+   */
+  async login(
+    email: string,
+    passwordHash: string,
+    deviceDto: RegisterDeviceDto,
+    auditContext?: AuditContext,
+  ): Promise<{ user: UserEntity; accessToken: string }> {
+    const user = await this.userRepository.findOne({ where: { email, deletedAt: IsNull() } });
+    
+    if (!user || user.passwordHash !== passwordHash) {
+      if (auditContext) {
+        await this.logAuthEvent(auditContext, 'LOGIN_FAILED', email, 'Invalid credentials');
+      }
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Reuse existing validation logic
+    await this.validateUserForLogin(user.id, auditContext);
+
+    // Register device
+    const { device, isNew } = await this.deviceService.registerOrUpdateDevice({
+      ...deviceDto,
+      userId: user.id,
+    });
+
+    // Notify if new device (issue #416)
+    if (isNew) {
+      await this.mailService.sendNewDeviceLogin(user.email, {
+        deviceName: device.deviceName || 'Unknown Device',
+        ip: device.lastIp || 'Unknown IP',
+        location: `${device.lastCity || 'Unknown City'}, ${device.lastCountry || 'Unknown Country'}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const accessToken = this.jwtService.sign({ sub: user.id, email: user.email });
+    return { user, accessToken };
   }
 
   /**

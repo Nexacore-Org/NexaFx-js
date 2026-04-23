@@ -21,10 +21,10 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { VerifiedGuard } from '../auth/guards/verified.guard';
 import { AuditLog } from '../admin-audit/decorators/audit-log.decorator';
 import { SkipAudit } from '../admin-audit/decorators/skip-audit.decorator';
 import { ActivityTimelineService } from './services/activity-timeline.service';
@@ -75,6 +75,7 @@ export class UsersController {
   }
 
   @Post('me/deactivate')
+  @UseGuards(VerifiedGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @AuditLog({
     action: 'DEACTIVATE_ACCOUNT',
@@ -128,29 +129,5 @@ export class UsersController {
   @ApiOkResponse({ description: 'Account health score' })
   async getHealthScore(@Request() req) {
     return this.accountHealthService.getHealthScore(this.getUserId(req));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Preferences (legacy)
-  // ---------------------------------------------------------------------------
-
-  @Get('preferences')
-  @SkipAudit()
-  @ApiOperation({ summary: 'Get current user preferences' })
-  @ApiOkResponse({ description: 'User preferences' })
-  async getPreferences(@Request() req) {
-    return this.usersService.getPreferences(this.getUserId(req));
-  }
-
-  @Patch('preferences')
-  @AuditLog({
-    action: 'UPDATE_USER_PREFERENCES',
-    entity: 'UserPreferences',
-    description: 'User updated their preferences',
-  })
-  @ApiOperation({ summary: 'Update current user preferences' })
-  @ApiOkResponse({ description: 'Updated preferences' })
-  async updatePreferences(@Request() req, @Body() dto: UpdateUserPreferencesDto) {
-    return this.usersService.updatePreferences(this.getUserId(req), dto);
   }
 }

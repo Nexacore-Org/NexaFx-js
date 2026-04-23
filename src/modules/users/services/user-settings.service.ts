@@ -55,6 +55,7 @@ export class UserSettingsService {
             emailNotifications: (before as UserSettingsEntity).emailNotifications,
             smsNotifications: (before as UserSettingsEntity).smsNotifications,
             pushNotifications: (before as UserSettingsEntity).pushNotifications,
+            theme: (before as UserSettingsEntity).theme,
           }
         : null;
       auditDto.afterSnapshot = {
@@ -64,6 +65,7 @@ export class UserSettingsService {
         emailNotifications: updated.emailNotifications,
         smsNotifications: updated.smsNotifications,
         pushNotifications: updated.pushNotifications,
+        theme: updated.theme,
       };
       auditDto.description = `User ${userId} updated their settings`;
       await this.adminAuditService.logAction(auditDto);

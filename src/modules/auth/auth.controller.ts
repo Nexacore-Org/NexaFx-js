@@ -1,4 +1,4 @@
-import { Body, Controller, Post, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Post, ValidationPipe, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { IsEmail, IsString, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -35,10 +35,72 @@ class VerifyEmailDto {
   token: string;
 }
 
+class LoginDto {
+  @ApiProperty({ example: '[email]' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: 'P@ssw0rd123!' })
+  @IsString()
+  passwordHash: string;
+
+  @ApiProperty({ example: 'unique-device-key' })
+  @IsString()
+  deviceKey: string;
+
+  @ApiProperty({ example: 'My iPhone', required: false })
+  @IsString()
+  deviceName?: string;
+}
+
+class RegisterDto {
+  @ApiProperty({ example: '[email]' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: 'P@ssw0rd123!' })
+  @IsString()
+  @MinLength(8)
+  passwordHash: string;
+
+  @ApiProperty({ example: 'John' })
+  @IsString()
+  firstName: string;
+
+  @ApiProperty({ example: 'Doe' })
+  @IsString()
+  lastName: string;
+
+  @ApiProperty({ example: 'REF123', required: false })
+  @IsString()
+  referralCode?: string;
+}
+
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Post('register')
+  @ApiOperation({ summary: 'Register a new user' })
+  @ApiResponse({ status: 201, description: 'User registered successfully' })
+  async register(@Body(ValidationPipe) dto: RegisterDto) {
+    const { referralCode, ...userData } = dto;
+    return this.authService.register(userData, referralCode);
+  }
+
+  @Post('login')
+  @ApiOperation({ summary: 'Login user and get access token' })
+  @ApiResponse({ status: 200, description: 'Login successful' })
+  async login(@Body(ValidationPipe) dto: LoginDto, @Request() req) {
+    const deviceDto = {
+      deviceKey: dto.deviceKey,
+      deviceName: dto.deviceName,
+      userAgent: req.headers['user-agent'],
+      lastIp: req.ip,
+    };
+    return this.authService.login(dto.email, dto.passwordHash, deviceDto as any);
+  }
 
   @Post('forgot-password')
   @ApiOperation({ summary: 'Request a password reset email' })

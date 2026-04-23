@@ -154,8 +154,10 @@ export class AdminController {
   toggleFeatureFlag(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: ToggleFeatureFlagDto,
+    @Request() req: any,
   ) {
-    return this.adminService.toggleFeatureFlag(id, dto);
+    const adminId = req.user?.id ?? 'system';
+    return this.adminService.toggleFeatureFlag(id, dto, adminId);
   }
 
   // ---------------------------------------------------------------------------
@@ -182,8 +184,10 @@ export class AdminController {
   controlRetryJob(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: RetryJobControlDto,
+    @Request() req: any,
   ) {
-    return this.adminService.controlRetryJob(id, dto);
+    const adminId = req.user?.id ?? 'system';
+    return this.adminService.controlRetryJob(id, dto, adminId);
   }
 
   @Post('retry-jobs/:id/trigger')
@@ -193,8 +197,12 @@ export class AdminController {
     entityIdParam: 'id',
     description: 'Admin manually triggered a retry job',
   })
-  triggerRetryJob(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.adminService.triggerRetryJob(id);
+  triggerRetryJob(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Request() req: any,
+  ) {
+    const adminId = req.user?.id ?? 'system';
+    return this.adminService.triggerRetryJob(id, adminId);
   }
 
   // ---------------------------------------------------------------------------

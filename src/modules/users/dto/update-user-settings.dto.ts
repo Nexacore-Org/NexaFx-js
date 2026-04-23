@@ -57,4 +57,10 @@ export class UpdateUserSettingsDto {
   @IsOptional()
   @IsBoolean()
   pushNotifications?: boolean;
+
+  @ApiPropertyOptional({ example: 'system', enum: ['light', 'dark', 'system'] })
+  @IsOptional()
+  @IsString()
+  @Matches(/^(light|dark|system)$/)
+  theme?: 'light' | 'dark' | 'system';
 }
