@@ -31,8 +31,8 @@ import {
  * 
  * Never expose these endpoints without proper authentication!
  */
-@ApiTags('Admin - Insights')
-@Controller('admin/insights')
+@ApiTags('Admin - Analytics')
+@Controller('admin/analytics')
 @ApiBearerAuth()
 // @UseGuards(JwtAuthGuard, AdminRoleGuard) // Uncomment and implement your guards
 export class InsightsController {
@@ -41,6 +41,24 @@ export class InsightsController {
     private readonly aggregationService: AggregationService,
     private readonly dataRetentionService: DataRetentionService,
   ) {}
+
+  /**
+   * GET /admin/analytics/lineage
+   * Returns audit trail of all aggregation runs
+   */
+  @Get('lineage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get data lineage audit trail',
+    description: 'Returns the history of all privacy-safe aggregation runs, including PII detection results.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lineage audit trail retrieved successfully',
+  })
+  async getLineage(@Query('limit') limit?: number) {
+    return this.aggregationService.getJobHistory(limit || 50);
+  }
 
   /**
    * GET /admin/insights/summary

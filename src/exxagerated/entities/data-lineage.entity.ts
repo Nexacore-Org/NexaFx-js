@@ -8,6 +8,15 @@ export class DataLineage {
   @Column()
   jobName: string;
 
+  @Column({ nullable: true })
+  jobId: string;
+
+  @Column({ nullable: true })
+  period: string;
+
+  @Column({ type: 'int', default: 0 })
+  rowsProcessed: number;
+
   @Column('simple-array')
   piiFieldsDetected: string[];
 

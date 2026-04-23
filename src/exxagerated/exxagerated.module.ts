@@ -1,20 +1,25 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
-import { InsightsController } from './insights.controller';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { InsightsController } from './exxagerated.controller';
 import { InsightsService } from './insights.service';
 import { AggregationService } from './services/aggregation.service';
 import { DataRetentionService } from './services/data-retention.service';
-import { AnonymizationService } from './services/anonymization.service';
+import { AnonymizationValidatorService } from './services/anonymization-validator.service';
+import { DataLineage } from './entities/data-lineage.entity';
 
 @Module({
-  imports: [ScheduleModule.forRoot()],
+  imports: [
+    ScheduleModule.forRoot(),
+    TypeOrmModule.forFeature([DataLineage]),
+  ],
   controllers: [InsightsController],
   providers: [
     InsightsService,
     AggregationService,
     DataRetentionService,
-    AnonymizationService,
+    AnonymizationValidatorService,
   ],
-  exports: [InsightsService],
+  exports: [InsightsService, AggregationService],
 })
-export class InsightsModule {}
+export class ExxaModule {}

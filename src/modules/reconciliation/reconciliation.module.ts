@@ -9,12 +9,16 @@ import { ReconciliationAdminController } from './controllers/reconciliation-admi
 import { ReconciliationAnalyticsController } from './controllers/reconciliation-analytics.controller';
 import { ReconciliationAnalyticsService } from './services/reconciliation-analytics.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { RiskEngineModule } from '../risk-engine/risk-engine.module';
+import { AdminAuditModule } from '../admin-audit/admin-audit.module';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     HttpModule,
     BlockchainModule,
+    RiskEngineModule,
+    AdminAuditModule,
     TypeOrmModule.forFeature([ReconciliationIssueEntity, TransactionEntity]),
   ],
   providers: [ReconciliationService, ReconciliationAnalyticsService],

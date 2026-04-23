@@ -233,11 +233,7 @@ export class NotificationsGateway
   emitDashboardAlert(payload: Record<string, unknown>): void {
     this.server?.to(NOTIFICATION_CHANNELS.ADMIN()).emit(
       NOTIFICATION_EVENTS.DASHBOARD_ALERT,
-      {
-        event: NOTIFICATION_EVENTS.DASHBOARD_ALERT,
-        payload,
-        timestamp: new Date().toISOString(),
-      },
+      payload,
     );
   }
 
@@ -302,6 +298,19 @@ export class NotificationsGateway
       payload,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  @OnEvent('risk.scoreChanged')
+  handleRiskScoreChanged(payload: Record<string, any>): void {
+    const userId = payload['userId'];
+    if (!userId) return;
+
+    this.server?.to(NOTIFICATION_CHANNELS.USER(userId)).emit('risk.scoreChanged', {
+      event: 'risk.scoreChanged',
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+    this.logger.debug(`Emitted risk.scoreChanged to user ${userId}`);
   }
 
   // ─── Fraud Events ─────────────────────────────────────────────────────────
