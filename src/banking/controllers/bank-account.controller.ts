@@ -1,3 +1,5 @@
+import { Body, Controller, Param, Post, UseGuards, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, CurrentUserPayload } from '../../../auth/decorators/current-user.decorator';
@@ -10,6 +12,9 @@ import { CreateBankDepositDto, CreateBankWithdrawalDto } from '../dto/bank-trans
 import { PaymentRailWebhookDto } from '../dto/payment-rail-webhook.dto';
 import { BankAccountResponseDto } from '../dto/bank-account-response.dto';
 import { TransactionResponseDto } from '../../../transactions/dtos/transaction-response.dto';
+import { Idempotent } from '../../../idempotency/idempotency.decorator';
+import { IdempotencyGuard } from '../../../idempotency/idempotency.guard';
+import { IdempotencyInterceptor } from '../../../idempotency/idempotency.interceptor';
 import type { Response } from 'express';
 
 @ApiTags('Banking')
@@ -25,10 +30,7 @@ export class BankAccountController {
   @ApiOperation({ summary: 'Link a bank account and initiate micro-deposit verification' })
   @ApiBody({ type: LinkBankAccountDto })
   @ApiResponse({ status: 201, type: BankAccountResponseDto })
-  linkBankAccount(
-    @CurrentUser() user: CurrentUserPayload,
-    @Body() dto: LinkBankAccountDto,
-  ) {
+  linkBankAccount(@CurrentUser() user: CurrentUserPayload, @Body() dto: LinkBankAccountDto) {
     return this.bankAccountService.linkBankAccount(user.userId, dto);
   }
 
@@ -36,33 +38,31 @@ export class BankAccountController {
   @ApiOperation({ summary: 'Verify a bank account with micro-deposit amounts' })
   @ApiBody({ type: VerifyBankAccountDto })
   @ApiResponse({ status: 201, type: BankAccountResponseDto })
-  verifyBankAccount(
-    @CurrentUser() user: CurrentUserPayload,
-    @Param('id') id: string,
-    @Body() dto: VerifyBankAccountDto,
-  ) {
+  verifyBankAccount(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: VerifyBankAccountDto) {
     return this.bankAccountService.verifyBankAccount(user.userId, id, dto);
   }
 
   @Post('deposits/bank')
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Initiate a bank deposit into the wallet' })
+  @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key (min 16 chars)', required: true })
   @ApiBody({ type: CreateBankDepositDto })
   @ApiResponse({ status: 201, type: TransactionResponseDto })
-  createBankDeposit(
-    @CurrentUser() user: CurrentUserPayload,
-    @Body() dto: CreateBankDepositDto,
-  ) {
+  createBankDeposit(@CurrentUser() user: CurrentUserPayload, @Body() dto: CreateBankDepositDto) {
     return this.bankAccountService.createBankDeposit(user.userId, dto);
   }
 
   @Post('withdrawals/bank')
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Initiate a bank withdrawal and reserve wallet balance' })
+  @ApiHeader({ name: 'Idempotency-Key', description: 'Unique key (min 16 chars)', required: true })
   @ApiBody({ type: CreateBankWithdrawalDto })
   @ApiResponse({ status: 201, type: TransactionResponseDto })
-  createBankWithdrawal(
-    @CurrentUser() user: CurrentUserPayload,
-    @Body() dto: CreateBankWithdrawalDto,
-  ) {
+  createBankWithdrawal(@CurrentUser() user: CurrentUserPayload, @Body() dto: CreateBankWithdrawalDto) {
     return this.bankAccountService.createBankWithdrawal(user.userId, dto);
   }
 
