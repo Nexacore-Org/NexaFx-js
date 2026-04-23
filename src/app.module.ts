@@ -54,6 +54,7 @@ import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { CacheModule } from './modules/cache/cache.module';
 import { MailModule } from './modules/mail/mail.module';
 import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
+import { CircuitBreakerModule } from './common/circuit-breaker/circuit-breaker.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -62,6 +63,7 @@ const enableBull =
   imports: [
     ConfigModule,
     ScheduleModule.forRoot(),
+    CircuitBreakerModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: () => ({
@@ -71,7 +73,7 @@ const enableBull =
         username: process.env.DB_USER || 'postgres',
         password: process.env.DB_PASSWORD || 'postgres',
         database: process.env.DB_NAME || 'nexafx_dev',
-        synchronize: process.env.NODE_ENV !== 'production',
+        synchronize: false,
         logging: process.env.NODE_ENV === 'development',
         autoLoadEntities: true,
       }),

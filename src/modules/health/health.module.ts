@@ -5,10 +5,11 @@ import { ConfigService } from '@nestjs/config';
 import { HealthController } from './health.controller';
 import { DatabaseHealthIndicator } from './indicators/database.indicator';
 import { ConfigHealthIndicator } from './indicators/config.indicator';
+import { CircuitBreakerController } from './controllers/circuit-breaker.controller';
 
 @Module({
   imports: [TerminusModule, ConfigModule],
-  controllers: [HealthController],
+  controllers: [HealthController, CircuitBreakerController],
   providers: [DatabaseHealthIndicator, ConfigHealthIndicator, ConfigService],
 })
 export class HealthModule {}

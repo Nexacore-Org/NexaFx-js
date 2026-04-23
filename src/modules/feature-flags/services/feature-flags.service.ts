@@ -1,25 +1,47 @@
-import { Injectable } from '@nestjs/common';
-import { TenantContextService } from '../../tenants/context/tenant-context.service';
-import { TenantService } from '../../tenants/services/tenant.service';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { FeatureFlagEntity } from '../entities/feature-flag.entity';
+import { CreateFeatureFlagDto } from '../dto/create-feature-flag.dto';
+import { UpdateFeatureFlagDto } from '../dto/update-feature-flag.dto';
+import { FeatureFlagEvaluationService } from './feature-flag-evaluation.service';
 
 @Injectable()
-export class FeatureFlagEvaluationService {
+export class FeatureFlagsService {
   constructor(
-    private readonly context: TenantContextService,
-    private readonly tenantService: TenantService,
+    @InjectRepository(FeatureFlagEntity)
+    private readonly repo: Repository<FeatureFlagEntity>,
+    private readonly evaluationService: FeatureFlagEvaluationService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async isEnabled(flagKey: string, defaultValue = false): Promise<boolean> {
-    const tenantId = this.context.getTenantId();
-    if (!tenantId) return defaultValue;
+  getAllFlags(): Promise<FeatureFlagEntity[]> {
+    return this.repo.find({ order: { createdAt: 'DESC' } });
+  }
 
-    const tenantConfig = await this.tenantService.getTenantConfig(tenantId);
-    
-    // Check if the tenant has a specific override for this flag
-    if (tenantConfig.featureFlags && flagKey in tenantConfig.featureFlags) {
-      return tenantConfig.featureFlags[flagKey];
-    }
+  getFlagById(id: string): Promise<FeatureFlagEntity | null> {
+    return this.repo.findOne({ where: { id } });
+  }
 
-    return defaultValue;
+  createFlag(dto: CreateFeatureFlagDto): Promise<FeatureFlagEntity> {
+    return this.repo.save(this.repo.create(dto));
+  }
+
+  async updateFlag(id: string, dto: UpdateFeatureFlagDto): Promise<FeatureFlagEntity> {
+    const flag = await this.repo.findOne({ where: { id } });
+    if (!flag) throw new NotFoundException(`Feature flag ${id} not found`);
+    Object.assign(flag, dto);
+    const updated = await this.repo.save(flag);
+    this.evaluationService.invalidateCacheForFlag(updated.name);
+    this.eventEmitter.emit('flag.updated', { flagId: updated.id, flagName: updated.name });
+    return updated;
+  }
+
+  async deleteFlag(id: string): Promise<void> {
+    const flag = await this.repo.findOne({ where: { id } });
+    if (!flag) throw new NotFoundException(`Feature flag ${id} not found`);
+    this.evaluationService.invalidateCacheForFlag(flag.name);
+    await this.repo.remove(flag);
   }
 }
