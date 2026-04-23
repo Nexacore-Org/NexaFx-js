@@ -1,7 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
+import { CommonModule } from './common/common.module';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { EscrowModule } from './modules/escrow/escrow.module';
 import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
 import { ConfigModule } from './config/config.module';
@@ -61,6 +63,7 @@ const enableBull =
 @Module({
   imports: [
     ConfigModule,
+    CommonModule,
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -146,4 +149,8 @@ const enableBull =
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}
