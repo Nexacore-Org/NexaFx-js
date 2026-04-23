@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { FeatureFlagEntity } from './entities/feature-flag.entity';
 import { FeatureFlagsService } from './services/feature-flags.service';
 import { FeatureFlagEvaluationService } from './services/feature-flag-evaluation.service';

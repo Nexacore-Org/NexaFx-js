@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaymentRailSettlementStatus, PaymentRailWebhookDto } from '../dto/payment-rail-webhook.dto';
+import { CircuitBreaker } from '../../common/circuit-breaker/circuit-breaker.decorator';
 
 @Injectable()
 export class PaymentRailService {
@@ -16,6 +17,7 @@ export class PaymentRailService {
     return { reference };
   }
 
+  @CircuitBreaker('payment-rail')
   scheduleSettlement(
     transactionId: string,
     reference: string,

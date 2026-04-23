@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { IBlockchainService } from './interfaces/blockchain.interface';
+import { CircuitBreaker } from '../../common/circuit-breaker/circuit-breaker.decorator';
 
 /**
  * BlockchainService
@@ -40,6 +41,7 @@ export class BlockchainService implements IBlockchainService {
    * Get transaction receipt from the blockchain via RPC call
    * Uses eth_getTransactionReceipt JSON-RPC method
    */
+  @CircuitBreaker('blockchain-rpc')
   async getTransactionReceipt(
     txHash: string,
   ): Promise<{ blockNumber: number; isValid: boolean; confirmations: number }> {
@@ -199,6 +201,7 @@ export class BlockchainService implements IBlockchainService {
    * @param signedTx Hex-encoded signed transaction
    * @returns Transaction hash
    */
+  @CircuitBreaker('blockchain-rpc')
   async broadcastTransaction(signedTx: string): Promise<string> {
     try {
       const response = await firstValueFrom(

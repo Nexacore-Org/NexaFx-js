@@ -9,6 +9,7 @@ import { signWebhookPayload } from './utils/webhook-signature';
 import { NotificationService } from '../notifications/services/notification.service';
 import { WebhookSubscriptionEntity } from './entities/webhook-subscription.entity';
 import { WebhookFilterService } from './services/webhook-filter.service';
+import { CircuitBreaker } from '../../common/circuit-breaker/circuit-breaker.decorator';
 
 @Injectable()
 export class WebhookDispatcherService {
@@ -22,6 +23,7 @@ export class WebhookDispatcherService {
     private readonly filterService: WebhookFilterService,
   ) {}
 
+  @CircuitBreaker('webhook-dispatch')
   async dispatch(eventName: string, payload: Record<string, any>) {
     const subs =
       await this.webhooksService.getActiveSubscriptionsForEvent(eventName);

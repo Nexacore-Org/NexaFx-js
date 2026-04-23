@@ -1,8 +1,10 @@
-// src/modules/fx/fx-aggregator.service.ts
 import { Injectable } from '@nestjs/common';
+import { CircuitBreaker } from '../../common/circuit-breaker/circuit-breaker.decorator';
 
 @Injectable()
 export class FxAggregatorService {
+  circuitBreakerService: any; // injected by CircuitBreakerModule (global)
+
   async getValidatedRate(pair: string): Promise<number> {
     const rates = await Promise.all([
       this.fetchFromProviderA(pair),
@@ -10,18 +12,21 @@ export class FxAggregatorService {
       this.fetchFromProviderC(pair),
     ]);
 
-    const validRates = rates.filter(r => r > 0);
+    const validRates = rates.filter((r) => r > 0);
     return this.computeMedian(validRates);
   }
 
+  @CircuitBreaker('fx-provider-a')
   private async fetchFromProviderA(pair: string): Promise<number> {
     return this.simulateRate(pair, 0.9994);
   }
 
+  @CircuitBreaker('fx-provider-b')
   private async fetchFromProviderB(pair: string): Promise<number> {
     return this.simulateRate(pair, 1.0002);
   }
 
+  @CircuitBreaker('fx-provider-c')
   private async fetchFromProviderC(pair: string): Promise<number> {
     return this.simulateRate(pair, 1.0008);
   }
