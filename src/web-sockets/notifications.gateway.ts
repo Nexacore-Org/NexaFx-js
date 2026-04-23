@@ -300,6 +300,19 @@ export class NotificationsGateway
     });
   }
 
+  @OnEvent('risk.scoreChanged')
+  handleRiskScoreChanged(payload: Record<string, any>): void {
+    const userId = payload['userId'];
+    if (!userId) return;
+
+    this.server?.to(NOTIFICATION_CHANNELS.USER(userId)).emit('risk.scoreChanged', {
+      event: 'risk.scoreChanged',
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+    this.logger.debug(`Emitted risk.scoreChanged to user ${userId}`);
+  }
+
   // ─── Fraud Events ─────────────────────────────────────────────────────────
   @OnEvent('fraud.flagged')
   handleFraudFlagged(payload: Record<string, any>): void {

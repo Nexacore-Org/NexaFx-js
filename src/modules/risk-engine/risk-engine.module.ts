@@ -21,6 +21,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { AlertingService } from './services/alerting.service';
 import { ExposureService } from './exposure.service';
 import { RiskRefreshJob } from './services/risk-refresh.job';
+import { WalletsModule } from '../wallets/wallets.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { RiskRefreshJob } from './services/risk-refresh.job';
       TransactionRiskEntity,
     ]),
     NotificationsModule,
+    WalletsModule,
   ],
   controllers: [RiskController, RiskAnalyticsController, RiskAdminAnalyticsController],
   providers: [
