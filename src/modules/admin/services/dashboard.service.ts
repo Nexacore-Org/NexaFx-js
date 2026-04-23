@@ -133,8 +133,6 @@ export class DashboardService {
     };
 
     const alerts = this.sortAlerts(this.buildAlerts(dashboard));
-    await this.emitNewAlerts(alerts);
-
     const entry: DashboardCacheEntry = {
       dashboard,
       alerts,
@@ -142,6 +140,7 @@ export class DashboardService {
     };
 
     this.cache = entry;
+    await this.emitNewAlerts(alerts);
     return entry;
   }
 
@@ -532,16 +531,26 @@ export class DashboardService {
       return;
     }
 
+    const hasNewCriticalAlert = newAlerts.some((alert) => alert.severity === 'critical');
+
     await Promise.all(
       newAlerts.map(async (alert) => {
         gateway.emitDashboardAlert({
-          ...alert,
-          metadata: alert.metadata ?? {},
+          alertType: alert.id,
+          severity: alert.severity,
+          entityId: alert.id,
+          entityType: alert.source,
+          timestamp: alert.createdAt,
         });
       }),
     );
 
     this.activeAlertIds = nextActiveIds;
+
+    if (hasNewCriticalAlert) {
+      this.logger.warn('New CRITICAL alert detected, invalidating dashboard cache');
+      await this.invalidateCache();
+    }
   }
 
   private getNotificationsGateway(): NotificationsGateway | null {

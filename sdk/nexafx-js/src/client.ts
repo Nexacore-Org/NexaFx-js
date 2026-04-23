@@ -7,6 +7,8 @@ import {
 import { AuthResource } from './resources/auth';
 import { ExchangeRatesResource } from './resources/exchange-rates';
 import { TransactionsResource } from './resources/transactions';
+import { WalletsResource } from './resources/wallets';
+import { FxResource } from './resources/fx';
 import { NexaFxWebSocketClient, type WebSocketFactory, type WebSocketLike } from './websocket';
 
 export interface TokenState {
@@ -65,6 +67,8 @@ export class NexaFxClient {
   readonly auth: AuthResource;
   readonly transactions: TransactionsResource;
   readonly exchangeRates: ExchangeRatesResource;
+  readonly wallets: WalletsResource;
+  readonly fx: FxResource;
   readonly websocket: NexaFxWebSocketClient;
 
   private readonly fetchImpl: typeof fetch;
@@ -93,6 +97,8 @@ export class NexaFxClient {
     this.auth = new AuthResource(this);
     this.transactions = new TransactionsResource(this);
     this.exchangeRates = new ExchangeRatesResource(this);
+    this.wallets = new WalletsResource(this);
+    this.fx = new FxResource(this);
     this.websocket = new NexaFxWebSocketClient(this);
   }
 

@@ -33,16 +33,27 @@ import { SecretsModule } from './modules/secrets/secrets.module';
 import { DataArchiveModule } from './modules/data-archive/data-archive.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { GoalsModule } from './goals/goal.module';
+import { GoalsMarketplaceModule } from './goal/goals.module';
 import { AnnouncementsModule } from './announcement/announcement.module';
 import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
 import { VersioningModule } from './versioning/versioning.module';
-import { InsightsModule } from './exxagerated/exxagerated.module';
+import { ExxaModule } from './exxagerated/exxagerated.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { CardsModule } from './modules/cards/cards.module';
+import { FxModule } from './modules/fx/fx.module';
+import { BankingModule } from './banking/banking.module';
+import { LoyaltyModule } from './loyalty-point/loyalty.module';
+import { DisputesModule } from './modules/disputes/disputes.module';
+import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { CacheModule } from './modules/cache/cache.module';
+import { MailModule } from './modules/mail/mail.module';
+import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -107,18 +118,30 @@ const enableBull =
     DataArchiveModule,
     IdempotencyModule,
     GoalsModule,
+    GoalsMarketplaceModule,
     AnnouncementsModule,
     ComplianceModule,
     LedgerModule,
     VersioningModule,
-    InsightsModule,
+    ExxaModule,
     InsightsForecastModule,
     ReferralsModule,
     KycModule,
     WalletsModule,
     ScheduledTransactionsModule,
+    DisputesModule,
     EscrowModule,
     SplitPaymentsModule,
+    SubscriptionsModule,
+    CardsModule,
+    FxModule,
+    BankingModule,
+    LoyaltyModule,
+    DisputesModule,
+    BlockchainModule,
+    CacheModule,
+    MailModule,
+    TransactionApprovalModule,
   ],
   controllers: [AppController],
   providers: [AppService],

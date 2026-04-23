@@ -13,11 +13,14 @@ import { UserSettingsService } from './services/user-settings.service';
 import { ActivityTimelineService } from './services/activity-timeline.service';
 import { FinancialSummaryService } from './services/financial-summary.service';
 import { AccountHealthService } from './services/account-health.service';
+import { PhoneVerificationService } from './services/phone-verification.service';
 import { UserSettingsController } from './controllers/user-settings.controller';
+import { PhoneVerificationController } from './controllers/phone-verification.controller';
 import { TransactionEntity } from '../transactions/entities/transaction.entity';
 import { AdminAuditLogEntity } from '../admin-audit/entities/admin-audit-log.entity';
 import { DeviceEntity } from '../sessions/entities/device.entity';
 import { ComplianceReport } from '../../compliance-evidence/compliance-report.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -33,8 +36,9 @@ import { ComplianceReport } from '../../compliance-evidence/compliance-report.en
     ]),
     AdminAuditModule,
     DisputesModule,
+    forwardRef(() => NotificationsModule),
   ],
-  controllers: [UsersController, UserSettingsController],
+  controllers: [UsersController, UserSettingsController, PhoneVerificationController],
   providers: [
     UsersService,
     WalletService,
@@ -42,12 +46,14 @@ import { ComplianceReport } from '../../compliance-evidence/compliance-report.en
     ActivityTimelineService,
     FinancialSummaryService,
     AccountHealthService,
+    PhoneVerificationService,
   ],
   exports: [
     UsersService,
     WalletService,
     UserSettingsService,
     ActivityTimelineService,
+    PhoneVerificationService,
   ],
 })
 export class UsersModule {}

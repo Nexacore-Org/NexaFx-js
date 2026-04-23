@@ -17,6 +17,9 @@ import { TransactionExecutionSnapshotEntity } from './entities/transaction-execu
 import { WalletAliasEntity } from './entities/wallet-alias.entity';
 import { TransactionCategoryEntity } from './entities/transaction-category.entity';
 import { TransactionRiskEntity } from './entities/transaction-risk.entity';
+import { TransactionNoteEntity } from './entities/transaction-note.entity';
+import { TransactionTagEntity } from './entities/transaction-tag.entity';
+import { BulkBatch } from './entities/bulk-batch.entity';
 import { CategoriesController } from './controllers/categories.controller';
 import { CategoriesService } from './services/categories.service';
 import { CategorizationService } from './services/categorization.service';
@@ -26,6 +29,11 @@ import { TransactionSnapshotListener } from './listeners/transaction-snapshot.li
 import { RiskScoringService } from './services/risk-scoring.service';
 import { RiskEvaluationLoggerService } from './services/risk-evaluation-logger.service';
 import { RiskScoringAdminController, RiskScoringController } from './controllers/risk-scoring.controller';
+import { TransactionAnnotationService } from './services/transaction-annotation.service';
+import { BulkTransactionService } from './services/bulk-transaction.service';
+import { BulkTransactionsController } from './controllers/bulk-transactions.controller';
+import { AdminBulkTransactionsController } from './controllers/admin-bulk-transactions.controller';
+import { RiskPreTradeGuard } from '../risk-engine/services/risk-pre-trade.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { RiskEngineModule } from '../risk-engine/risk-engine.module';
 import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-indicator.listener';
@@ -48,6 +56,9 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
       WalletAliasEntity,
       TransactionCategoryEntity,
       TransactionRiskEntity,
+      TransactionNoteEntity,
+      TransactionTagEntity,
+      BulkBatch,
     ]),
   ],
   controllers: [
@@ -57,6 +68,8 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
     WalletAliasController,
     RiskScoringAdminController,
     RiskScoringController,
+    BulkTransactionsController,
+    AdminBulkTransactionsController,
   ],
   providers: [
     TransactionReplayService,
@@ -72,6 +85,9 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
     RiskScoringService,
     RiskEvaluationLoggerService,
     ReceiptService,
+    TransactionAnnotationService,
+    BulkTransactionService,
+    RiskPreTradeGuard,
   ],
   exports: [
     TransactionsService,
@@ -83,6 +99,7 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
     RiskScoringService,
     RiskEvaluationLoggerService,
     ReceiptService,
+    BulkTransactionService,
   ],
 })
 export class TransactionsModule {}

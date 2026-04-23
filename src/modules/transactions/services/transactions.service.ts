@@ -11,6 +11,11 @@ import { TransactionLifecycleService } from './transaction-lifecycle.service';
 import { RiskScoringService } from './risk-scoring.service';
 import { FxAggregatorService } from '../../fx/fx-aggregator.service';
 import { WebhookDispatcherService } from '../../webhooks/webhook-dispatcher.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { TRADE_COMPLETED_EVENT } from '../../risk-engine/services/risk-refresh.job';
+import { AdminAuditService, AuditContext } from '../../admin-audit/admin-audit.service';
+import { ActorType } from '../../admin-audit/entities/admin-audit-log.entity';
+import { TransactionAnnotationService } from './transaction-annotation.service';
 
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN', 'JPY', 'BTC', 'ETH', 'USDT'];
 
@@ -25,20 +30,44 @@ export class TransactionsService {
     private readonly riskScoringService: RiskScoringService,
     private readonly fxAggregatorService: FxAggregatorService,
     private readonly webhookDispatcher: WebhookDispatcherService,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly adminAuditService: AdminAuditService,
+    private readonly annotationService: TransactionAnnotationService,
   ) {}
 
-  async createTransaction(dto: CreateTransactionDto) {
+  async createTransaction(dto: CreateTransactionDto, auditContext?: AuditContext) {
     if (!SUPPORTED_CURRENCIES.includes(dto.currency.toUpperCase())) {
       throw new Error(`Unsupported currency: ${dto.currency}`);
     }
 
     let exchangeRate: number | undefined;
     let convertedAmount: number | undefined;
+    let fxConversionId: string | undefined;
 
     if (dto.targetCurrency && dto.targetCurrency.toUpperCase() !== dto.currency.toUpperCase()) {
       const pair = `${dto.currency.toUpperCase()}/${dto.targetCurrency.toUpperCase()}`;
       exchangeRate = await this.fxAggregatorService.getValidatedRate(pair);
       convertedAmount = Number((dto.amount * exchangeRate).toFixed(8));
+      
+      // Log FX conversion if applicable
+      if (auditContext && exchangeRate) {
+        fxConversionId = `fx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await this.adminAuditService.logFinancialEvent(auditContext, {
+          userId: auditContext.actorId,
+          action: 'FX_CONVERSION',
+          entityId: fxConversionId,
+          entityType: 'FXConversion',
+          amount: dto.amount,
+          currency: dto.currency.toUpperCase(),
+          metadata: {
+            fromCurrency: dto.currency.toUpperCase(),
+            toCurrency: dto.targetCurrency.toUpperCase(),
+            rate: exchangeRate,
+            convertedAmount,
+            pair,
+          },
+        });
+      }
     }
 
     const transaction = await this.lifecycleService.create({
@@ -51,18 +80,53 @@ export class TransactionsService {
       externalId: dto.externalId,
       metadata: {
         ...dto.metadata,
-        ...(exchangeRate !== undefined ? { exchangeRate, convertedAmount, targetCurrency: dto.targetCurrency } : {}),
+        ...(exchangeRate !== undefined ? { exchangeRate, convertedAmount, targetCurrency: dto.targetCurrency, fxConversionId } : {}),
       },
     });
+
+    // Log transaction creation
+    if (auditContext) {
+      await this.adminAuditService.logFinancialEvent(auditContext, {
+        userId: auditContext.actorId,
+        action: 'TRANSACTION_CREATED',
+        entityId: transaction.id,
+        entityType: 'Transaction',
+        amount: dto.amount,
+        currency: dto.currency.toUpperCase(),
+        beforeSnapshot: { walletId: dto.walletId },
+        afterSnapshot: {
+          transactionId: transaction.id,
+          amount: dto.amount,
+          currency: dto.currency.toUpperCase(),
+          status: transaction.status,
+          ...(exchangeRate !== undefined ? { exchangeRate, convertedAmount, targetCurrency: dto.targetCurrency } : {}),
+        },
+        metadata: {
+          walletId: dto.walletId,
+          toAddress: dto.toAddress,
+          fromAddress: dto.fromAddress,
+          externalId: dto.externalId,
+          ...(fxConversionId ? { fxConversionId } : {}),
+        },
+      });
+    }
 
     // Transition to PROCESSING after creation
     setImmediate(() => {
       this.lifecycleService.markProcessing(transaction.id).catch(() => {});
     });
 
-    // Risk scoring runs asynchronously — never blocks response
+    // Risk scoring runs asynchronously - never blocks response
     setImmediate(() => {
-      this.riskScoringService.evaluateRisk?.(transaction.id)?.catch?.(() => {});
+      try {
+        // Check if evaluateRisk method exists before calling
+        if (this.riskScoringService && typeof (this.riskScoringService as any).evaluateRisk === 'function') {
+          (this.riskScoringService as any).evaluateRisk(transaction.id).catch(() => {});
+        }
+      } catch (error) {
+        // Risk scoring failure should not block transaction
+        console.error('Risk scoring failed:', error);
+      }
     });
 
     // Emit webhook after commit
@@ -73,6 +137,18 @@ export class TransactionsService {
         currency: transaction.currency,
         status: transaction.status,
       }).catch(() => {});
+    });
+
+    // Post-trade risk state refresh
+    setImmediate(() => {
+      const userId = (dto as any).userId ?? (dto as any).walletId;
+      if (userId) {
+        this.eventEmitter.emit(TRADE_COMPLETED_EVENT, {
+          tradeId: transaction.id,
+          userId,
+          pnl: 0,
+        });
+      }
     });
 
     return {
@@ -89,6 +165,36 @@ export class TransactionsService {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const offset = (page - 1) * limit;
+
+    // Handle tag search
+    if (dto.tag && userId) {
+      const tagResult = await this.annotationService.searchTransactionsByTag(userId, dto.tag, page, limit);
+      return {
+        success: true,
+        data: tagResult.transactions,
+        meta: {
+          page,
+          limit,
+          total: tagResult.total,
+          totalPages: Math.ceil(tagResult.total / limit),
+        },
+      };
+    }
+
+    // Handle notes search
+    if (dto.notes && userId) {
+      const notesResult = await this.annotationService.searchTransactionsByNotes(userId, dto.notes, page, limit);
+      return {
+        success: true,
+        data: notesResult.transactions,
+        meta: {
+          page,
+          limit,
+          total: notesResult.total,
+          totalPages: Math.ceil(notesResult.total / limit),
+        },
+      };
+    }
 
     const qb = this.txRepo.createQueryBuilder('t');
 

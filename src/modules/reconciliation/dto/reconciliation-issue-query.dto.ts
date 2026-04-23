@@ -8,6 +8,19 @@ export class ReconciliationIssueQueryDto {
   status?: ReconciliationStatus;
 
   @IsOptional()
+  @IsEnum(['PROVIDER_MISMATCH', 'BLOCKCHAIN_MISMATCH', 'BOTH_MISMATCH'])
+  mismatchType?: string;
+
+  @IsOptional()
+  transactionId?: string;
+
+  @IsOptional()
+  startDate?: string;
+
+  @IsOptional()
+  endDate?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

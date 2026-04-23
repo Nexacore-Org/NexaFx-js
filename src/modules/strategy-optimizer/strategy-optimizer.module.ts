@@ -4,10 +4,12 @@ import { Strategy } from './entities/strategy.entity';
 import { StrategyParameter } from './entities/strategy-parameter.entity';
 import { StrategyVersion } from './entities/strategy-version.entity';
 import { PerformanceMetric } from './entities/performance-metric.entity';
+import { RiskState } from '../risk-engine/entities/risk-state.entity';
 import { OptimizationService } from './services/optimization.service';
 import { MetricsCollectorService } from './services/metrics-collector.service';
 import { RegimeDetectionService } from './services/regime-detection.service';
 import { StrategyManagerService } from './services/strategy-manager.service';
+import { BacktestEngineService } from './services/backtest-engine.service';
 import { StrategyAdminController } from './controllers/strategy-admin.controller';
 
 @Module({
@@ -17,6 +19,7 @@ import { StrategyAdminController } from './controllers/strategy-admin.controller
       StrategyParameter,
       StrategyVersion,
       PerformanceMetric,
+      RiskState,
     ]),
   ],
   controllers: [StrategyAdminController],
@@ -25,7 +28,8 @@ import { StrategyAdminController } from './controllers/strategy-admin.controller
     MetricsCollectorService,
     RegimeDetectionService,
     StrategyManagerService,
+    BacktestEngineService,
   ],
-  exports: [StrategyManagerService],
+  exports: [StrategyManagerService, BacktestEngineService],
 })
 export class StrategyOptimizerModule {}
