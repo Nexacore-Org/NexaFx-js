@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { ApiUsageInterceptor } from './common/interceptors/api-usage.interceptor';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { Logger } from '@nestjs/common';
 import * as express from 'express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -25,6 +26,36 @@ async function bootstrap() {
     if (apiUsageService) {
       app.useGlobalInterceptors(new ApiUsageInterceptor(apiUsageService));
     }
+
+    // Register global logging interceptor (structured JSON with correlation IDs)
+    const loggingInterceptor = app.get(LoggingInterceptor);
+    app.useGlobalInterceptors(loggingInterceptor);
+
+    // Graceful shutdown signal handlers
+    const shutdownService = app.get('ShutdownService', { strict: false });
+    const queueService = app.get('QueueService', { strict: false });
+    const notificationsGateway = app.get('NotificationsGateway', { strict: false });
+    const shutdownTimeoutMs = parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '30000', 10);
+
+    const gracefulShutdown = async (signal: string) => {
+      logger.warn(`Received ${signal} — initiating graceful shutdown`);
+      if (shutdownService) shutdownService.beginShutdown();
+
+      // Notify and disconnect WebSocket clients
+      if (notificationsGateway?.gracefulDisconnect) {
+        await notificationsGateway.gracefulDisconnect(shutdownTimeoutMs);
+      }
+
+      // Drain BullMQ queues
+      if (queueService?.drainAllQueues) {
+        await queueService.drainAllQueues(shutdownTimeoutMs);
+      }
+
+      await app.close();
+      process.exit(0);
+    };
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
     // Log non-sensitive configuration
     logger.log('Application configuration loaded successfully');

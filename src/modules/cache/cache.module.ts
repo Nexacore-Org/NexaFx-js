@@ -12,16 +12,19 @@ import { CacheService } from './services/cache.service';
       isGlobal: true,
       useFactory: async (configService: ConfigService) => {
         try {
+          const redisUrl = configService.get<string>('REDIS_URL');
+          if (!redisUrl) {
+            Logger.warn('REDIS_URL not set, using in-memory cache', 'CacheModule');
+            return { ttl: 5 };
+          }
           return {
             store: redisStore as any,
-            url: configService.get<string>('REDIS_URL'),
-            ttl: 5, // default fallback TTL
-          };
-        } catch (err) {
-          Logger.warn('Redis not available, falling back to memory cache');
-          return {
+            url: redisUrl,
             ttl: 5,
           };
+        } catch (err) {
+          Logger.warn(`Redis unavailable, falling back to memory cache: ${err.message}`, 'CacheModule');
+          return { ttl: 5 };
         }
       },
     }),
