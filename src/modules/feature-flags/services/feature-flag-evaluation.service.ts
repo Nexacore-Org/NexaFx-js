@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { FeatureFlagEntity, TargetingRule } from '../entities/feature-flag.entity';
+import { TenantContextService } from '../../tenants/context/tenant-context.service';
+import { TenantService } from '../../tenants/services/tenant.service';
 
 interface UserContext {
   userId: string;
@@ -43,6 +45,8 @@ export class FeatureFlagEvaluationService {
   constructor(
     @InjectRepository(FeatureFlagEntity)
     private readonly repository: Repository<FeatureFlagEntity>,
+    private readonly tenantContext: TenantContextService,
+    private readonly tenantService: TenantService,
   ) {}
 
   /**
@@ -50,7 +54,8 @@ export class FeatureFlagEvaluationService {
    * Result is cached per user per flag for 30 seconds.
    */
   async evaluate(flagName: string, user: UserContext): Promise<boolean> {
-    const cacheKey = `${flagName}:${user.userId}`;
+    const tenantId = this.tenantContext.getTenantId();
+    const cacheKey = `${tenantId ?? 'global'}:${flagName}:${user.userId}`;
     const cached = this.evalCache.get(cacheKey);
 
     if (cached && Date.now() < cached.expiresAt) {
@@ -62,7 +67,7 @@ export class FeatureFlagEvaluationService {
       return false;
     }
 
-    const result = this.evaluateFlag(flag, user);
+    const result = await this.evaluateFlagForTenant(flag, user, tenantId);
 
     this.evalCache.set(cacheKey, {
       result,
@@ -126,6 +131,21 @@ export class FeatureFlagEvaluationService {
     }
 
     return true;
+  }
+
+  private async evaluateFlagForTenant(
+    flag: FeatureFlagEntity,
+    user: UserContext,
+    tenantId?: string,
+  ): Promise<boolean> {
+    if (tenantId) {
+      const tenant = await this.tenantService.getTenantConfig(tenantId);
+      if (tenant.featureFlags && flag.name in tenant.featureFlags) {
+        return tenant.featureFlags[flag.name];
+      }
+    }
+
+    return this.evaluateFlag(flag, user);
   }
 
   private matchesRule(rule: TargetingRule, flagName: string, user: UserContext): boolean {

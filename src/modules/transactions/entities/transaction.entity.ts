@@ -14,6 +14,8 @@ import { TransactionCategoryEntity } from './transaction-category.entity';
 @Entity('transactions')
 @Index('idx_transactions_status', ['status'])
 @Index('idx_transactions_created_at', ['createdAt'])
+@Index('idx_transactions_user_created_at', ['userId', 'createdAt'])
+@Index('idx_transactions_tenant_created_at', ['tenantId', 'createdAt'])
 @Index('idx_transactions_search_vector', ['searchVector'], { fulltext: true })
 @Index('idx_transactions_wallet_id', ['walletId'])
 @Index('idx_transactions_wallet_created_at', ['walletId', 'createdAt'])
@@ -27,14 +29,23 @@ export class TransactionEntity {
   @Column({ type: 'varchar', length: 100, nullable: true })
   externalId?: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  userId?: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  tenantId?: string;
+
   @Column({ type: 'decimal', precision: 18, scale: 8 })
   amount: number;
 
   @Column({ type: 'varchar', length: 3 })
   currency: string;
 
+  @Column({ type: 'varchar', length: 15, nullable: true })
+  currencyPair?: string;
+
   @Column({ type: 'varchar', length: 50 })
-  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+  status: TransactionStatusValue;
 
   @Column({ type: 'text', nullable: true })
   description?: string;
@@ -88,9 +99,47 @@ export class TransactionEntity {
   @Column({ type: 'boolean', default: false })
   requiresManualReview: boolean;
 
+  @Column({ type: 'varchar', length: 50, default: 'PENDING_REVIEW' })
+  reviewStatus: ReviewStatusValue;
+
+  @Column({ type: 'jsonb', default: [] })
+  riskOverrideLog: {
+    adminId: string;
+    originalScore: number;
+    newScore: number;
+    reason: string;
+    timestamp: Date;
+  }[];
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
 }
+
+export const TransactionStatus = {
+  PENDING: 'PENDING',
+  SUCCESS: 'SUCCESS',
+  FAILED: 'FAILED',
+  CANCELLED: 'CANCELLED',
+  COMPLETED: 'COMPLETED',
+  REVERSED: 'REVERSED',
+  FLAGGED: 'FLAGGED',
+  AUTO_RESOLVED: 'AUTO_RESOLVED',
+  ESCALATED: 'ESCALATED',
+} as const;
+
+export type TransactionStatusValue =
+  (typeof TransactionStatus)[keyof typeof TransactionStatus];
+
+export const ReviewStatus = {
+  PENDING_REVIEW: 'PENDING_REVIEW',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  ESCALATED: 'ESCALATED',
+} as const;
+
+export type ReviewStatusValue = (typeof ReviewStatus)[keyof typeof ReviewStatus];
+
+export { TransactionEntity as Transaction };

@@ -24,19 +24,10 @@ export class FeatureFlagsService {
     return this.repo.findOne({ where: { id } });
   }
 
-  createFlag(dto: CreateFeatureFlagDto): Promise<FeatureFlagEntity> {
-    return this.repo.save(this.repo.create(dto));
-  }
-
-  async updateFlag(id: string, dto: UpdateFeatureFlagDto): Promise<FeatureFlagEntity> {
-    const flag = await this.repo.findOne({ where: { id } });
-    if (!flag) throw new NotFoundException(`Feature flag ${id} not found`);
-    Object.assign(flag, dto);
-    const updated = await this.repo.save(flag);
-    this.evaluationService.invalidateCacheForFlag(updated.name);
-    this.eventEmitter.emit('flag.updated', { flagId: updated.id, flagName: updated.name });
-    return updated;
-  }
+    const tenantConfig = await this.tenantService.getTenantConfig(tenantId);
+    if (tenantConfig.featureFlags && flagKey in tenantConfig.featureFlags) {
+      return tenantConfig.featureFlags[flagKey];
+    }
 
   async deleteFlag(id: string): Promise<void> {
     const flag = await this.repo.findOne({ where: { id } });
