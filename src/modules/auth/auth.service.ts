@@ -130,12 +130,11 @@ export class AuthService {
 
     // Notify if new device (issue #416)
     if (isNew) {
-      await this.mailService.sendNewDeviceLogin(user.email, {
-        deviceName: device.deviceName || 'Unknown Device',
-        ip: device.lastIp || 'Unknown IP',
-        location: `${device.lastCity || 'Unknown City'}, ${device.lastCountry || 'Unknown Country'}`,
-        timestamp: new Date().toISOString(),
-      });
+      await this.mailService.sendNewDeviceLogin(
+        user.email,
+        device.lastIp || 'Unknown IP',
+        device.deviceName || device.userAgent || 'Unknown Device',
+      );
     }
 
     const accessToken = this.jwtService.sign({ sub: user.id, email: user.email });
