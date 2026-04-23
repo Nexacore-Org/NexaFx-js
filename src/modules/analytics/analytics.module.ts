@@ -5,8 +5,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ApiUsageLogEntity } from './entities/api-usage-log.entity';
 import { ApiUsageService } from './services/api-usage.service';
 import { RevenueAnalyticsService } from './services/revenue-analytics.service';
+import { ErrorAnalyticsService } from './services/error-analytics.service';
 import { RevenueAnalyticsController } from './controllers/revenue-analytics.controller';
 import { AnalyticsAdminController } from './controllers/analytics-admin.controller';
+import { AdminAnalyticsController } from './controllers/admin-analytics.controller';
 import { AnalyticsCleanupWorker } from './workers/analytics-cleanup.worker';
 import { NotificationDeliveryAnalyticsController } from './controllers/notification-delivery-analytics.controller';
 import { NotificationDeliveryReceiptEntity } from '../notifications/entities/notification-delivery-receipt.entity';
@@ -16,13 +18,14 @@ import { NotificationDeliveryReceiptEntity } from '../notifications/entities/not
     TypeOrmModule.forFeature([ApiUsageLogEntity, NotificationDeliveryReceiptEntity]),
     ScheduleModule.forRoot(),
   ],
-  providers: [ApiUsageService, AnalyticsCleanupWorker, RevenueAnalyticsService],
+  providers: [ApiUsageService, AnalyticsCleanupWorker, RevenueAnalyticsService, ErrorAnalyticsService],
   controllers: [
     AnalyticsAdminController,
+    AdminAnalyticsController,
     RevenueAnalyticsController,
     NotificationDeliveryAnalyticsController,
   ],
-  exports: [ApiUsageService, RevenueAnalyticsService],
+  exports: [ApiUsageService, RevenueAnalyticsService, ErrorAnalyticsService],
 })
 export class AnalyticsModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

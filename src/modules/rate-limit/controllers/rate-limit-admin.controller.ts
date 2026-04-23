@@ -12,6 +12,7 @@ import {
   HttpStatus,
   NotFoundException,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AdminGuard } from '../../auth/guards/admin.guard';
 import { RateLimitService } from '../services/rate-limit.service';
 import { RateLimitRuleEntity } from '../entities/rate-limit-rule.entity';
@@ -20,6 +21,8 @@ import { Repository } from 'typeorm';
 import { CreateRateLimitRuleDto } from '../dto/create-rate-limit-rule.dto';
 import { UpdateRateLimitRuleDto } from '../dto/update-rate-limit-rule.dto';
 
+@ApiTags('Admin Rate Limits')
+@ApiBearerAuth('access-token')
 @Controller('admin/rate-limits')
 @UseGuards(AdminGuard)
 export class RateLimitAdminController {
@@ -30,6 +33,8 @@ export class RateLimitAdminController {
   ) {}
 
   @Get('rules')
+  @ApiOperation({ summary: 'List all rate limit rules (filterable by tier/isActive)' })
+  @ApiResponse({ status: 200, description: 'Rate limit rules list' })
   async listRules(
     @Query('tier') tier?: string,
     @Query('isActive') isActive?: string,
@@ -123,6 +128,8 @@ export class RateLimitAdminController {
 
   @Post('cleanup')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Clean up expired rate limit trackers' })
+  @ApiResponse({ status: 200, description: 'Cleanup result' })
   async cleanupTrackers(): Promise<{
     success: boolean;
     message: string;
