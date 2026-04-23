@@ -37,7 +37,9 @@ export class DeviceService {
     });
   }
 
-  async registerOrUpdateDevice(dto: RegisterDeviceDto): Promise<DeviceEntity> {
+  async registerOrUpdateDevice(
+    dto: RegisterDeviceDto,
+  ): Promise<{ device: DeviceEntity; isNew: boolean }> {
     let device = await this.deviceRepo.findOne({
       where: { userId: dto.userId, deviceKey: dto.deviceKey },
     });
@@ -51,7 +53,8 @@ export class DeviceService {
       device.lastCity = dto.lastCity ?? device.lastCity;
       device.userAgent = dto.userAgent ?? device.userAgent;
       device.lastLoginAt = new Date();
-      return this.deviceRepo.save(device);
+      const saved = await this.deviceRepo.save(device);
+      return { device: saved, isNew: false };
     }
 
     device = this.deviceRepo.create({
@@ -60,7 +63,8 @@ export class DeviceService {
       trustScore: 50,
       lastLoginAt: new Date(),
     });
-    return this.deviceRepo.save(device);
+    const saved = await this.deviceRepo.save(device);
+    return { device: saved, isNew: true };
   }
 
   async updateTrust(

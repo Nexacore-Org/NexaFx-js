@@ -2,7 +2,6 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminAuditModule } from '../admin-audit/admin-audit.module';
 import { DisputesModule } from '../disputes/disputes.module';
-import { UserPreferenceEntity } from './entities/user-preference.entity';
 import { UserEntity } from './entities/user.entity';
 import { UserSettingsEntity } from './entities/user-settings.entity';
 import { WalletEntity } from './entities/wallet.entity';
@@ -25,7 +24,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      UserPreferenceEntity,
       UserEntity,
       UserSettingsEntity,
       WalletEntity,

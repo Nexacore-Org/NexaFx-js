@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { TransactionEntity } from '../transactions/entities/transaction.entity';
+import { TransactionEntity, TransactionStatus } from '../transactions/entities/transaction.entity';
 import { FeatureFlagEntity } from '../feature-flags/entities/feature-flag.entity';
 import { RetryJobEntity } from '../retry/entities/retry-job.entity';
 import { AdminAuditLogEntity } from '../admin-audit/entities/admin-audit-log.entity';
@@ -18,6 +18,8 @@ import { AdminSearchUsersDto } from './dto/admin-search-users.dto';
 import { AdminUpdateUserStatusDto } from './dto/admin-update-user-status.dto';
 import { AdminBulkStatusDto } from './dto/admin-bulk-status.dto';
 import { UsersService } from '../users/users.service';
+import { AdminAuditService } from '../admin-audit/admin-audit.service';
+import { ActorType } from '../admin-audit/entities/admin-audit-log.entity';
 
 @Injectable()
 export class AdminService {
@@ -40,6 +42,7 @@ export class AdminService {
     private readonly userRepo: Repository<UserEntity>,
 
     private readonly usersService: UsersService,
+    private readonly adminAuditService: AdminAuditService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -59,8 +62,8 @@ export class AdminService {
       recentAuditLogs,
     ] = await Promise.all([
       this.transactionRepo.count(),
-      this.transactionRepo.count({ where: { status: 'pending' } }),
-      this.transactionRepo.count({ where: { status: 'failed' } }),
+      this.transactionRepo.count({ where: { status: TransactionStatus.PENDING } }),
+      this.transactionRepo.count({ where: { status: TransactionStatus.FAILED } }),
       this.retryJobRepo.count(),
       this.retryJobRepo.count({ where: { status: 'pending' } }),
       this.retryJobRepo.count({ where: { status: 'failed' } }),
@@ -131,22 +134,27 @@ export class AdminService {
   // ---------------------------------------------------------------------------
 
   async suspendUser(userId: string, dto: SuspendUserDto, adminId: string) {
-    // Update all active transactions for this user to reflect suspension if needed.
-    // The user entity itself is expected to be managed by the UsersService / UsersModule.
-    // Here we delegate to a raw update so we don't need to import the UserEntity directly
-    // — which avoids circular dependencies. If you have a UsersService exported you can
-    // inject it instead.
-    const result = await this.transactionRepo.manager.query(
-      `UPDATE users SET is_suspended = $1, suspension_reason = $2, updated_at = NOW() WHERE id = $3 RETURNING id`,
-      [dto.suspended, dto.reason ?? null, userId],
-    );
-
-    if (!result[1] || result[1] === 0) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
       throw new NotFoundException(`User with id ${userId} not found`);
     }
 
-    const action = dto.suspended ? 'SUSPEND_USER' : 'UNSUSPEND_USER';
-    this.logger.log(`Admin ${adminId} performed ${action} on user ${userId}`);
+    const before = { status: user.status };
+    
+    // We update the status based on suspension
+    user.status = dto.suspended ? 'suspended' : 'active';
+    const saved = await this.userRepo.save(user);
+
+    await this.adminAuditService.logAction({
+      actorId: adminId,
+      actorType: ActorType.ADMIN,
+      action: dto.suspended ? 'SUSPEND_USER' : 'UNSUSPEND_USER',
+      entity: 'User',
+      entityId: userId,
+      beforeSnapshot: before,
+      afterSnapshot: { status: saved.status },
+      description: dto.reason || (dto.suspended ? 'User suspended' : 'User unsuspended'),
+    });
 
     return {
       userId,
@@ -186,14 +194,25 @@ export class AdminService {
   // Feature flag toggle
   // ---------------------------------------------------------------------------
 
-  async toggleFeatureFlag(id: string, dto: ToggleFeatureFlagDto) {
+  async toggleFeatureFlag(id: string, dto: ToggleFeatureFlagDto, adminId: string) {
     const flag = await this.featureFlagRepo.findOne({ where: { id } });
     if (!flag) throw new NotFoundException(`Feature flag ${id} not found`);
 
+    const before = { enabled: flag.enabled };
     flag.enabled = dto.enabled;
     const updated = await this.featureFlagRepo.save(flag);
 
-    this.logger.log(`Feature flag ${flag.name} toggled to ${dto.enabled}`);
+    await this.adminAuditService.logAction({
+      actorId: adminId,
+      actorType: ActorType.ADMIN,
+      action: 'TOGGLE_FEATURE_FLAG',
+      entity: 'FeatureFlag',
+      entityId: id,
+      beforeSnapshot: before,
+      afterSnapshot: { enabled: updated.enabled },
+      description: `Feature flag ${flag.name} toggled to ${dto.enabled}`,
+    });
+
     return updated;
   }
 
@@ -222,7 +241,7 @@ export class AdminService {
     return { data, total, page, limit };
   }
 
-  async controlRetryJob(id: string, dto: RetryJobControlDto) {
+  async controlRetryJob(id: string, dto: RetryJobControlDto, adminId: string) {
     const job = await this.retryJobRepo.findOne({ where: { id } });
     if (!job) throw new NotFoundException(`Retry job ${id} not found`);
 
@@ -232,14 +251,25 @@ export class AdminService {
       );
     }
 
+    const before = { status: job.status };
     job.status = dto.status;
     const updated = await this.retryJobRepo.save(job);
 
-    this.logger.log(`Retry job ${id} status updated to ${dto.status}`);
+    await this.adminAuditService.logAction({
+      actorId: adminId,
+      actorType: ActorType.ADMIN,
+      action: 'CONTROL_RETRY_JOB',
+      entity: 'RetryJob',
+      entityId: id,
+      beforeSnapshot: before,
+      afterSnapshot: { status: updated.status },
+      description: `Retry job ${id} status updated to ${dto.status}`,
+    });
+
     return updated;
   }
 
-  async triggerRetryJob(id: string) {
+  async triggerRetryJob(id: string, adminId: string) {
     const job = await this.retryJobRepo.findOne({ where: { id } });
     if (!job) throw new NotFoundException(`Retry job ${id} not found`);
 
@@ -247,11 +277,22 @@ export class AdminService {
       throw new BadRequestException('Job is already running');
     }
 
+    const before = { status: job.status };
     job.status = 'pending';
     job.nextRunAt = new Date();
     const updated = await this.retryJobRepo.save(job);
 
-    this.logger.log(`Retry job ${id} manually triggered`);
+    await this.adminAuditService.logAction({
+      actorId: adminId,
+      actorType: ActorType.ADMIN,
+      action: 'TRIGGER_RETRY_JOB',
+      entity: 'RetryJob',
+      entityId: id,
+      beforeSnapshot: before,
+      afterSnapshot: { status: updated.status, nextRunAt: updated.nextRunAt },
+      description: `Retry job ${id} manually triggered`,
+    });
+
     return updated;
   }
 

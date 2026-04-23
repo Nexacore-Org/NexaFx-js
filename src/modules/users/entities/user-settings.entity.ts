@@ -34,6 +34,13 @@ export class UserSettingsEntity {
   @Column({ type: 'boolean', default: true })
   pushNotifications: boolean;
 
+  @Column({
+    type: 'varchar',
+    length: 10,
+    default: 'system',
+  })
+  theme: 'light' | 'dark' | 'system';
+
   @CreateDateColumn()
   createdAt: Date;
 
