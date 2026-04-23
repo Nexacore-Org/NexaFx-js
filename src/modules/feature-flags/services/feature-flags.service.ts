@@ -3,7 +3,7 @@ import { TenantContextService } from '../../tenants/context/tenant-context.servi
 import { TenantService } from '../../tenants/services/tenant.service';
 
 @Injectable()
-export class FeatureFlagEvaluationService {
+export class FeatureFlagsService {
   constructor(
     private readonly context: TenantContextService,
     private readonly tenantService: TenantService,
@@ -14,8 +14,6 @@ export class FeatureFlagEvaluationService {
     if (!tenantId) return defaultValue;
 
     const tenantConfig = await this.tenantService.getTenantConfig(tenantId);
-    
-    // Check if the tenant has a specific override for this flag
     if (tenantConfig.featureFlags && flagKey in tenantConfig.featureFlags) {
       return tenantConfig.featureFlags[flagKey];
     }

@@ -54,6 +54,7 @@ import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { CacheModule } from './modules/cache/cache.module';
 import { MailModule } from './modules/mail/mail.module';
 import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -92,6 +93,7 @@ const enableBull =
           }),
         ]
       : []),
+    TenantsModule,
     AnalyticsModule,
     HealthModule,
     RpcHealthModule,

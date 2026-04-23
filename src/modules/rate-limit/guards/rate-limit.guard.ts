@@ -10,6 +10,7 @@ import { Reflector } from '@nestjs/core';
 import { RateLimitService, RateLimitContext } from '../services/rate-limit.service';
 import { RedisRateLimitService } from '../services/redis-rate-limit.service';
 import { UserTier, RiskLevel } from '../entities/rate-limit-rule.entity';
+import { TenantContextService } from '../../tenants/context/tenant-context.service';
 
 export const RATE_LIMIT_KEY = 'rateLimit';
 export const RATE_LIMIT_SKIP_KEY = 'skipRateLimit';
@@ -34,6 +35,7 @@ export class RateLimitGuard implements CanActivate {
     private readonly rateLimitService: RateLimitService,
     private readonly reflector: Reflector,
     private readonly redisRateLimit: RedisRateLimitService,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -62,6 +64,8 @@ export class RateLimitGuard implements CanActivate {
       'unknown';
     const route: string = request.route?.path || request.url;
     const method: string = request.method;
+    const tenantId = this.tenantContext.getTenantId();
+    const redisPrefix = tenantId ? `tenant:${tenantId}:` : '';
 
     let allowed: boolean;
     let remaining: number;
@@ -73,9 +77,9 @@ export class RateLimitGuard implements CanActivate {
       // Redis sliding window — per-user AND per-IP, both must pass
       const [userResult, ipResult] = await Promise.all([
         userId
-          ? this.redisRateLimit.checkAndIncrement(`rl:user:${userId}:${route}`, USER_LIMIT_PER_MIN, WINDOW_MS)
+          ? this.redisRateLimit.checkAndIncrement(`${redisPrefix}rl:user:${userId}:${route}`, USER_LIMIT_PER_MIN, WINDOW_MS)
           : Promise.resolve({ allowed: true, remaining: USER_LIMIT_PER_MIN, retryAfterMs: 0 }),
-        this.redisRateLimit.checkAndIncrement(`rl:ip:${ipAddress}:${route}`, IP_LIMIT_PER_MIN, WINDOW_MS),
+        this.redisRateLimit.checkAndIncrement(`${redisPrefix}rl:ip:${ipAddress}:${route}`, IP_LIMIT_PER_MIN, WINDOW_MS),
       ]);
 
       allowed = userResult.allowed && ipResult.allowed;
@@ -86,7 +90,15 @@ export class RateLimitGuard implements CanActivate {
       resetAt = new Date(Date.now() + (retryAfterMs || WINDOW_MS));
     } else {
       // DB fallback
-      const rateLimitContext: RateLimitContext = { userId, tier: userTier, riskLevel, ipAddress, route, method };
+      const rateLimitContext: RateLimitContext = {
+        tenantId,
+        userId,
+        tier: userTier,
+        riskLevel,
+        ipAddress,
+        route,
+        method,
+      };
       const result = await this.rateLimitService.checkRateLimit(rateLimitContext);
       allowed = result.allowed;
       remaining = result.remaining;

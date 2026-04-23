@@ -10,9 +10,11 @@ import { RedisRateLimitService } from './services/redis-rate-limit.service';
 import { RateLimitGuard } from './guards/rate-limit.guard';
 import { RateLimitAdminController } from './controllers/rate-limit-admin.controller';
 import { RateLimitCleanupWorker } from './workers/rate-limit-cleanup.worker';
+import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
   imports: [
+    TenantsModule,
     TypeOrmModule.forFeature([RateLimitRuleEntity, RateLimitTrackerEntity, RateLimitViolationLogEntity]),
     ScheduleModule.forRoot(),
     ConfigModule,

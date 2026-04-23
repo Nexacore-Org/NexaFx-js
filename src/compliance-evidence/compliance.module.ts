@@ -14,6 +14,8 @@ import { TransactionAmlListener } from './listeners/transaction-aml.listener';
 import { AmlAdminController } from './controllers/aml-admin.controller';
 import { ReportScheduleController } from './controllers/report-schedule.controller';
 import { ReportSchedulerService } from './services/report-scheduler.service';
+import { ReportScheduleEntity } from './entities/report-schedule.entity';
+import { MailModule } from '../modules/mail/mail.module';
 
 const enableBull = process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
 
@@ -33,7 +35,9 @@ const queueProviders = enableBull
       AuditEvidenceLog,
       AmlRuleEntity,
       ComplianceCaseEntity,
+      ReportScheduleEntity,
     ]),
+    MailModule,
     ...(enableBull ? [BullModule.registerQueue({ name: COMPLIANCE_QUEUE })] : []),
   ],
   controllers: [ComplianceController, AmlAdminController, ReportScheduleController],
