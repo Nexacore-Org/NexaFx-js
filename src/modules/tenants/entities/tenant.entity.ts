@@ -14,6 +14,9 @@ export class Tenant {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ default: false })
+  isDefault: boolean;
+
   @Column({ type: 'jsonb', default: {} })
   whiteLabelConfig: {
     logoUrl?: string;
@@ -24,7 +27,7 @@ export class Tenant {
   @Column({ type: 'jsonb', default: {} })
   featureFlags: Record<string, boolean>;
 
-  @Column({ default: 1000 }) // Default RPM
+  @Column({ default: 1000 })
   rateLimit: number;
 
   @CreateDateColumn()
