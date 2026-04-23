@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, Patch, Param, Body, Req } from '@nestjs/common';
 import { AdminGuard } from '../../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { ReconciliationService } from '../services/reconciliation.service';
@@ -12,5 +12,18 @@ export class ReconciliationAdminController {
   @Get('issues')
   getIssues(@Query() query: ReconciliationIssueQueryDto) {
     return this.reconciliationService.getIssues(query);
+  }
+
+  @Patch('issues/:id/resolve')
+  resolveIssue(
+    @Param('id') id: string,
+    @Body('resolution') resolution: string,
+    @Req() req: any,
+  ) {
+    const adminId = req.user.id;
+    return this.reconciliationService.resolveIssue(id, resolution, adminId, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }

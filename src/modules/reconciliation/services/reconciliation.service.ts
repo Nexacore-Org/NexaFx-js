@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/require-await */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +14,8 @@ import {
 import { TransactionEntity } from '../../transactions/entities/transaction.entity';
 import { ReconciliationIssueQueryDto } from '../dto/reconciliation-issue-query.dto';
 import { BlockchainService } from '../../blockchain/blockchain.service';
+import { AlertingService } from '../../risk-engine/services/alerting.service';
+import { AdminAuditService } from '../../admin-audit/admin-audit.service';
 
 @Injectable()
 export class ReconciliationService {
@@ -21,6 +23,7 @@ export class ReconciliationService {
   private readonly providerApiUrl: string;
   private readonly providerApiKey: string;
   private readonly providerApiTimeout: number;
+  private readonly BACKLOG_THRESHOLD = 50;
 
   constructor(
     @InjectRepository(ReconciliationIssueEntity)
@@ -30,32 +33,17 @@ export class ReconciliationService {
     private readonly httpService: HttpService,
     private readonly blockchainService: BlockchainService,
     private readonly configService: ConfigService,
+    private readonly alertingService: AlertingService,
+    private readonly auditService: AdminAuditService,
   ) {
-    // Read provider API configuration from environment variables
-    this.providerApiUrl =
-      this.configService.get<string>('PROVIDER_API_URL') ||
-      'https://api.payment-provider.com';
-    this.providerApiKey =
-      this.configService.get<string>('PROVIDER_API_KEY') || '';
-    this.providerApiTimeout =
-      this.configService.get<number>('PROVIDER_API_TIMEOUT') || 30000;
-
-    if (!this.providerApiKey) {
-      this.logger.warn(
-        'PROVIDER_API_KEY not configured. Provider status checks will fail.',
-      );
-    }
+    this.providerApiUrl = this.configService.get<string>('PROVIDER_API_URL') || 'https://api.payment-provider.com';
+    this.providerApiKey = this.configService.get<string>('PROVIDER_API_KEY') || '';
+    this.providerApiTimeout = this.configService.get<number>('PROVIDER_API_TIMEOUT') || 30000;
   }
 
-  /**
-   * Main reconciliation job — runs every 15 minutes.
-   * Scans PENDING transactions older than 5 minutes and
-   * checks for provider/blockchain mismatches.
-   */
   @Cron(CronExpression.EVERY_10_MINUTES)
   async runReconciliation(): Promise<void> {
     this.logger.log('Starting reconciliation run...');
-
     const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
 
     const pendingTxs = await this.txRepo
@@ -64,38 +52,22 @@ export class ReconciliationService {
       .andWhere('t.createdAt < :threshold', { threshold: staleThreshold })
       .getMany();
 
-    this.logger.log(
-      `Reconciling ${pendingTxs.length} stale pending transactions`,
-    );
-
-    let flagged = 0;
-    let autoResolved = 0;
-    let escalated = 0;
+    this.logger.log(`Reconciling ${pendingTxs.length} stale pending transactions`);
 
     for (const tx of pendingTxs) {
       const providerStatus = await this.fetchProviderStatus(tx);
       const blockchainStatus = await this.fetchBlockchainStatus(tx);
 
-      const providerMismatch =
-        providerStatus !== null && providerStatus !== tx.status;
-      const blockchainMismatch =
-        blockchainStatus !== null && blockchainStatus !== tx.status;
+      const providerMismatch = providerStatus !== null && providerStatus !== tx.status;
+      const blockchainMismatch = blockchainStatus !== null && blockchainStatus !== tx.status;
 
       if (!providerMismatch && !blockchainMismatch) continue;
 
-      flagged++;
-      const mismatchType: MismatchType =
-        providerMismatch && blockchainMismatch
-          ? 'BOTH_MISMATCH'
-          : providerMismatch
-            ? 'PROVIDER_MISMATCH'
-            : 'BLOCKCHAIN_MISMATCH';
+      const mismatchType: MismatchType = providerMismatch && blockchainMismatch
+        ? 'BOTH_MISMATCH'
+        : providerMismatch ? 'PROVIDER_MISMATCH' : 'BLOCKCHAIN_MISMATCH';
 
-      // Attempt auto-resolution: if both provider and blockchain agree on a terminal state
-      const resolvedStatus = this.deriveResolution(
-        providerStatus,
-        blockchainStatus,
-      );
+      const resolvedStatus = this.deriveResolution(providerStatus, blockchainStatus);
 
       const issue = this.issueRepo.create({
         transactionId: tx.id,
@@ -110,29 +82,43 @@ export class ReconciliationService {
         await this.txRepo.update(tx.id, { status: resolvedStatus });
         issue.status = 'AUTO_RESOLVED';
         issue.resolution = `Auto-resolved to ${resolvedStatus} based on external consensus`;
-        autoResolved++;
       } else {
         issue.status = 'ESCALATED';
         issue.resolution = 'No consensus — manual review required';
-        escalated++;
       }
 
       await this.issueRepo.save(issue);
     }
 
-    this.logger.log(
-      `Reconciliation complete — flagged: ${flagged}, auto-resolved: ${autoResolved}, escalated: ${escalated}`,
-    );
+    await this.checkBacklogThreshold();
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async checkBacklogThreshold() {
+    const backlogCount = await this.issueRepo.count({
+      where: [{ status: 'OPEN' }, { status: 'ESCALATED' }]
+    });
+
+    if (backlogCount > this.BACKLOG_THRESHOLD) {
+      await this.alertingService.sendReconciliationAlert(
+        `High reconciliation backlog detected: ${backlogCount} issues pending.`,
+        backlogCount
+      );
+    }
   }
 
   async getIssues(query: ReconciliationIssueQueryDto) {
-    const { page = 1, limit = 20, status } = query;
-    const qb = this.issueRepo
-      .createQueryBuilder('i')
-      .orderBy('i.createdAt', 'DESC');
+    const { page = 1, limit = 20, status, mismatchType, transactionId, startDate, endDate } = query;
+    const qb = this.issueRepo.createQueryBuilder('i').orderBy('i.createdAt', 'DESC');
 
-    if (status) {
-      qb.where('i.status = :status', { status });
+    if (status) qb.andWhere('i.status = :status', { status });
+    if (mismatchType) qb.andWhere('i.mismatchType = :mismatchType', { mismatchType });
+    if (transactionId) qb.andWhere('i.transactionId = :transactionId', { transactionId });
+    if (startDate && endDate) {
+      qb.andWhere('i.createdAt BETWEEN :startDate AND :endDate', {
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+      });
     }
 
     qb.skip((page - 1) * limit).take(limit);
@@ -145,140 +131,76 @@ export class ReconciliationService {
     };
   }
 
-  /**
-   * Fetch real payment provider transaction status using externalId
-   * Makes HTTP call to provider API and returns transaction status
-   */
-  private async fetchProviderStatus(
-    tx: TransactionEntity,
-  ): Promise<string | null> {
-    if (!tx.externalId) {
-      this.logger.debug(
-        `Transaction ${tx.id} has no externalId, skipping provider check`,
-      );
-      return null;
-    }
+  async resolveIssue(issueId: string, resolution: string, adminId: string, context?: any) {
+    const issue = await this.issueRepo.findOne({ where: { id: issueId } });
+    if (!issue) throw new NotFoundException('Reconciliation issue not found');
 
+    const beforeSnapshot = { ...issue };
+    issue.status = 'AUTO_RESOLVED'; // Using AUTO_RESOLVED as a generic terminal resolved state for now, or could add 'RESOLVED'
+    issue.resolution = `Manual resolution by admin: ${resolution}`;
+    
+    const savedIssue = await this.issueRepo.save(issue);
+
+    await this.auditService.logAdminAction(
+      {
+        actorId: adminId,
+        actorType: context?.actorType || 'ADMIN',
+        ip: context?.ip,
+        userAgent: context?.userAgent,
+      },
+      {
+        action: 'RESOLVE_RECONCILIATION_ISSUE',
+        entity: 'ReconciliationIssue',
+        entityId: issueId,
+        beforeSnapshot,
+        afterSnapshot: savedIssue,
+        description: `Resolved reconciliation issue ${issueId} with note: ${resolution}`,
+      }
+    );
+
+    return savedIssue;
+  }
+
+  private async fetchProviderStatus(tx: TransactionEntity): Promise<string | null> {
+    if (!tx.externalId) return null;
     try {
       const response = await firstValueFrom(
-        this.httpService.get(
-          `${this.providerApiUrl}/transactions/${tx.externalId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${this.providerApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            timeout: this.providerApiTimeout,
-          },
-        ),
+        this.httpService.get(`${this.providerApiUrl}/transactions/${tx.externalId}`, {
+          headers: { Authorization: `Bearer ${this.providerApiKey}` },
+          timeout: this.providerApiTimeout,
+        }),
       );
-
-      const providerData = response.data;
-
-      // Map provider status to our standard statuses
-      // Provider likely returns: PENDING, COMPLETED, FAILED, CANCELLED
-      const status = providerData.status || providerData.state;
-
-      if (!status) {
-        this.logger.warn(
-          `Provider API returned no status for transaction ${tx.id}`,
-        );
-        return null;
-      }
-
-      // Normalize provider status to our standard format
-      const normalizedStatus = this.normalizeProviderStatus(status);
-      this.logger.debug(
-        `Provider status for ${tx.id}: ${status} → ${normalizedStatus}`,
-      );
-
-      return normalizedStatus;
-    } catch (error: any) {
-      this.logger.error(
-        `Failed to fetch provider status for transaction ${tx.id} (external: ${tx.externalId}):`,
-        error.message,
-      );
-      // Return null on error to avoid false positives
+      return this.normalizeProviderStatus(response.data.status || response.data.state);
+    } catch (error) {
       return null;
     }
   }
 
-  /**
-   * Fetch blockchain transaction status using txHash in metadata
-   * Calls blockchain RPC to check confirmation status
-   */
-  private async fetchBlockchainStatus(
-    tx: TransactionEntity,
-  ): Promise<string | null> {
+  private async fetchBlockchainStatus(tx: TransactionEntity): Promise<string | null> {
     const txHash = tx.metadata?.txHash;
-    if (!txHash) {
-      this.logger.debug(
-        `Transaction ${tx.id} has no txHash in metadata, skipping blockchain check`,
-      );
-      return null;
-    }
-
+    if (!txHash) return null;
     try {
-      const status = await this.blockchainService.getTransactionStatus(txHash);
-
-      if (!status) {
-        this.logger.debug(
-          `Transaction ${txHash} not yet confirmed on blockchain`,
-        );
-        return null;
-      }
-
-      this.logger.debug(
-        `Blockchain status for ${tx.id} (hash: ${txHash}): ${status}`,
-      );
-      return status;
-    } catch (error: any) {
-      this.logger.error(
-        `Failed to fetch blockchain status for transaction ${tx.id} (hash: ${txHash}):`,
-        error.message,
-      );
-      // Return null on error to avoid false positives
+      return await this.blockchainService.getTransactionStatus(txHash);
+    } catch (error) {
       return null;
     }
   }
 
-  /**
-   * Normalize provider status to standard transaction statuses
-   */
   private normalizeProviderStatus(providerStatus: string): string | null {
     const statusMap: Record<string, string> = {
-      PENDING: 'PENDING',
-      COMPLETED: 'SUCCESS',
-      SUCCEEDED: 'SUCCESS',
-      SUCCESS: 'SUCCESS',
-      FAILED: 'FAILED',
-      FAILURE: 'FAILED',
-      CANCELLED: 'CANCELLED',
-      CANCEL: 'CANCELLED',
-      PROCESSING: 'PENDING',
+      PENDING: 'PENDING', COMPLETED: 'SUCCESS', SUCCEEDED: 'SUCCESS', SUCCESS: 'SUCCESS',
+      FAILED: 'FAILED', FAILURE: 'FAILED', CANCELLED: 'CANCELLED', PROCESSING: 'PENDING',
     };
-
-    const normalized = statusMap[providerStatus.toUpperCase()];
-    return normalized || null;
+    return statusMap[providerStatus.toUpperCase()] || null;
   }
 
-  /**
-   * Returns a resolved status if provider and blockchain agree on a terminal state.
-   */
-  private deriveResolution(
-    providerStatus: string | null,
-    blockchainStatus: string | null,
-  ): 'SUCCESS' | 'FAILED' | null {
-    const terminalStates = ['SUCCESS', 'FAILED'];
+  private deriveResolution(providerStatus: string | null, blockchainStatus: string | null): 'SUCCESS' | 'FAILED' | null {
     const candidates = [providerStatus, blockchainStatus].filter(Boolean);
-
     if (candidates.length === 0) return null;
-
     const allAgree = candidates.every((s) => s === candidates[0]);
-    if (allAgree && terminalStates.includes(candidates[0]!)) {
+    if (allAgree && ['SUCCESS', 'FAILED'].includes(candidates[0]!)) {
       return candidates[0] as 'SUCCESS' | 'FAILED';
     }
-
     return null;
   }
 }
