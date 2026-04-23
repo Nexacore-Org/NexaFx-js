@@ -8,8 +8,10 @@ import {
 } from '../entities/rate-limit-rule.entity';
 import { RateLimitTrackerEntity } from '../entities/rate-limit-tracker.entity';
 import { RateLimitViolationLogEntity } from '../entities/rate-limit-violation-log.entity';
+import { TenantService } from '../../tenants/services/tenant.service';
 
 export interface RateLimitContext {
+  tenantId?: string;
   userId?: string;
   tier?: UserTier;
   riskLevel?: RiskLevel;
@@ -37,6 +39,7 @@ export class RateLimitService {
     private readonly trackerRepository: Repository<RateLimitTrackerEntity>,
     @InjectRepository(RateLimitViolationLogEntity)
     private readonly violationLogRepository: Repository<RateLimitViolationLogEntity>,
+    private readonly tenantService: TenantService,
   ) {}
 
   /**
@@ -55,10 +58,17 @@ export class RateLimitService {
     );
 
     if (rules.length === 0) {
-      // No rules found, allow the request
-      this.logger.warn(
-        `No rate limit rules found for tier: ${tier}, route: ${context.route}`,
-      );
+      const tenantLimit = await this.getTenantLimit(context.tenantId);
+      if (tenantLimit) {
+        const tracker = await this.getOrCreateTenantTracker(context, tenantLimit);
+        return {
+          allowed: tracker.requestCount < tenantLimit,
+          remaining: Math.max(0, tenantLimit - tracker.requestCount),
+          resetAt: tracker.expiresAt,
+          limit: tenantLimit,
+        };
+      }
+
       return {
         allowed: true,
         remaining: Number.MAX_SAFE_INTEGER,
@@ -114,6 +124,19 @@ export class RateLimitService {
     );
 
     if (rules.length === 0) {
+      const tenantLimit = await this.getTenantLimit(context.tenantId);
+      if (tenantLimit) {
+        await this.trackerRepository.update(
+          {
+            trackerKey: this.generateTrackerKey(context),
+            ruleId: context.tenantId ?? '00000000-0000-0000-0000-000000000000',
+          },
+          {
+            requestCount: () => 'requestCount + 1',
+            updatedAt: new Date(),
+          },
+        );
+      }
       return;
     }
 
@@ -198,16 +221,45 @@ export class RateLimitService {
    * Generate a unique tracker key for rate limiting
    */
   private generateTrackerKey(context: RateLimitContext): string {
+    const tenantPrefix = context.tenantId ? `tenant:${context.tenantId}:` : '';
     // For authenticated users, use userId
     if (context.userId) {
-      return `user:${context.userId}`;
+      return `${tenantPrefix}user:${context.userId}`;
     }
     // For guest users, use IP address
     if (context.ipAddress) {
-      return `ip:${context.ipAddress}`;
+      return `${tenantPrefix}ip:${context.ipAddress}`;
     }
     // Fallback to a default key
-    return 'anonymous';
+    return `${tenantPrefix}anonymous`;
+  }
+
+  private async getTenantLimit(tenantId?: string): Promise<number | null> {
+    if (!tenantId) return null;
+    const tenant = await this.tenantService.getTenantConfig(tenantId);
+    return tenant.rateLimit || null;
+  }
+
+  private async getOrCreateTenantTracker(
+    context: RateLimitContext,
+    limit: number,
+  ): Promise<RateLimitTrackerEntity> {
+    const syntheticRule = this.ruleRepository.create({
+      id: context.tenantId ?? '00000000-0000-0000-0000-000000000000',
+      name: 'tenant-override',
+      tier: context.tier ?? 'guest',
+      maxRequests: limit,
+      windowSeconds: 60,
+      priority: 0,
+      isActive: true,
+    });
+
+    return this.getOrCreateTracker(
+      this.generateTrackerKey(context),
+      context.userId,
+      context.ipAddress,
+      syntheticRule,
+    );
   }
 
   /**

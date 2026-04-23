@@ -287,4 +287,38 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     };
     return map[name] ?? null;
   }
+
+  /**
+   * Graceful shutdown: wait for all active jobs to complete (up to timeoutMs).
+   * Pauses all queues so no new jobs are picked up, then polls until active count
+   * reaches zero or timeout is exceeded.
+   */
+  async drainAllQueues(timeoutMs = 30_000): Promise<void> {
+    const queues = [
+      this.retryQueue,
+      this.reconciliationQueue,
+      this.fraudQueue,
+      this.webhookQueue,
+      this.dlqQueue,
+    ];
+
+    // Pause all queues — no new jobs will be picked up
+    await Promise.all(queues.map((q) => q.pause()));
+    this.logger.log('All queues paused for graceful shutdown');
+
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const activeCounts = await Promise.all(queues.map((q) => q.getActiveCount()));
+      const total = activeCounts.reduce((a, b) => a + b, 0);
+      if (total === 0) {
+        this.logger.log('All active queue jobs completed');
+        return;
+      }
+      this.logger.log(`Waiting for ${total} active job(s) to complete...`);
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    this.logger.warn(`Graceful shutdown timeout reached — ${timeoutMs}ms exceeded`);
+  }
 }

@@ -13,15 +13,28 @@ export class AnalyticsAdminController {
   @Get('summary')
   async getSummary(@Query('hoursBack') hoursBack?: string): Promise<{
     success: boolean;
-    data: ApiUsageSummary;
+    data: ApiUsageSummary & { highErrorRateEndpoints: any[] };
   }> {
     const hours = hoursBack ? parseInt(hoursBack, 10) : 24;
-    const data = await this.apiUsageService.getSummary(hours);
+    const [data, highErrorRateEndpoints] = await Promise.all([
+      this.apiUsageService.getSummary(hours),
+      this.apiUsageService.getHighErrorRateEndpoints(),
+    ]);
 
     return {
       success: true,
-      data,
+      data: { ...data, highErrorRateEndpoints },
     };
+  }
+
+  @Get('abuse')
+  async getAbuse(@Query('threshold') threshold?: string): Promise<{
+    success: boolean;
+    data: { userId: string; requestCount: number; flaggedAt: string }[];
+  }> {
+    const requestThreshold = threshold ? parseInt(threshold, 10) : 1000;
+    const data = await this.apiUsageService.getAbuse(requestThreshold);
+    return { success: true, data };
   }
 
   @Get('raw')

@@ -419,4 +419,25 @@ export class NotificationsGateway
   private getClientRooms(client: Socket): string[] {
     return Array.from(client.rooms).filter((r) => r !== client.id);
   }
+
+  /**
+   * Graceful shutdown: notify all connected clients then disconnect them.
+   * backoffMs is the estimated reconnect backoff hint sent to clients.
+   */
+  async gracefulDisconnect(backoffMs = 5000): Promise<void> {
+    if (!this.server) return;
+
+    this.server.emit('disconnecting', {
+      reason: 'Server shutting down',
+      reconnectAfterMs: backoffMs,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Give clients a moment to receive the event before forceful disconnect
+    await new Promise((r) => setTimeout(r, 500));
+
+    const sockets = await this.server.fetchSockets();
+    await Promise.all(sockets.map((s) => s.disconnect(true)));
+    this.logger.log(`Gracefully disconnected ${sockets.length} WebSocket client(s)`);
+  }
 }

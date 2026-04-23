@@ -186,4 +186,62 @@ export class ApiUsageService {
 
     return result.affected ?? 0;
   }
+
+  /** Users exceeding requestThreshold requests in the last hour */
+  async getAbuse(requestThreshold = 1000): Promise<{
+    userId: string;
+    requestCount: number;
+    flaggedAt: string;
+  }[]> {
+    const since = new Date(Date.now() - 60 * 60 * 1000);
+
+    const rows = await this.usageRepo
+      .createQueryBuilder('log')
+      .select('log.userId', 'userId')
+      .addSelect('COUNT(*)', 'requestCount')
+      .where('log.createdAt >= :since', { since })
+      .andWhere('log.userId IS NOT NULL')
+      .groupBy('log.userId')
+      .having('COUNT(*) > :threshold', { threshold: requestThreshold })
+      .orderBy('requestCount', 'DESC')
+      .getRawMany();
+
+    return rows.map((r) => ({
+      userId: r.userId,
+      requestCount: Number(r.requestCount),
+      flaggedAt: new Date().toISOString(),
+    }));
+  }
+
+  /** Endpoints with >10% error rate in the last 24h */
+  async getHighErrorRateEndpoints(errorRateThreshold = 0.1): Promise<{
+    route: string;
+    method: string;
+    totalRequests: number;
+    errorCount: number;
+    errorRate: number;
+  }[]> {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const rows = await this.usageRepo
+      .createQueryBuilder('log')
+      .select('log.route', 'route')
+      .addSelect('log.method', 'method')
+      .addSelect('COUNT(*)', 'totalRequests')
+      .addSelect('SUM(CASE WHEN log.statusCode >= 400 THEN 1 ELSE 0 END)', 'errorCount')
+      .where('log.createdAt >= :since', { since })
+      .groupBy('log.route')
+      .addGroupBy('log.method')
+      .getRawMany();
+
+    return rows
+      .map((r) => ({
+        route: r.route,
+        method: r.method,
+        totalRequests: Number(r.totalRequests),
+        errorCount: Number(r.errorCount),
+        errorRate: Number(r.errorCount) / Number(r.totalRequests),
+      }))
+      .filter((r) => r.errorRate > errorRateThreshold);
+  }
 }
