@@ -38,7 +38,7 @@ import { AnnouncementsModule } from './announcement/announcement.module';
 import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
 import { VersioningModule } from './versioning/versioning.module';
-import { InsightsModule } from './exxagerated/exxagerated.module';
+import { ExxaModule } from './exxagerated/exxagerated.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
@@ -123,7 +123,7 @@ const enableBull =
     ComplianceModule,
     LedgerModule,
     VersioningModule,
-    InsightsModule,
+    ExxaModule,
     InsightsForecastModule,
     ReferralsModule,
     KycModule,

@@ -16,7 +16,7 @@ import {
   RevenueMetricsDto,
   TimeSeriesDataPoint,
 } from '../dto/insights.dto';
-import { AnonymizationService } from './anonymization.service';
+import { AnonymizationValidatorService } from './services/anonymization-validator.service';
 
 @Injectable()
 export class InsightsService {
@@ -29,7 +29,7 @@ export class InsightsService {
     private readonly userMetricsRepo: Repository<AggregatedUserMetrics>,
     @InjectRepository(AggregatedRevenueMetrics)
     private readonly revenueMetricsRepo: Repository<AggregatedRevenueMetrics>,
-    private readonly anonymizationService: AnonymizationService,
+    private readonly anonymizationService: AnonymizationValidatorService,
   ) {}
 
   /**
