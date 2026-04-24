@@ -5,6 +5,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserEntity } from '../users/entities/user.entity';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { TwoFactorController } from './two-factor.controller';
+import { TotpService } from './services/totp.service';
 import { SecretsModule } from '../secrets/secrets.module';
 import { JwtAuthGuard } from './guards/jwt.guard';
 import { AdminGuard } from './guards/admin.guard';
@@ -30,8 +32,8 @@ import { SessionsModule } from '../sessions/sessions.module';
     SessionsModule,
     MailModule,
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, AdminGuard, VerifiedGuard],
-  exports: [AuthService, JwtAuthGuard, AdminGuard, VerifiedGuard],
+  controllers: [AuthController, TwoFactorController],
+  providers: [AuthService, TotpService, JwtAuthGuard, AdminGuard, VerifiedGuard],
+  exports: [AuthService, TotpService, JwtAuthGuard, AdminGuard, VerifiedGuard],
 })
 export class AuthModule {}
