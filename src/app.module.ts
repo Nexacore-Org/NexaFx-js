@@ -57,6 +57,8 @@ import { CacheModule } from './modules/cache/cache.module';
 import { MailModule } from './modules/mail/mail.module';
 import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
 import { CircuitBreakerModule } from './common/circuit-breaker/circuit-breaker.module';
+import { RbacModule } from './hierachial-rbac/rbac.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -148,6 +150,8 @@ const enableBull =
     CacheModule,
     MailModule,
     TransactionApprovalModule,
+    RbacModule,
+    ApiKeysModule,
   ],
   controllers: [AppController],
   providers: [AppService],

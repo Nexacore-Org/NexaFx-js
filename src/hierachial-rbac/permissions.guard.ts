@@ -11,11 +11,11 @@ import {
   POLICY_KEY,
   PermissionRequirement,
   PolicyRequirement,
-} from '../decorators/permissions.decorator';
-import { PermissionResolutionService } from '../policies/permission-resolution.service';
-import { PolicyEvaluatorService, PolicyContext } from '../policies/policy-evaluator.service';
-import { RbacAuditService } from '../services/rbac-audit.service';
-import { RbacAuditAction } from '../entities/rbac-audit-log.entity';
+} from './permissions.decorator';
+import { PermissionResolutionService } from './permission-resolution.service';
+import { PolicyEvaluatorService, PolicyContext } from './policies/policy-evaluator.service';
+import { RbacAuditService } from './services/rbac-audit.service';
+import { RbacAuditAction } from './entities/rbac-audit-log.entity';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -39,7 +39,6 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    // No restrictions defined — allow
     if (!requirements?.length && !policyRequirement) return true;
 
     const request = context.switchToHttp().getRequest();
@@ -53,11 +52,7 @@ export class PermissionsGuard implements CanActivate {
     let permissionsOk = true;
 
     if (requirements?.length) {
-      permissionsOk = await this.permissionResolution.hasPermissions(
-        user.id,
-        requirements,
-        operator,
-      );
+      permissionsOk = await this.permissionResolution.hasPermissions(user.id, requirements, operator);
     }
 
     let policyOk = true;
@@ -73,7 +68,6 @@ export class PermissionsGuard implements CanActivate {
 
     const allowed = permissionsOk && policyOk;
 
-    // Fire-and-forget audit log
     this.auditService
       .log({
         action: allowed ? RbacAuditAction.ACCESS_GRANTED : RbacAuditAction.ACCESS_DENIED,

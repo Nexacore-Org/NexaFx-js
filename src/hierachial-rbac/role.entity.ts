@@ -12,7 +12,7 @@ import {
   Index,
 } from 'typeorm';
 import { Permission } from './permission.entity';
-import { User } from './user.entity';
+import { User } from './entities/user.entity';
 
 @Entity('roles')
 @Index(['name'], { unique: true })
@@ -27,15 +27,14 @@ export class Role {
   description: string;
 
   @Column({ default: 0 })
-  priority: number; // Higher = more authority
+  priority: number;
 
   @Column({ default: true })
   isActive: boolean;
 
   @Column({ default: false })
-  isSystem: boolean; // System roles cannot be deleted
+  isSystem: boolean;
 
-  // Self-referential parent for hierarchy
   @ManyToOne(() => Role, (role) => role.children, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'parent_id' })
   parent: Role;

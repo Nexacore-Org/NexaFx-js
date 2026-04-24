@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Role } from '../entities/role.entity';
-import { Permission, PermissionAction, PermissionResource } from '../entities/permission.entity';
-import { User } from '../entities/user.entity';
-import { PermissionRequirement } from '../decorators/permissions.decorator';
+import { Role } from './role.entity';
+import { Permission, PermissionAction, PermissionResource } from './permission.entity';
+import { User } from './entities/user.entity';
+import { PermissionRequirement } from './permissions.decorator';
+import { PermissionCacheService } from './permission-cache.service';
 
 export interface ResolvedPermissions {
   permissions: Set<string>;
@@ -22,12 +23,14 @@ export class PermissionResolutionService {
     private readonly permissionRepository: Repository<Permission>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly cache: PermissionCacheService,
   ) {}
 
-  /**
-   * Resolves ALL effective permissions for a user, walking up the role hierarchy.
-   */
   async resolveUserPermissions(userId: string): Promise<ResolvedPermissions> {
+    // Check cache first
+    const cached = this.cache.get(userId);
+    if (cached) return cached;
+
     const user = await this.userRepository.findOne({
       where: { id: userId },
       relations: ['roles'],
@@ -45,19 +48,18 @@ export class PermissionResolutionService {
       await this.collectPermissionsFromRole(role.id, permissionKeys, roleNames, visited);
     }
 
-    return { permissions: permissionKeys, roles: roleNames };
+    const result = { permissions: permissionKeys, roles: roleNames };
+    this.cache.set(userId, permissionKeys, roleNames);
+    return result;
   }
 
-  /**
-   * Recursively collects permissions from a role and its ancestors.
-   */
   private async collectPermissionsFromRole(
     roleId: string,
     permissionKeys: Set<string>,
     roleNames: string[],
     visited: Set<string>,
   ): Promise<void> {
-    if (visited.has(roleId)) return; // Prevent cycles
+    if (visited.has(roleId)) return;
     visited.add(roleId);
 
     const role = await this.roleRepository.findOne({
@@ -72,14 +74,12 @@ export class PermissionResolutionService {
     for (const permission of role.permissions ?? []) {
       if (permission.isActive) {
         permissionKeys.add(permission.key);
-        // MANAGE on a resource implies all other actions on that resource
         if (permission.action === PermissionAction.MANAGE) {
           this.expandManagePermission(permission.resource, permission.scope, permissionKeys);
         }
       }
     }
 
-    // Walk up the hierarchy
     if (role.parent) {
       await this.collectPermissionsFromRole(role.parent.id, permissionKeys, roleNames, visited);
     }
@@ -95,7 +95,6 @@ export class PermissionResolutionService {
       const key = scope ? `${action}:${resource}:${scope}` : `${action}:${resource}`;
       permissionKeys.add(key);
     }
-    // Also handle wildcard resource
     if (resource === PermissionResource.ALL) {
       for (const res of Object.values(PermissionResource)) {
         if (res !== PermissionResource.ALL) {
@@ -107,68 +106,38 @@ export class PermissionResolutionService {
     }
   }
 
-  /**
-   * Evaluates whether a user has the required permissions.
-   * Handles: exact match, MANAGE wildcard, ALL resource wildcard, scoped permissions.
-   */
   async hasPermissions(
     userId: string,
     requirements: PermissionRequirement[],
     operator: 'ALL' | 'ANY' = 'ALL',
   ): Promise<boolean> {
     const { permissions } = await this.resolveUserPermissions(userId);
-
-    const check = (req: PermissionRequirement): boolean => {
-      return this.matchesRequirement(permissions, req);
-    };
-
-    if (operator === 'ANY') {
-      return requirements.some(check);
-    }
-    return requirements.every(check);
+    const check = (req: PermissionRequirement) => this.matchesRequirement(permissions, req);
+    return operator === 'ANY' ? requirements.some(check) : requirements.every(check);
   }
 
-  private matchesRequirement(
-    userPermissions: Set<string>,
-    req: PermissionRequirement,
-  ): boolean {
+  private matchesRequirement(userPermissions: Set<string>, req: PermissionRequirement): boolean {
     const { action, resource, scope } = req;
-
-    // 1. Exact match
     const exactKey = scope ? `${action}:${resource}:${scope}` : `${action}:${resource}`;
     if (userPermissions.has(exactKey)) return true;
 
-    // 2. MANAGE on the same resource
-    const manageKey = scope ? `${PermissionAction.MANAGE}:${resource}:${scope}` : `${PermissionAction.MANAGE}:${resource}`;
+    const manageKey = scope
+      ? `${PermissionAction.MANAGE}:${resource}:${scope}`
+      : `${PermissionAction.MANAGE}:${resource}`;
     if (userPermissions.has(manageKey)) return true;
-
-    // 3. Global MANAGE (manage:*)
     if (userPermissions.has(`${PermissionAction.MANAGE}:${PermissionResource.ALL}`)) return true;
-
-    // 4. Action on ALL resources: action:*
     if (userPermissions.has(`${action}:${PermissionResource.ALL}`)) return true;
-
-    // 5. Already expanded by expandManagePermission during resolution
     return false;
   }
 
-  /**
-   * Gets flat list of all permissions in DB for building policy rules.
-   */
   async getAllPermissions(): Promise<Permission[]> {
     return this.permissionRepository.find({ where: { isActive: true } });
   }
 
-  /**
-   * Resolves the full ancestry chain of a role (parent, grandparent, …).
-   */
   async getRoleAncestors(roleId: string): Promise<Role[]> {
     const ancestors: Role[] = [];
     const visited = new Set<string>();
-    let current = await this.roleRepository.findOne({
-      where: { id: roleId },
-      relations: ['parent'],
-    });
+    let current = await this.roleRepository.findOne({ where: { id: roleId }, relations: ['parent'] });
 
     while (current?.parent && !visited.has(current.id)) {
       visited.add(current.id);
@@ -181,5 +150,14 @@ export class PermissionResolutionService {
     }
 
     return ancestors;
+  }
+
+  /** Invalidate cache for a user (call after role/permission changes). */
+  invalidateCache(userId?: string): void {
+    if (userId) {
+      this.cache.invalidate(userId);
+    } else {
+      this.cache.invalidateAll();
+    }
   }
 }
