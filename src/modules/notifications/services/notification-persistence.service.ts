@@ -42,14 +42,14 @@ export class NotificationPersistenceService {
     const offset = (page - 1) * limit;
 
     const [items, total] = await this.repo.findAndCount({
-      where: { userId, isArchived: false },
+      where: { userId, isArchived: false, isDeleted: false },
       order: { createdAt: 'DESC' },
       skip: offset,
       take: limit,
     });
 
     const unreadCount = await this.repo.count({
-      where: { userId, isRead: false, isArchived: false },
+      where: { userId, isRead: false, isArchived: false, isDeleted: false },
     });
 
     return { items, total, unreadCount };
@@ -82,7 +82,18 @@ export class NotificationPersistenceService {
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.repo.count({ where: { userId, isRead: false, isArchived: false } });
+    return this.repo.count({ where: { userId, isRead: false, isArchived: false, isDeleted: false } });
+  }
+
+  async softDelete(id: string, userId: string): Promise<void> {
+    const notification = await this.repo.findOne({ where: { id, userId, isDeleted: false } });
+    if (!notification) {
+      throw new NotFoundException(`Notification ${id} not found`);
+    }
+
+    notification.isDeleted = true;
+    notification.deletedAt = new Date();
+    await this.repo.save(notification);
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)

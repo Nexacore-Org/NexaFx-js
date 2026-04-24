@@ -18,15 +18,15 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { PermissionsGuard } from '../guards/permissions.guard';
-import { RequirePermissions } from '../decorators/permissions.decorator';
-import { PermissionAction, PermissionResource } from '../entities/permission.entity';
-import { RoleService } from '../services/role.service';
-import { PermissionService } from '../services/permission.service';
-import { RbacAuditService } from '../services/rbac-audit.service';
-import { PermissionResolutionService } from '../policies/permission-resolution.service';
-import { CurrentUser } from '../decorators/current-user.decorator';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { PermissionsGuard } from './guards/permissions.guard';
+import { RequirePermissions } from './permissions.decorator';
+import { PermissionAction, PermissionResource } from './permission.entity';
+import { RoleService } from './services/role.service';
+import { PermissionService } from './services/permission.service';
+import { RbacAuditService } from './services/rbac-audit.service';
+import { PermissionResolutionService } from './permission-resolution.service';
+import { CurrentUser } from './current-user.decorator';
 import {
   CreateRoleDto,
   UpdateRoleDto,
@@ -34,8 +34,8 @@ import {
   RevokePermissionsDto,
   AssignRolesToUserDto,
   RevokeRolesFromUserDto,
-} from '../dto/role.dto';
-import { CreatePermissionDto, UpdatePermissionDto } from '../dto/permission.dto';
+} from './dto/role.dto';
+import { CreatePermissionDto, UpdatePermissionDto } from './dto/permission.dto';
 
 @ApiTags('Admin — RBAC')
 @ApiBearerAuth()

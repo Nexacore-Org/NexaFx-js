@@ -67,29 +67,34 @@ export class NotificationPreferenceService {
   }
 
   async updatePreferences(userId: string, updates: UpdatePreferenceDto[]): Promise<void> {
-    for (const update of updates) {
-      // SECURITY type cannot be disabled
-      if (update.notificationType === SECURITY_TYPE) {
-        continue;
+    await this.repo.manager.transaction(async (manager) => {
+      for (const update of updates) {
+        // SECURITY type cannot be disabled - log warning and skip
+        if (update.notificationType === SECURITY_TYPE) {
+          this.logger.warn(`Attempted to disable SECURITY notifications for user ${userId} - rejected`);
+          continue;
+        }
+
+        let pref = await manager.findOne(NotificationPreferenceEntity, {
+          where: { userId, notificationType: update.notificationType },
+        });
+
+        if (!pref) {
+          pref = manager.create(NotificationPreferenceEntity, { userId, notificationType: update.notificationType });
+        }
+
+        if (update.inApp !== undefined) pref.inApp = update.inApp;
+        if (update.push !== undefined) pref.push = update.push;
+        if (update.sms !== undefined) pref.sms = update.sms;
+        if (update.email !== undefined) pref.email = update.email;
+
+        await manager.save(pref);
       }
+    });
 
-      let pref = await this.repo.findOne({
-        where: { userId, notificationType: update.notificationType },
-      });
-
-      if (!pref) {
-        pref = this.repo.create({ userId, notificationType: update.notificationType });
-      }
-
-      if (update.inApp !== undefined) pref.inApp = update.inApp;
-      if (update.push !== undefined) pref.push = update.push;
-      if (update.sms !== undefined) pref.sms = update.sms;
-      if (update.email !== undefined) pref.email = update.email;
-
-      await this.repo.save(pref);
-    }
-
+    // Invalidate cache immediately after update
     this.invalidateCache(userId);
+    this.logger.log(`Notification preferences updated for user ${userId}`);
   }
 
   async isChannelEnabled(
