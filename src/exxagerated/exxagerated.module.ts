@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { InsightsController } from './controllers/insights.controller';
 import { AnalyticsAdminController } from './controllers/analytics-admin.controller';
@@ -13,11 +14,12 @@ import { DataLineage } from './entities/data-lineage.entity';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([DataLineage]),
   ],
   controllers: [
-    InsightsController,           // ✅ NEW
-    AnalyticsAdminController,     // ✅ NEW
+    InsightsController,
+    AnalyticsAdminController,
   ],
   providers: [
     InsightsService,
@@ -25,9 +27,6 @@ import { DataLineage } from './entities/data-lineage.entity';
     DataRetentionService,
     AnonymizationValidatorService,
   ],
-  exports: [
-    InsightsService,
-    AggregationService,
-  ],
+  exports: [InsightsService, AggregationService],
 })
 export class ExxaModule {}
