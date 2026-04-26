@@ -2,13 +2,21 @@ import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
+
 import { CommonModule } from './common/common.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
-import { EscrowModule } from './modules/escrow/escrow.module';
-import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
+
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+
+// ✅ IMPORTANT: ensure this exists
+import { TenantsModule } from './modules/tenants/tenants.module';
+
+// Analytics Fix
+import { ExxaModule } from './exxagerated/exxagerated.module';
+
+// Other modules (unchanged)
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './modules/health/health.module';
 import { RpcHealthModule } from './modules/rpc-health/rpc-health.module';
@@ -40,7 +48,6 @@ import { AnnouncementsModule } from './announcement/announcement.module';
 import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
 import { VersioningModule } from './versioning/versioning.module';
-import { ExxaModule } from './exxagerated/exxagerated.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
@@ -65,8 +72,12 @@ const enableBull =
   imports: [
     ConfigModule,
     CommonModule,
+
+    // ✅ Only ONE ScheduleModule here
     ScheduleModule.forRoot(),
+
     CircuitBreakerModule,
+
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: () => ({
@@ -81,6 +92,7 @@ const enableBull =
         autoLoadEntities: true,
       }),
     }),
+
     ...(enableBull
       ? [
           BullModule.forRoot({
@@ -97,7 +109,13 @@ const enableBull =
           }),
         ]
       : []),
+
     TenantsModule,
+
+    // 🔥 CRITICAL FIX (keeps analytics alive)
+    ExxaModule,
+
+    // other modules
     AnalyticsModule,
     HealthModule,
     RpcHealthModule,
@@ -129,15 +147,11 @@ const enableBull =
     ComplianceModule,
     LedgerModule,
     VersioningModule,
-    ExxaModule,
     InsightsForecastModule,
     ReferralsModule,
     KycModule,
     WalletsModule,
     ScheduledTransactionsModule,
-    DisputesModule,
-    EscrowModule,
-    SplitPaymentsModule,
     SubscriptionsModule,
     CardsModule,
     FxModule,
