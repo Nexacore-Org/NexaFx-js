@@ -1,16 +1,54 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { SplitPayment } from './entities/split-payment.entity';
-import { SplitContribution } from './entities/split-contribution.entity';
-import { SplitPaymentService } from './services/split-payment.service';
-import { SplitPaymentController } from './controllers/split-payment.controller';
-import { SplitPaymentAdminController } from './controllers/split-payment-admin.controller';
-import { SplitExpiryJob } from './jobs/split-expiry.job';
+import { Injectable } from '@nestjs/common';
+import { NotificationService } from '../../notifications/services/notification.service';
 
-@Module({
-  imports: [TypeOrmModule.forFeature([SplitPayment, SplitContribution])],
-  controllers: [SplitPaymentController, SplitPaymentAdminController],
-  providers: [SplitPaymentService, SplitExpiryJob],
-  exports: [SplitPaymentService],
-})
-export class SplitPaymentsModule {}
+@Injectable()
+export class SplitPaymentService {
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly repo: any,
+  ) {}
+
+  async contribute(paymentId: string, userId: string, amount: number) {
+    const payment = await this.repo.findOneBy({ id: paymentId });
+
+    setImmediate(() => {
+      this.notificationService.send({
+        type: 'SPLIT_CONTRIBUTION',
+        payload: { paymentId, userId, amount },
+      });
+
+      payment.participants
+        .filter((p: string) => p !== userId)
+        .forEach((recipientId: string) => {
+          this.notificationService.send({
+            type: 'SPLIT_CONTRIBUTION',
+            userId: recipientId,
+            payload: { paymentId, from: userId, amount },
+          });
+        });
+    });
+
+    return payment;
+  }
+
+  async completeSplit(paymentId: string) {
+    const payment = await this.repo.findOneBy({ id: paymentId });
+
+    setImmediate(() => {
+      this.notificationService.send({
+        type: 'SPLIT_COMPLETED',
+        payload: { paymentId },
+      });
+
+      payment.participants.forEach((userId: string) => {
+        this.notificationService.send({
+          type: 'SPLIT_COMPLETED',
+          userId,
+          payload: { paymentId },
+        });
+      });
+    });
+
+    return payment;
+  }
+}
