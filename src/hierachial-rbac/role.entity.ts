@@ -12,7 +12,7 @@ import {
   Index,
 } from 'typeorm';
 import { Permission } from './permission.entity';
-import { User } from './user.entity';
+import { User } from './entities/user.entity';
 
 @Entity('roles')
 @Index(['name'], { unique: true })
