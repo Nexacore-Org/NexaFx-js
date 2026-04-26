@@ -11,6 +11,13 @@ import {
 } from 'typeorm';
 import { TransactionCategoryEntity } from './transaction-category.entity';
 
+
+
+@Column({ nullable: true })
+categoryConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+
+@Column({ default: true })
+categoryAutoAssigned: boolean;
 @Entity('transactions')
 @Index('idx_transactions_status', ['status'])
 @Index('idx_transactions_created_at', ['createdAt'])

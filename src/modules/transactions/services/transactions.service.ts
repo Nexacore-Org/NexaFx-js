@@ -14,8 +14,8 @@ import { WebhookDispatcherService } from '../../webhooks/webhook-dispatcher.serv
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TRADE_COMPLETED_EVENT } from '../../risk-engine/services/risk-refresh.job';
 import { AdminAuditService, AuditContext } from '../../admin-audit/admin-audit.service';
-import { ActorType } from '../../admin-audit/entities/admin-audit-log.entity';
 import { TransactionAnnotationService } from './transaction-annotation.service';
+import { CategorizationEngineService } from './categorization-engine.service'; // ✅ NEW
 
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN', 'JPY', 'BTC', 'ETH', 'USDT'];
 
@@ -33,7 +33,186 @@ export class TransactionsService {
     private readonly eventEmitter: EventEmitter2,
     private readonly adminAuditService: AdminAuditService,
     private readonly annotationService: TransactionAnnotationService,
+    private readonly categorizationEngine: CategorizationEngineService, // ✅ NEW
   ) {}
+
+  async createTransaction(dto: CreateTransactionDto, auditContext?: AuditContext) {
+    if (!SUPPORTED_CURRENCIES.includes(dto.currency.toUpperCase())) {
+      throw new Error(`Unsupported currency: ${dto.currency}`);
+    }
+
+    let exchangeRate: number | undefined;
+    let convertedAmount: number | undefined;
+    let fxConversionId: string | undefined;
+
+    // 🔁 FX LOGIC (UNCHANGED)
+    if (dto.targetCurrency && dto.targetCurrency.toUpperCase() !== dto.currency.toUpperCase()) {
+      const pair = `${dto.currency.toUpperCase()}/${dto.targetCurrency.toUpperCase()}`;
+      exchangeRate = await this.fxAggregatorService.getValidatedRate(pair);
+      convertedAmount = Number((dto.amount * exchangeRate).toFixed(8));
+
+      if (auditContext && exchangeRate) {
+        fxConversionId = `fx_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        await this.adminAuditService.logFinancialEvent(auditContext, {
+          userId: auditContext.actorId,
+          action: 'FX_CONVERSION',
+          entityId: fxConversionId,
+          entityType: 'FXConversion',
+          amount: dto.amount,
+          currency: dto.currency.toUpperCase(),
+          metadata: {
+            fromCurrency: dto.currency.toUpperCase(),
+            toCurrency: dto.targetCurrency.toUpperCase(),
+            rate: exchangeRate,
+            convertedAmount,
+            pair,
+          },
+        });
+      }
+    }
+
+    // 🧾 CREATE TRANSACTION
+    const transaction = await this.lifecycleService.create({
+      amount: dto.amount,
+      currency: dto.currency.toUpperCase(),
+      description: dto.description,
+      walletId: dto.walletId,
+      toAddress: dto.toAddress,
+      fromAddress: dto.fromAddress,
+      externalId: dto.externalId,
+      metadata: {
+        ...dto.metadata,
+        ...(exchangeRate !== undefined
+          ? { exchangeRate, convertedAmount, targetCurrency: dto.targetCurrency, fxConversionId }
+          : {}),
+      },
+    });
+
+    // 📊 AUDIT LOG (UNCHANGED)
+    if (auditContext) {
+      await this.adminAuditService.logFinancialEvent(auditContext, {
+        userId: auditContext.actorId,
+        action: 'TRANSACTION_CREATED',
+        entityId: transaction.id,
+        entityType: 'Transaction',
+        amount: dto.amount,
+        currency: dto.currency.toUpperCase(),
+        beforeSnapshot: { walletId: dto.walletId },
+        afterSnapshot: {
+          transactionId: transaction.id,
+          amount: dto.amount,
+          currency: dto.currency.toUpperCase(),
+          status: transaction.status,
+        },
+        metadata: {
+          walletId: dto.walletId,
+          toAddress: dto.toAddress,
+          fromAddress: dto.fromAddress,
+          externalId: dto.externalId,
+        },
+      });
+    }
+
+    // 🚀 STATE TRANSITION
+    setImmediate(() => {
+      this.lifecycleService.markProcessing(transaction.id).catch(() => {});
+    });
+
+    // 🛡️ RISK SCORING (ASYNC)
+    setImmediate(() => {
+      try {
+        if (this.riskScoringService && typeof (this.riskScoringService as any).evaluateRisk === 'function') {
+          (this.riskScoringService as any).evaluateRisk(transaction.id).catch(() => {});
+        }
+      } catch (error) {
+        console.error('Risk scoring failed:', error);
+      }
+    });
+
+    // 🌐 WEBHOOK
+    setImmediate(() => {
+      this.webhookDispatcher.dispatch('transaction.created', {
+        transactionId: transaction.id,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        status: transaction.status,
+      }).catch(() => {});
+    });
+
+    // 🔄 EVENT
+    setImmediate(() => {
+      const userId = (dto as any).userId ?? (dto as any).walletId;
+      if (userId) {
+        this.eventEmitter.emit(TRADE_COMPLETED_EVENT, {
+          tradeId: transaction.id,
+          userId,
+          pnl: 0,
+        });
+      }
+    });
+
+    // 🧠 AUTO-CATEGORIZATION (ASYNC, NON-BLOCKING) ✅
+    setImmediate(async () => {
+      try {
+        const result = await this.categorizationEngine.categorize({
+          description: transaction.description,
+          merchant: (transaction as any).merchantName,
+          metadata: transaction.metadata,
+        });
+
+        if (!result.categoryId) return;
+
+        // ⚠️ Respect manual overrides
+        const fresh = await this.txRepo.findOne({ where: { id: transaction.id } });
+        if (!fresh || fresh.categoryAutoAssigned === false) return;
+
+        await this.txRepo.update(transaction.id, {
+          categoryId: result.categoryId,
+          categoryConfidence: result.confidence,
+          categoryAutoAssigned: true,
+        });
+      } catch (err) {
+        console.error('Categorization failed:', err);
+      }
+    });
+
+    return {
+      success: true,
+      data: {
+        ...transaction,
+        ...(exchangeRate !== undefined ? { exchangeRate, convertedAmount } : {}),
+      },
+    };
+  }
+
+  // 🔒 MANUAL OVERRIDE SAFE
+  async updateCategory(id: string, categoryId: string) {
+    return this.txRepo.update(id, {
+      categoryId,
+      categoryAutoAssigned: false,
+      categoryConfidence: 'HIGH',
+    });
+  }
+
+  // 🔁 BULK RE-CATEGORIZATION (ADMIN)
+  async recategorizeAll() {
+    const txs = await this.txRepo.find();
+
+    for (const tx of txs) {
+      if (tx.categoryAutoAssigned === false) continue;
+
+      const result = await this.categorizationEngine.categorize({
+        description: tx.description,
+        merchant: (tx as any).merchantName,
+      });
+
+      await this.txRepo.update(tx.id, {
+        categoryId: result.categoryId,
+        categoryConfidence: result.confidence,
+        categoryAutoAssigned: true,
+      });
+    }
+  }
 
   async createTransaction(dto: CreateTransactionDto, auditContext?: AuditContext) {
     if (!SUPPORTED_CURRENCIES.includes(dto.currency.toUpperCase())) {
