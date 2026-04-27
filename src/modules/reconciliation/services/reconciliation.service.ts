@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/require-await */
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, LessThan } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -69,6 +69,16 @@ export class ReconciliationService {
 
       const resolvedStatus = this.deriveResolution(providerStatus, blockchainStatus);
 
+      // Check if issue already exists for this transaction (idempotent)
+      const existingIssue = await this.issueRepo.findOne({
+        where: { transactionId: tx.id }
+      });
+
+      if (existingIssue) {
+        this.logger.debug(`Issue already exists for transaction ${tx.id}, skipping`);
+        continue;
+      }
+
       const issue = this.issueRepo.create({
         transactionId: tx.id,
         mismatchType,
@@ -76,14 +86,17 @@ export class ReconciliationService {
         providerStatus: providerStatus ?? undefined,
         blockchainStatus: blockchainStatus ?? undefined,
         rawSnapshot: { tx, providerStatus, blockchainStatus },
+        detectedAt: new Date(),
+        status: 'OPEN',
       });
 
       if (resolvedStatus) {
         await this.txRepo.update(tx.id, { status: resolvedStatus });
         issue.status = 'AUTO_RESOLVED';
         issue.resolution = `Auto-resolved to ${resolvedStatus} based on external consensus`;
+        issue.resolvedAt = new Date();
       } else {
-        issue.status = 'ESCALATED';
+        issue.status = 'OPEN';
         issue.resolution = 'No consensus — manual review required';
       }
 
@@ -105,6 +118,32 @@ export class ReconciliationService {
         backlogCount
       );
     }
+  }
+
+  @Cron(CronExpression.EVERY_30_MINUTES)
+  async escalateStaleIssues(): Promise<void> {
+    const escalationThreshold = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours ago
+
+    const staleIssues = await this.issueRepo.find({
+      where: {
+        status: 'OPEN',
+        createdAt: LessThan(escalationThreshold),
+      },
+    });
+
+    if (staleIssues.length === 0) {
+      return;
+    }
+
+    this.logger.log(`Escalating ${staleIssues.length} stale reconciliation issues`);
+
+    await Promise.all(
+      staleIssues.map(issue => {
+        issue.status = 'ESCALATED';
+        issue.resolution = 'Escalated due to age - no resolution achieved within threshold';
+        return this.issueRepo.save(issue);
+      })
+    );
   }
 
   async getIssues(query: ReconciliationIssueQueryDto) {
@@ -135,9 +174,15 @@ export class ReconciliationService {
     const issue = await this.issueRepo.findOne({ where: { id: issueId } });
     if (!issue) throw new NotFoundException('Reconciliation issue not found');
 
+    if (issue.status === 'AUTO_RESOLVED' || issue.status === 'MANUALLY_RESOLVED') {
+      throw new BadRequestException('Issue is already resolved');
+    }
+
     const beforeSnapshot = { ...issue };
-    issue.status = 'AUTO_RESOLVED'; // Using AUTO_RESOLVED as a generic terminal resolved state for now, or could add 'RESOLVED'
+    issue.status = 'MANUALLY_RESOLVED';
     issue.resolution = `Manual resolution by admin: ${resolution}`;
+    issue.resolutionNote = resolution;
+    issue.resolvedAt = new Date();
     
     const savedIssue = await this.issueRepo.save(issue);
 
@@ -154,9 +199,11 @@ export class ReconciliationService {
         entityId: issueId,
         beforeSnapshot,
         afterSnapshot: savedIssue,
-        description: `Resolved reconciliation issue ${issueId} with note: ${resolution}`,
+        description: `Manually resolved reconciliation issue ${issueId} with note: ${resolution}`,
       }
     );
+
+    this.logger.log(`Reconciliation issue ${issueId} manually resolved by admin ${adminId}`);
 
     return savedIssue;
   }

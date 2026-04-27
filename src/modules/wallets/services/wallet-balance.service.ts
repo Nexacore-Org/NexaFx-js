@@ -67,21 +67,34 @@ export class WalletBalanceService {
   }
 
   private async computeBalance(walletId: string, currency: string): Promise<WalletBalanceDto> {
-    const transactions = await this.txRepo.find({ where: { walletId } });
+    // Use DB aggregate queries instead of loading all transactions into memory
+    const availableQuery = this.txRepo
+      .createQueryBuilder('tx')
+      .select([
+        'SUM(CASE WHEN tx.direction = :credit THEN tx.amount ELSE -tx.amount END) as total',
+      ])
+      .where('tx.walletId = :walletId', { walletId })
+      .andWhere('tx.status = :status', { status: 'SUCCESS' })
+      .setParameter('credit', 'CREDIT')
+      .getRawOne();
 
-    let available = 0;
-    let pending = 0;
+    const pendingQuery = this.txRepo
+      .createQueryBuilder('tx')
+      .select([
+        'SUM(CASE WHEN tx.direction = :credit THEN tx.amount ELSE -tx.amount END) as total',
+      ])
+      .where('tx.walletId = :walletId', { walletId })
+      .andWhere('tx.status = :status', { status: 'PENDING' })
+      .setParameter('credit', 'CREDIT')
+      .getRawOne();
 
-    for (const tx of transactions) {
-      const amount = Number(tx.amount);
-      const isCredit = tx.metadata?.type === 'CREDIT' || tx.fromAddress == null;
+    const [availableResult, pendingResult] = await Promise.all([
+      availableQuery,
+      pendingQuery,
+    ]);
 
-      if (tx.status === 'SUCCESS') {
-        available += isCredit ? amount : -amount;
-      } else if (tx.status === 'PENDING') {
-        pending += isCredit ? amount : -amount;
-      }
-    }
+    const available = Number(availableResult?.total || 0);
+    const pending = Number(pendingResult?.total || 0);
 
     return {
       walletId,
