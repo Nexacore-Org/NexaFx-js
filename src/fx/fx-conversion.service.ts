@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -16,6 +17,7 @@ import { FxConversion, ConversionStatus } from '../entities/fx-conversion.entity
 import { FeeCalculatorService } from './fee-calculator.service';
 import { RegulatoryDisclosureService } from './regulatory-disclosure.service';
 import { LoyaltyTier } from '../../loyalty/entities/loyalty-account.entity';
+import { RateProviderService } from './rate-provider.service';
 
 export const QUOTE_TTL_SECONDS = 60;
 const REDIS_QUOTE_PREFIX = 'fx:quote:';
@@ -73,6 +75,7 @@ export class FxConversionService {
     private readonly feeCalc: FeeCalculatorService,
     private readonly disclosure: RegulatoryDisclosureService,
     private readonly dataSource: DataSource,
+    private readonly rateProvider: RateProviderService,
   ) {}
 
   // ── Quote ──────────────────────────────────────────────────────────────────
@@ -290,28 +293,20 @@ export class FxConversionService {
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   /**
-   * Fetch mid-market rate from your rate provider.
-   * Replace this stub with your actual RateProviderService injection.
+   * Fetch mid-market rate from the rate provider service
    */
   private async fetchMidRate(from: string, to: string): Promise<number> {
-    // TODO: inject RateProviderService and call e.g.:
-    //   return this.rateProvider.getMidRate(from, to);
-    //
-    // Stub rates for development / tests:
-    const STUB_RATES: Record<string, number> = {
-      'USD_NGN': 1580.00,
-      'NGN_USD': 1 / 1580.00,
-      'GBP_USD': 1.27,
-      'USD_GBP': 1 / 1.27,
-      'EUR_USD': 1.09,
-      'USD_EUR': 1 / 1.09,
-      'USD_GHS': 14.50,
-      'GHS_USD': 1 / 14.50,
-    };
-    const key  = `${from}_${to}`;
-    const rate = STUB_RATES[key];
-    if (!rate) throw new BadRequestException(`Currency pair ${from}/${to} not supported`);
-    return rate;
+    try {
+      return await this.rateProvider.getMidRate(from, to);
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) {
+        // Pass through structured error from rate provider
+        throw error;
+      }
+      
+      this.logger.error(`Failed to fetch rate for ${from}/${to}: ${error.message}`);
+      throw new ServiceUnavailableException('Rate fetching service temporarily unavailable');
+    }
   }
 
   private validateCurrencyPair(from: string, to: string): void {

@@ -75,9 +75,6 @@ export class GoalsService {
       .orderBy('goal.createdAt', 'DESC')
       .getMany();
 
-    // Update expired goals
-    await this.updateExpiredGoals(goals);
-
     // Calculate summary statistics
     const summary = this.calculateSummary(goals);
 
@@ -99,12 +96,6 @@ export class GoalsService {
 
     if (goal.userId !== userId) {
       throw new ForbiddenException('You do not have access to this goal');
-    }
-
-    // Check if goal is expired and update if needed
-    if (goal.isOverdue && goal.status === GoalStatus.ACTIVE) {
-      goal.status = GoalStatus.EXPIRED;
-      await this.goalRepository.save(goal);
     }
 
     return new GoalResponseDto(goal);
@@ -253,21 +244,6 @@ export class GoalsService {
 
     const updatedGoal = await this.goalRepository.save(goal);
     return new GoalResponseDto(updatedGoal);
-  }
-
-  private async updateExpiredGoals(goals: Goal[]): Promise<void> {
-    const expiredGoals = goals.filter(
-      goal => goal.isOverdue && goal.status === GoalStatus.ACTIVE,
-    );
-
-    if (expiredGoals.length > 0) {
-      await Promise.all(
-        expiredGoals.map(goal => {
-          goal.status = GoalStatus.EXPIRED;
-          return this.goalRepository.save(goal);
-        }),
-      );
-    }
   }
 
   // ── Round-up rule ─────────────────────────────────────────────────────────
