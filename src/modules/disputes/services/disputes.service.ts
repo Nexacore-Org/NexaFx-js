@@ -9,6 +9,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { DisputeEntity } from '../entities/dispute.entity';
 import { TransactionEntity } from '../../transactions/entities/transaction.entity';
+import { FxConversion } from '../../../fx/entities/fx-conversion.entity';
 import { OpenDisputeDto, ResolveDisputeDto } from '../dto/dispute.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
 
@@ -95,6 +96,44 @@ export class DisputesService {
 
     // Send notification
     await this.sendDisputeNotification(dispute, 'opened');
+
+    return dispute!;
+  }
+
+  async openFxConversionDispute(
+    conversionId: string,
+    userId: string,
+    dto: OpenDisputeDto,
+  ): Promise<DisputeEntity> {
+    const existing = await this.disputeRepo.findOne({
+      where: { subjectType: 'FX_CONVERSION', subjectId: conversionId, status: 'OPEN' },
+    });
+    if (existing) {
+      throw new ConflictException('An open dispute already exists for this conversion');
+    }
+
+    let dispute: DisputeEntity;
+
+    await this.dataSource.transaction(async (manager) => {
+      const conv = await manager.findOne(FxConversion, { where: { id: conversionId } });
+      if (!conv) throw new NotFoundException('FX Conversion not found');
+
+      const autoCloseAt = new Date();
+      autoCloseAt.setDate(autoCloseAt.getDate() + 30);
+
+      dispute = manager.create(DisputeEntity, {
+        subjectType: 'FX_CONVERSION',
+        subjectId: conversionId,
+        initiatorUserId: userId,
+        status: 'OPEN',
+        reason: dto.reason,
+        evidenceFileIds: dto.evidenceFileIds ?? null,
+        autoCloseAt,
+      });
+      dispute = await manager.save(DisputeEntity, dispute);
+    });
+
+    await this.sendDisputeNotification(dispute!, 'opened');
 
     return dispute!;
   }

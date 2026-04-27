@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LoyaltyTier } from '../../loyalty/entities/loyalty-account.entity';
+import { LoyaltyTier } from '../../loyalty-point/loyalty-account.entity';
 
 export interface FeeBreakdown {
   /** Gross source amount (minor units) */

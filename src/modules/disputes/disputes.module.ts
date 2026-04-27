@@ -5,12 +5,13 @@ import { DisputeEntity } from './entities/dispute.entity';
 import { DisputesService } from './services/disputes.service';
 import { DisputeController, AdminDisputeController } from './controllers/dispute.controller';
 import { TransactionEntity } from '../transactions/entities/transaction.entity';
+import { FxConversion } from '../../fx/entities/fx-conversion.entity';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DisputeEntity, TransactionEntity]),
+    TypeOrmModule.forFeature([DisputeEntity, TransactionEntity, FxConversion]),
     ScheduleModule.forRoot(),
     AuthModule,
     NotificationsModule,
