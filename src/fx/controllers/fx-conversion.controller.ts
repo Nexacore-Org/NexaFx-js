@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Query,
   Request,
@@ -11,7 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiCreatedResponse, ApiHeader } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../modules/auth/guards/jwt-auth.guard';
 import { Idempotent } from '../../idempotency/idempotency.decorator';
 import { IdempotencyGuard } from '../../idempotency/idempotency.guard';
 import { IdempotencyInterceptor } from '../../idempotency/idempotency.interceptor';
@@ -21,8 +22,10 @@ import {
   ExecuteConversionDto,
   GetFeesDto,
   GetQuoteDto,
+  ReverseConversionDto,
 } from '../dto/fx-conversion.dto';
-import { LoyaltyTier } from '../../loyalty/entities/loyalty-account.entity';
+import { OpenDisputeDto } from '../../modules/disputes/dto/dispute.dto';
+import { LoyaltyTier } from '../../loyalty-point/loyalty-account.entity';
 
 @ApiTags('FX Conversion')
 @ApiBearerAuth('access-token')
@@ -108,5 +111,37 @@ export class FxConversionController {
   @ApiOkResponse({ description: 'Paginated conversion history' })
   async getHistory(@Request() req, @Query() dto: ConversionHistoryDto) {
     return this.fxService.getHistory(req.user.id, dto);
+  }
+
+  /**
+   * POST /fx/convert/:id/reverse
+   * Reverses a conversion within a 5-minute window.
+   */
+  @Post('convert/:id/reverse')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reverse a conversion within the 5-minute window' })
+  @ApiOkResponse({ description: 'Conversion reversed successfully' })
+  async reverseConversion(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: ReverseConversionDto,
+  ) {
+    return this.fxService.reverseConversion(req.user.id, id, dto.reason);
+  }
+
+  /**
+   * POST /fx/convert/:id/dispute
+   * Opens a dispute for a conversion.
+   */
+  @Post('convert/:id/dispute')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Open a dispute for a conversion' })
+  @ApiCreatedResponse({ description: 'Dispute opened successfully' })
+  async openDispute(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: OpenDisputeDto,
+  ) {
+    return this.fxService.openDispute(req.user.id, id, dto);
   }
 }

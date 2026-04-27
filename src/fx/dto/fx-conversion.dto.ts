@@ -4,12 +4,14 @@ import {
   IsISO4217CurrencyCode,
   IsOptional,
   IsPositive,
+  IsString,
   IsUUID,
   Max,
   Min,
+  MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { LoyaltyTier } from '../../loyalty/entities/loyalty-account.entity';
+import { LoyaltyTier } from '../../loyalty-point/loyalty-account.entity';
 
 export class GetQuoteDto {
   @IsISO4217CurrencyCode()
@@ -76,4 +78,10 @@ export class ConversionHistoryDto {
   @IsOptional()
   @IsISO4217CurrencyCode()
   toCurrency?: string;
+}
+
+export class ReverseConversionDto {
+  @IsString()
+  @MinLength(5)
+  reason: string;
 }
