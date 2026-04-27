@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { SplitPayment, SplitStatus } from '../entities/split-payment.entity';
 import { SplitContribution } from '../entities/split-contribution.entity';
+import { UsersService } from '../../../users/users.service';
 
 @Injectable()
 export class SplitPaymentService {
@@ -10,6 +11,7 @@ export class SplitPaymentService {
     @InjectRepository(SplitPayment) private splitRepo: Repository<SplitPayment>,
     @InjectRepository(SplitContribution) private contribRepo: Repository<SplitContribution>,
     private dataSource: DataSource,
+    private readonly usersService: UsersService,
   ) {}
 
   async createSplit(initiatorId: string, totalAmount: number, participants: string[]) {
@@ -58,6 +60,9 @@ export class SplitPaymentService {
       throw new BadRequestException('Split is no longer active');
 
     return this.dataSource.transaction(async (manager) => {
+      // Perform atomic P2P transfer from contributor to initiator
+      await this.performP2PTransferInTransaction(manager, userId, contribution.splitPayment.initiatorId, Number(contribution.amount));
+      
       contribution.hasPaid = true;
       contribution.transactionId = `tx_split_${Date.now()}`;
       await manager.save(contribution);
@@ -204,5 +209,46 @@ export class SplitPaymentService {
       completionRate: settled > 0 ? completed / settled : 0,
       expiryRate: settled > 0 ? expired / settled : 0,
     };
+  }
+
+  private async performP2PTransferInTransaction(manager: any, fromUserId: string, toUserId: string, amount: number): Promise<void> {
+    // For now, assume USD currency for P2P transfers - can be extended to support multiple currencies
+    const currency = 'USD';
+    
+    // Get and lock sender
+    const sender = await manager.findOne('User', { 
+      where: { id: fromUserId },
+      lock: { mode: 'pessimistic_write' }
+    });
+    
+    if (!sender) {
+      throw new NotFoundException('Sender not found');
+    }
+    
+    const senderBalance = Number(sender.balances?.[currency] ?? 0);
+    if (senderBalance < amount) {
+      throw new BadRequestException('Insufficient balance for P2P transfer');
+    }
+    
+    // Get and lock receiver
+    const receiver = await manager.findOne('User', { 
+      where: { id: toUserId },
+      lock: { mode: 'pessimistic_write' }
+    });
+    
+    if (!receiver) {
+      throw new NotFoundException('Receiver not found');
+    }
+    
+    // Update sender balance (debit)
+    const senderBalances = { ...(sender.balances ?? {}) };
+    senderBalances[currency] = Number((senderBalance - amount).toFixed(8));
+    await manager.update('User', { id: fromUserId }, { balances: senderBalances });
+    
+    // Update receiver balance (credit)
+    const receiverBalance = Number(receiver.balances?.[currency] ?? 0);
+    const receiverBalances = { ...(receiver.balances ?? {}) };
+    receiverBalances[currency] = Number((receiverBalance + amount).toFixed(8));
+    await manager.update('User', { id: toUserId }, { balances: receiverBalances });
   }
 }

@@ -3,6 +3,8 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -17,6 +19,7 @@ import {
   PaginatedContributionsDto,
   ContributionResponseDto,
 } from './dto/round-up.dto';
+import { WalletBalanceService } from '../../modules/wallets/services/wallet-balance.service';
 
 @Injectable()
 export class GoalsService {
@@ -25,6 +28,8 @@ export class GoalsService {
     private readonly goalRepository: Repository<Goal>,
     @InjectRepository(GoalContribution)
     private readonly contributionRepository: Repository<GoalContribution>,
+    @Inject(forwardRef(() => WalletBalanceService))
+    private readonly walletBalanceService: WalletBalanceService,
   ) {}
 
   async create(userId: string, createGoalDto: CreateGoalDto): Promise<GoalResponseDto> {
@@ -205,7 +210,7 @@ export class GoalsService {
 
   /**
    * Calculate progress for a goal linked to a wallet
-   * This method would integrate with your wallet/transaction system
+   * This method integrates with the wallet service to calculate actual balance
    */
   async calculateWalletProgress(
     goalId: string,
@@ -227,13 +232,24 @@ export class GoalsService {
       throw new BadRequestException('Goal is not linked to a wallet');
     }
 
-    // TODO: Integrate with your wallet service to calculate actual balance
-    // Example:
-    // const walletBalance = await this.walletService.getBalance(goal.linkedWalletId, userId);
-    // goal.currentAmount = walletBalance;
-
-    // For now, this is a placeholder
-    // You would replace this with actual wallet integration
+    // Fetch real balance from WalletBalanceService
+    try {
+      const walletBalance = await this.walletBalanceService.getBalance(goal.linkedWalletId);
+      goal.currentAmount = walletBalance.available;
+      
+      // Ensure current amount doesn't exceed target amount
+      if (goal.currentAmount > goal.targetAmount) {
+        goal.currentAmount = goal.targetAmount;
+      }
+      
+      // Auto-complete if target is reached
+      if (goal.currentAmount >= goal.targetAmount && goal.status === GoalStatus.ACTIVE) {
+        goal.status = GoalStatus.COMPLETED;
+      }
+    } catch (error) {
+      // If wallet balance fetch fails, keep current amount but log error
+      console.error(`Failed to fetch wallet balance for goal ${goalId}:`, error);
+    }
 
     const updatedGoal = await this.goalRepository.save(goal);
     return new GoalResponseDto(updatedGoal);

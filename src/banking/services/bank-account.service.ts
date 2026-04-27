@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { EncryptionService } from '../../../common/services/encryption.service';
 import {
   NotificationType,
@@ -49,6 +49,7 @@ export class BankAccountService {
     private readonly encryptionService: EncryptionService,
     private readonly paymentRailService: PaymentRailService,
     private readonly auditLogsService: AuditLogsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async linkBankAccount(userId: string, dto: LinkBankAccountDto) {
@@ -122,88 +123,114 @@ export class BankAccountService {
   }
 
   async createBankDeposit(userId: string, dto: CreateBankDepositDto) {
-    const account = await this.requireActiveBankAccount(userId, dto.bankAccountId);
-    const currency = dto.currency.toUpperCase();
-    await this.currenciesService.getCurrency(currency);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    const reference = this.paymentRailService.buildSettlementReference('deposit');
-    const transaction = this.transactionRepository.create({
-      userId,
-      type: TransactionType.DEPOSIT,
-      amount: dto.amount.toFixed(8),
-      currency,
-      status: TransactionStatus.PENDING,
-      bankAccountId: account.id,
-      rail: 'BANK',
-      externalReference: reference,
-      metadata: {
-        bankName: account.bankName,
-        accountNumberLast4: account.accountNumberLast4,
-        settlementState: 'PENDING',
-      },
-    });
+    try {
+      const account = await this.requireActiveBankAccount(userId, dto.bankAccountId);
+      const currency = dto.currency.toUpperCase();
+      await this.currenciesService.getCurrency(currency);
 
-    const saved = await this.transactionRepository.save(transaction);
+      const reference = this.paymentRailService.buildSettlementReference('deposit');
+      const transaction = this.transactionRepository.create({
+        userId,
+        type: TransactionType.DEPOSIT,
+        amount: dto.amount.toFixed(8),
+        currency,
+        status: TransactionStatus.PENDING,
+        bankAccountId: account.id,
+        rail: 'BANK',
+        externalReference: reference,
+        metadata: {
+          bankName: account.bankName,
+          accountNumberLast4: account.accountNumberLast4,
+          settlementState: 'PENDING',
+        },
+      });
 
-    this.paymentRailService.scheduleSettlement(saved.id, reference, async (payload) => {
-      await this.applySettlementWebhook(payload);
-    });
+      const saved = await queryRunner.manager.save(transaction);
 
-    await this.auditLogsService.logTransactionEvent(userId, 'BANK_DEPOSIT_INITIATED', saved.id, {
-      bankAccountId: account.id,
-      amount: dto.amount,
-      currency,
-      reference,
-    });
+      this.paymentRailService.scheduleSettlement(saved.id, reference, async (payload) => {
+        await this.applySettlementWebhook(payload);
+      });
 
-    return saved;
-  }
-
-  async createBankWithdrawal(userId: string, dto: CreateBankWithdrawalDto) {
-    const account = await this.requireActiveBankAccount(userId, dto.bankAccountId);
-    const currency = dto.currency.toUpperCase();
-    await this.currenciesService.getCurrency(currency);
-
-    await this.reserveBalance(userId, currency, dto.amount);
-
-    const reference = this.paymentRailService.buildSettlementReference('withdrawal');
-    const transaction = this.transactionRepository.create({
-      userId,
-      type: TransactionType.WITHDRAW,
-      amount: dto.amount.toFixed(8),
-      currency,
-      status: TransactionStatus.PENDING,
-      bankAccountId: account.id,
-      rail: 'BANK',
-      externalReference: reference,
-      reservedBalanceAmount: dto.amount.toFixed(8),
-      metadata: {
-        bankName: account.bankName,
-        accountNumberLast4: account.accountNumberLast4,
-        settlementState: 'PENDING',
-        balanceReserved: true,
-      },
-    });
-
-    const saved = await this.transactionRepository.save(transaction);
-
-    this.paymentRailService.scheduleSettlement(saved.id, reference, async (payload) => {
-      await this.applySettlementWebhook(payload);
-    });
-
-    await this.auditLogsService.logTransactionEvent(
-      userId,
-      'BANK_WITHDRAWAL_INITIATED',
-      saved.id,
-      {
+      await this.auditLogsService.logTransactionEvent(userId, 'BANK_DEPOSIT_INITIATED', saved.id, {
         bankAccountId: account.id,
         amount: dto.amount,
         currency,
         reference,
-      },
-    );
+      });
 
-    return saved;
+      await queryRunner.commitTransaction();
+      return saved;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Bank deposit failed for user ${userId}`, err.stack);
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async createBankWithdrawal(userId: string, dto: CreateBankWithdrawalDto) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const account = await this.requireActiveBankAccount(userId, dto.bankAccountId);
+      const currency = dto.currency.toUpperCase();
+      await this.currenciesService.getCurrency(currency);
+
+      await this.reserveBalanceInTransaction(queryRunner.manager, userId, currency, dto.amount);
+
+      const reference = this.paymentRailService.buildSettlementReference('withdrawal');
+      const transaction = this.transactionRepository.create({
+        userId,
+        type: TransactionType.WITHDRAW,
+        amount: dto.amount.toFixed(8),
+        currency,
+        status: TransactionStatus.PENDING,
+        bankAccountId: account.id,
+        rail: 'BANK',
+        externalReference: reference,
+        reservedBalanceAmount: dto.amount.toFixed(8),
+        metadata: {
+          bankName: account.bankName,
+          accountNumberLast4: account.accountNumberLast4,
+          settlementState: 'PENDING',
+          balanceReserved: true,
+        },
+      });
+
+      const saved = await queryRunner.manager.save(transaction);
+
+      this.paymentRailService.scheduleSettlement(saved.id, reference, async (payload) => {
+        await this.applySettlementWebhook(payload);
+      });
+
+      await this.auditLogsService.logTransactionEvent(
+        userId,
+        'BANK_WITHDRAWAL_INITIATED',
+        saved.id,
+        {
+          bankAccountId: account.id,
+          amount: dto.amount,
+          currency,
+          reference,
+        },
+      );
+
+      await queryRunner.commitTransaction();
+      return saved;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Bank withdrawal failed for user ${userId}`, err.stack);
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async applySettlementWebhook(dto: PaymentRailWebhookDto) {
@@ -316,6 +343,22 @@ export class BankAccountService {
       throw new NotFoundException('Bank account not found');
     }
     return account;
+  }
+
+  private async reserveBalanceInTransaction(manager: any, userId: string, currency: string, amount: number) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const currentBalance = Number(user.balances?.[currency] ?? 0);
+    if (currentBalance < amount) {
+      throw new BadRequestException('Insufficient wallet balance');
+    }
+
+    const balances = { ...(user.balances ?? {}) };
+    balances[currency] = Number((currentBalance - amount).toFixed(8));
+    await this.usersService.updateByUserId(userId, { balances });
   }
 
   private async reserveBalance(userId: string, currency: string, amount: number) {
