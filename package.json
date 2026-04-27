@@ -25,6 +25,8 @@
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts"
   },
   "dependencies": {
+    "@nestjs-modules/ioredis": "^2.2.1",
+    "@nestjs/axios": "^4.0.1",
     "@nestjs/bull": "^11.0.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
@@ -46,10 +48,11 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "handlebars": "^4.7.9",
+    "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^8.0.4",
-    "pg": "^8.11.3",
     "pdf-lib": "^1.17.1",
+    "pg": "^8.11.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",

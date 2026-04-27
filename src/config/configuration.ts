@@ -161,6 +161,8 @@ export default () => {
     // FX configuration
     fx: {
       reversalWindowMinutes: parseInt(process.env.FX_REVERSAL_WINDOW_MINUTES || '5', 10),
+      openExchangeRatesApiKey: process.env.OPEN_EXCHANGE_RATES_API_KEY || '',
+      exchangeRateHostApiKey: process.env.EXCHANGE_RATE_HOST_API_KEY || '',
     },
   };
 };
