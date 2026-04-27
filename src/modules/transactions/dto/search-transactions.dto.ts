@@ -67,4 +67,14 @@ export class SearchTransactionsDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by from wallet alias', example: 'savings' })
+  @IsOptional()
+  @IsString()
+  fromAlias?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by to wallet alias', example: 'spending' })
+  @IsOptional()
+  @IsString()
+  toAlias?: string;
 }

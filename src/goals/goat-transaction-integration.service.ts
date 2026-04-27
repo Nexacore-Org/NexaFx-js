@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Goal, GoalStatus } from './entities/goal.entity';
+import { WalletBalanceService } from '../modules/wallets/services/wallet-balance.service';
+import { Inject, forwardRef } from '@nestjs/common';
 
 /**
  * This service handles the integration between goals and wallet transactions.
@@ -12,6 +14,8 @@ export class GoalTransactionIntegrationService {
   constructor(
     @InjectRepository(Goal)
     private readonly goalRepository: Repository<Goal>,
+    @Inject(forwardRef(() => WalletBalanceService))
+    private readonly walletBalanceService: WalletBalanceService,
   ) {}
 
   /**
@@ -37,17 +41,22 @@ export class GoalTransactionIntegrationService {
       return;
     }
 
-    // Update each goal's progress
+    // Update each goal's progress by fetching real wallet balance
     for (const goal of linkedGoals) {
-      const delta = transactionType === 'credit' ? amount : -amount;
-      goal.currentAmount = Math.max(0, Number(goal.currentAmount) + delta);
+      try {
+        // Fetch real balance from WalletBalanceService
+        const walletBalance = await this.walletBalanceService.getBalance(walletId);
+        goal.currentAmount = Math.min(walletBalance.available, goal.targetAmount);
 
-      // Auto-complete if target is reached
-      if (goal.currentAmount >= goal.targetAmount) {
-        goal.status = GoalStatus.COMPLETED;
+        // Auto-complete if target is reached
+        if (goal.currentAmount >= goal.targetAmount) {
+          goal.status = GoalStatus.COMPLETED;
+        }
+
+        await this.goalRepository.save(goal);
+      } catch (error) {
+        console.error(`Failed to sync goal ${goal.id} with wallet balance:`, error);
       }
-
-      await this.goalRepository.save(goal);
     }
   }
 
@@ -57,7 +66,6 @@ export class GoalTransactionIntegrationService {
    */
   async syncGoalWithWalletBalance(
     goalId: string,
-    currentWalletBalance: number,
   ): Promise<Goal> {
     const goal = await this.goalRepository.findOne({
       where: { id: goalId },
@@ -67,11 +75,17 @@ export class GoalTransactionIntegrationService {
       return goal;
     }
 
-    goal.currentAmount = currentWalletBalance;
+    try {
+      // Fetch real balance from WalletBalanceService
+      const walletBalance = await this.walletBalanceService.getBalance(goal.linkedWalletId);
+      goal.currentAmount = Math.min(walletBalance.available, goal.targetAmount);
 
-    // Auto-complete if target is reached
-    if (goal.currentAmount >= goal.targetAmount && goal.status === GoalStatus.ACTIVE) {
-      goal.status = GoalStatus.COMPLETED;
+      // Auto-complete if target is reached
+      if (goal.currentAmount >= goal.targetAmount && goal.status === GoalStatus.ACTIVE) {
+        goal.status = GoalStatus.COMPLETED;
+      }
+    } catch (error) {
+      console.error(`Failed to sync goal ${goalId} with wallet balance:`, error);
     }
 
     return this.goalRepository.save(goal);

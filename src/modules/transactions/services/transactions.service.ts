@@ -5,6 +5,7 @@ import { Brackets, Repository } from 'typeorm';
 import { TransactionEntity } from '../entities/transaction.entity';
 import { SearchTransactionsDto } from '../dto/search-transactions.dto';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
+import { TransactionResponseDto, PaginatedTransactionResponseDto } from '../dto/transaction-response.dto';
 import { EnrichmentService } from '../../enrichment/enrichment.service';
 import { WalletAliasService } from './wallet-alias.service';
 import { TransactionLifecycleService } from './transaction-lifecycle.service';
@@ -435,9 +436,9 @@ export class TransactionsService {
       enrichedItems = await this.enrichWithWalletAliases(items, userId);
     }
 
-    return {
+    const response: PaginatedTransactionResponseDto = {
       success: true,
-      data: enrichedItems,
+      data: enrichedItems.map(tx => this.mapToResponseDto(tx)),
       meta: {
         page,
         limit,
@@ -445,27 +446,61 @@ export class TransactionsService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    return response;
   }
 
-  private async enrichWithWalletAliases(transactions: TransactionEntity[], userId: string) {
-    const walletAliasMap = await this.walletAliasService.getWalletAliasMap(userId);
+  private async enrichWithWalletAliases(transactions: TransactionEntity[], userId: string): Promise<TransactionEntity[]> {
+    // Collect all unique wallet addresses from transactions
+    const walletAddresses = new Set<string>();
     
+    transactions.forEach(tx => {
+      const addresses = this.extractWalletAddresses(tx);
+      addresses.forEach(address => walletAddresses.add(address));
+    });
+
+    if (walletAddresses.size === 0) {
+      return transactions;
+    }
+
+    // Batch fetch all aliases in one query (not N+1)
+    const aliases = await this.walletAliasService.findAllByUser(userId);
+    const aliasMap = new Map<string, string>();
+    
+    aliases.forEach(alias => {
+      if (walletAddresses.has(alias.walletAddress)) {
+        aliasMap.set(alias.walletAddress, alias.alias);
+      }
+    });
+
+    // Enrich transactions with aliases
     return transactions.map(tx => {
-      // Extract wallet addresses from transaction metadata/payload
-      const walletAddresses = this.extractWalletAddresses(tx);
-      const walletAliases: Record<string, string> = {};
+      const enrichedTx = { ...tx };
+      const addresses = this.extractWalletAddresses(tx);
       
-      walletAddresses.forEach(address => {
-        const alias = walletAliasMap.get(address);
+      // Add specific alias fields
+      if (tx.fromAddress && aliasMap.has(tx.fromAddress)) {
+        enrichedTx.fromWalletAlias = aliasMap.get(tx.fromAddress);
+      }
+      
+      if (tx.toAddress && aliasMap.has(tx.toAddress)) {
+        enrichedTx.toWalletAlias = aliasMap.get(tx.toAddress);
+      }
+      
+      // Add general alias map for backward compatibility
+      const walletAliases: Record<string, string> = {};
+      addresses.forEach(address => {
+        const alias = aliasMap.get(address);
         if (alias) {
           walletAliases[address] = alias;
         }
       });
-
-      return {
-        ...tx,
-        walletAliases: Object.keys(walletAliases).length > 0 ? walletAliases : undefined,
-      };
+      
+      if (Object.keys(walletAliases).length > 0) {
+        enrichedTx.walletAliases = walletAliases;
+      }
+      
+      return enrichedTx;
     });
   }
 
@@ -500,5 +535,25 @@ export class TransactionsService {
 
     // Remove duplicates
     return [...new Set(addresses)];
+  }
+
+  private mapToResponseDto(transaction: TransactionEntity): TransactionResponseDto {
+    return {
+      id: transaction.id,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      description: transaction.description,
+      status: transaction.status,
+      walletId: transaction.walletId,
+      fromAddress: transaction.fromAddress,
+      toAddress: transaction.toAddress,
+      externalId: transaction.externalId,
+      metadata: transaction.metadata,
+      createdAt: transaction.createdAt,
+      updatedAt: transaction.updatedAt,
+      fromWalletAlias: (transaction as any).fromWalletAlias,
+      toWalletAlias: (transaction as any).toWalletAlias,
+      walletAliases: (transaction as any).walletAliases,
+    };
   }
 }
