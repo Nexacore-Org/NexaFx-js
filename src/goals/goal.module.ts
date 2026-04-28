@@ -12,7 +12,7 @@ import { GoalTransactionIntegrationService } from './goat-transaction-integratio
 import { WalletsModule } from '../modules/wallets/wallets.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Goal, GoalContribution]), ScheduleModule.forRoot(), WalletsModule],
+  imports: [TypeOrmModule.forFeature([Goal, GoalContribution]), ScheduleModule, WalletsModule],
   controllers: [GoalsController],
   providers: [GoalsService, RoundUpService, GoalProgressListener, GoalExpiryJob, GoalTransactionIntegrationService],
   exports: [GoalsService, RoundUpService, GoalTransactionIntegrationService],

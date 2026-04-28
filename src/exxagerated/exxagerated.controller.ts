@@ -14,12 +14,12 @@ import {
   ApiSecurity,
 } from '@nestjs/swagger';
 import { InsightsService } from './insights.service';
-import { AggregationService } from './services/aggregation.service';
-import { DataRetentionService } from './services/data-retention.service';
+import { AggregationService } from './aggregation.service';
+import { DataRetentionService } from './data-retention.service';
 import {
   GetInsightsQueryDto,
   InsightsSummaryResponseDto,
-} from './dto/insights.dto';
+} from './insights.dto';
 
 /**
  * Admin-only controller for platform insights
@@ -35,7 +35,7 @@ import {
 @Controller('admin/analytics')
 @ApiBearerAuth()
 // @UseGuards(JwtAuthGuard, AdminRoleGuard) // Uncomment and implement your guards
-export class InsightsController {
+export class ExxageratedController {
   constructor(
     private readonly insightsService: InsightsService,
     private readonly aggregationService: AggregationService,

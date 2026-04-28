@@ -42,4 +42,4 @@ import { NotificationsModule } from '../modules/notifications/notifications.modu
   ],
   exports: [FxConversionService, FeeCalculatorService, RateProviderService],
 })
-export class FxModule {}
+export class FxConversionsModule {}

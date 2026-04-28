@@ -8,16 +8,16 @@ import { ForwardContractService, EXCHANGE_RATE_PROVIDER } from './services/forwa
 import { ForwardContractController } from './controllers/forward-contract.controller';
 import { ForwardSettlementJob } from './jobs/forward-settlement.job';
 import { RiskEngineModule } from '../risk-engine/risk-engine.module';
-import { FxModule } from '../fx/fx.module';
+import { FxConversionsModule } from '../fx/fx.module';
 import { RateProviderService } from '../fx/services/rate-provider.service';
 
 @Module({
   imports: [
     ConfigModule,
-    ScheduleModule.forRoot(),
+    ScheduleModule,
     TypeOrmModule.forFeature([ForwardContract]),
     RiskEngineModule,
-    FxModule,
+    FxConversionsModule,
   ],
   providers: [
     ForwardContractService,
@@ -30,4 +30,4 @@ import { RateProviderService } from '../fx/services/rate-provider.service';
   controllers: [ForwardContractController],
   exports: [ForwardContractService],
 })
-export class FxModule {}
+export class FxForwardContractsModule {}

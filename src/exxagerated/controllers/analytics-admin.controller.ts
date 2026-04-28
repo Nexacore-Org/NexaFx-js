@@ -1,5 +1,5 @@
 import { Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { AggregationService } from '../services/aggregation.service';
+import { AggregationService } from '../aggregation.service';
 import { AdminGuard } from '../../auth/admin.guard';
 
 @Controller('admin/analytics')

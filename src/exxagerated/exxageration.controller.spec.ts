@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InsightsController } from '../insights.controller';
-import { InsightsService } from '../services/insights.service';
-import { AggregationService } from '../services/aggregation.service';
-import { DataRetentionService } from '../services/data-retention.service';
-import { TimeRangeEnum } from '../dto/insights.dto';
+import { InsightsService } from '../insights.service';
+import { AggregationService } from '../aggregation.service';
+import { DataRetentionService } from '../data-retention.service';
+import { TimeRangeEnum } from '../insights.dto';
 
 describe('InsightsController', () => {
   let controller: InsightsController;

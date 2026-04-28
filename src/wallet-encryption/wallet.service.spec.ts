@@ -4,11 +4,11 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import * as crypto from 'crypto';
 
-import { WalletEncryptionService } from './services/wallet-encryption.service';
-import { WalletService } from './services/wallet.service';
-import { KeyRotationJob } from './jobs/key-rotation.job';
+import { WalletEncryptionService } from './wallet-encryption.service';
+import { WalletService } from './wallet.service';
+import { KeyRotationJob } from './key-rotation.job';
 import { PrivateKeyRedactionInterceptor } from '../../common/interceptors/private-key-redaction.interceptor';
-import { Wallet } from './entities/wallet.entity';
+import { Wallet } from './wallet.entity';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

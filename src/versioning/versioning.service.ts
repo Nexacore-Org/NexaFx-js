@@ -6,7 +6,7 @@ import {
   DEPRECATED_VERSIONS,
   VERSION_DEPRECATION_SCHEDULE,
   DeprecationInfo,
-} from '../constants/api-version.constants';
+} from './api-version.constants';
 
 export interface VersionInfo {
   version: string;

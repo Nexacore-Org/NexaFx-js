@@ -13,7 +13,7 @@ import {
   DEPRECATED_VERSIONS,
   CURRENT_API_VERSION,
   VERSION_DEPRECATION_SCHEDULE,
-} from '../constants/api-version.constants';
+} from './api-version.constants';
 
 @Catch(NotFoundException)
 export class UnsupportedVersionFilter implements ExceptionFilter {

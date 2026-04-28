@@ -68,21 +68,18 @@ export class DisputesService {
       throw new ConflictException('An open dispute already exists for this transaction');
     }
 
-    let dispute: DisputeEntity;
-
-    await this.dataSource.transaction(async (manager) => {
+    const dispute = await this.dataSource.transaction(async (manager) => {
       const tx = await manager.findOne(TransactionEntity, { where: { id: transactionId } });
       if (!tx) throw new NotFoundException('Transaction not found');
 
       // Hold the transaction — mark it as disputed in metadata
-      await manager.update(TransactionEntity, { id: transactionId }, {
-        metadata: { ...(tx.metadata ?? {}), disputed: true, disputedAt: new Date() },
-      });
+      tx.metadata = { ...(tx.metadata ?? {}), disputed: true, disputedAt: new Date().toISOString() };
+      await manager.save(TransactionEntity, tx);
 
       const autoCloseAt = new Date();
       autoCloseAt.setDate(autoCloseAt.getDate() + 30);
 
-      dispute = manager.create(DisputeEntity, {
+      const d = manager.create(DisputeEntity, {
         subjectType: 'TRANSACTION',
         subjectId: transactionId,
         initiatorUserId: userId,
@@ -91,7 +88,7 @@ export class DisputesService {
         evidenceFileIds: dto.evidenceFileIds ?? null,
         autoCloseAt,
       });
-      dispute = await manager.save(DisputeEntity, dispute);
+      return await manager.save(DisputeEntity, d);
     });
 
     // Send notification
@@ -112,16 +109,14 @@ export class DisputesService {
       throw new ConflictException('An open dispute already exists for this conversion');
     }
 
-    let dispute: DisputeEntity;
-
-    await this.dataSource.transaction(async (manager) => {
+    const dispute = await this.dataSource.transaction(async (manager) => {
       const conv = await manager.findOne(FxConversion, { where: { id: conversionId } });
       if (!conv) throw new NotFoundException('FX Conversion not found');
 
       const autoCloseAt = new Date();
       autoCloseAt.setDate(autoCloseAt.getDate() + 30);
 
-      dispute = manager.create(DisputeEntity, {
+      const d = manager.create(DisputeEntity, {
         subjectType: 'FX_CONVERSION',
         subjectId: conversionId,
         initiatorUserId: userId,
@@ -130,7 +125,7 @@ export class DisputesService {
         evidenceFileIds: dto.evidenceFileIds ?? null,
         autoCloseAt,
       });
-      dispute = await manager.save(DisputeEntity, dispute);
+      return await manager.save(DisputeEntity, d);
     });
 
     await this.sendDisputeNotification(dispute!, 'opened');
@@ -147,7 +142,7 @@ export class DisputesService {
     // Enrich with transaction details
     const enriched = await Promise.all(
       disputes.map(async (dispute) => {
-        let transaction = null;
+        let transaction: TransactionEntity | null = null;
         if (dispute.subjectType === 'TRANSACTION') {
           transaction = await this.txRepo.findOne({ where: { id: dispute.subjectId } });
         }
@@ -166,7 +161,7 @@ export class DisputesService {
     if (!dispute) throw new NotFoundException('Dispute not found');
     if (dispute.initiatorUserId !== userId) throw new ForbiddenException();
 
-    let transaction = null;
+    let transaction: TransactionEntity | null = null;
     if (dispute.subjectType === 'TRANSACTION') {
       transaction = await this.txRepo.findOne({ where: { id: dispute.subjectId } });
     }
@@ -181,7 +176,7 @@ export class DisputesService {
     id: string,
     dto: ResolveDisputeDto,
   ): Promise<DisputeEntity> {
-    const dispute = await this.disputeRepo.findOne({ where: { id } });
+    let dispute = await this.disputeRepo.findOne({ where: { id } });
     if (!dispute) throw new NotFoundException('Dispute not found');
 
     dispute.status = dto.action;
@@ -197,7 +192,7 @@ export class DisputesService {
   }
 
   async adminUpdateStatus(id: string, status: 'UNDER_REVIEW'): Promise<DisputeEntity> {
-    const dispute = await this.disputeRepo.findOne({ where: { id } });
+    let dispute = await this.disputeRepo.findOne({ where: { id } });
     if (!dispute) throw new NotFoundException('Dispute not found');
     dispute.status = status;
     dispute = await this.disputeRepo.save(dispute);

@@ -3,8 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 
-import { Wallet } from '../entities/wallet.entity';
-import { WalletEncryptionService } from '../services/wallet-encryption.service';
+import { Wallet } from './wallet.entity';
+import { WalletEncryptionService } from './wallet-encryption.service';
 
 export interface KeyRotationResult {
   total: number;

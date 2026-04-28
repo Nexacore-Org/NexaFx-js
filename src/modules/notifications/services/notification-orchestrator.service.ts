@@ -5,6 +5,7 @@ import { NotificationService } from './notification.service';
 import { PushNotificationService } from './push-notification.service';
 import { SmsService } from './sms.service';
 import { NotificationPreferenceService, } from './notification-preference.service';
+import { DeliveryChannelPref } from '../entities/notification-preference.entity';
 import { NotificationLogService } from './notification-log.service';
 import { NotificationLogStatus } from '../entities/notification-log.entity';
 import {

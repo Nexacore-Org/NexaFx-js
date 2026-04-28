@@ -15,7 +15,7 @@ import { NotificationsModule } from '../web-sockets/notifications.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([SupportTicket, SupportMessage]),
-    ScheduleModule.forRoot(),
+    ScheduleModule,
     NotificationsModule,
   ],
   controllers: [SupportController, AdminSupportController, SupportAnalyticsController],

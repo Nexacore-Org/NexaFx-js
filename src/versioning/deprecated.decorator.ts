@@ -3,7 +3,7 @@ import {
   DEPRECATION_METADATA_KEY,
   DEPRECATION_INFO_METADATA_KEY,
   DeprecationInfo,
-} from '../constants/api-version.constants';
+} from './api-version.constants';
 
 export interface DeprecatedOptions {
   version: string;

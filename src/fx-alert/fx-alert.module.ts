@@ -12,8 +12,8 @@ import { RateAlertListener, AlertTriggeredListener } from './listeners/rate-aler
     TypeOrmModule.forFeature([FxAlert]),
     // EventEmitterModule and ScheduleModule are expected to be registered
     // once in AppModule; importing them here is harmless (NestJS deduplicates).
-    EventEmitterModule.forRoot({ wildcard: false, maxListeners: 20 }),
-    ScheduleModule.forRoot(),
+    EventEmitterModule,
+    ScheduleModule,
   ],
   controllers: [FxAlertController, FxAlertAdminController],
   providers: [FxAlertService, RateAlertListener, AlertTriggeredListener],

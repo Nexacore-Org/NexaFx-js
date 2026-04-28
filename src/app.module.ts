@@ -65,6 +65,27 @@ import { MailModule } from './modules/mail/mail.module';
 import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
 import { CircuitBreakerModule } from './common/circuit-breaker/circuit-breaker.module';
 
+// New Modules
+import { EscrowModule } from './modules/escrow/escrow.module';
+import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
+import { SupportModule } from './ticket-system/support.module';
+import { SavingGoalsModule } from './saving-goals/goals.module';
+import { FxAnalyticsModule } from './rate-analytics-dashboard/fx-analytics.module';
+import { FxConversionsModule } from './fx/fx.module';
+import { FxForwardContractsModule } from './forward-contract-booking/fx.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { RbacModule } from './hierachial-rbac/rbac.module';
+import { ComplianceEvidenceModule } from './compliance-evidence-package/compliance-evidence.module';
+import { FxRulesModule } from './fx-rules/fx-rules.module';
+import { FxAlertModule } from './fx-alert/fx-alert.module';
+import { WalletEncryptionModule } from './wallet-encryption/wallets.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+
+// Aggregator Token for Analytics
+import { FX_AGGREGATOR_SERVICE } from './rate-analytics-dashboard/fx-analytics.service';
+import { FxAggregatorService } from './modules/fx/fx-aggregator.service';
+
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
 
@@ -77,6 +98,7 @@ const enableBull =
     ScheduleModule.forRoot(),
 
     CircuitBreakerModule,
+    EventEmitterModule.forRoot(),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -162,9 +184,31 @@ const enableBull =
     CacheModule,
     MailModule,
     TransactionApprovalModule,
+
+    // Newly registered modules
+    EscrowModule,
+    SplitPaymentsModule,
+    MaintenanceModule,
+    SupportModule,
+    SavingGoalsModule,
+    FxAnalyticsModule,
+    FxConversionsModule,
+    FxForwardContractsModule,
+    ApiKeysModule,
+    RbacModule,
+    ComplianceEvidenceModule,
+    FxRulesModule,
+    FxAlertModule,
+    WalletEncryptionModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: FX_AGGREGATOR_SERVICE,
+      useExisting: FxAggregatorService,
+    },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

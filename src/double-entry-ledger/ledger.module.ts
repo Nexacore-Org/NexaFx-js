@@ -10,7 +10,7 @@ import { LedgerIntegrityJob } from './ledger-integrity.job';
 @Module({
   imports: [
     TypeOrmModule.forFeature([LedgerEntry, LedgerAccount]),
-    ScheduleModule.forRoot(),
+    ScheduleModule,
   ],
   providers: [LedgerService, LedgerIntegrityJob],
   controllers: [LedgerController],

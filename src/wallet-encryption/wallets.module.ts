@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { Wallet } from './entities/wallet.entity';
-import { WalletEncryptionService } from './services/wallet-encryption.service';
-import { WalletService } from './services/wallet.service';
-import { KeyRotationJob } from './jobs/key-rotation.job';
+import { Wallet } from './wallet.entity';
+import { WalletEncryptionService } from './wallet-encryption.service';
+import { WalletService } from './wallet.service';
+import { KeyRotationJob } from './key-rotation.job';
 import { WalletController } from './wallet.controller';
 
 @Module({
@@ -13,4 +13,4 @@ import { WalletController } from './wallet.controller';
   controllers: [WalletController],
   exports: [WalletService, WalletEncryptionService],
 })
-export class WalletsModule {}
+export class WalletEncryptionModule {}
