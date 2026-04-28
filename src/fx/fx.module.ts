@@ -40,6 +40,6 @@ import { NotificationsModule } from '../modules/notifications/notifications.modu
     RateProviderService,
     FxSlaAlertCron,
   ],
-  exports: [FxConversionService, FeeCalculatorService],
+  exports: [FxConversionService, FeeCalculatorService, RateProviderService],
 })
 export class FxModule {}

@@ -10,6 +10,7 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   UseInterceptors,
+  SetMetadata,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -28,9 +29,11 @@ import {
   ReconciliationQueryDto,
   ReconciliationResultDto,
   LedgerBalanceDto,
-} from './dto/ledger.dto';
+} from './ledger.dto';
 import { JwtAuthGuard } from '../modules/auth/guards/jwt.guard';
 import { AdminGuard } from '../modules/auth/guards/admin.guard';
+
+export const Roles = (...roles: string[]) => SetMetadata('roles', roles);
 
 @ApiTags('Ledger')
 @ApiBearerAuth()

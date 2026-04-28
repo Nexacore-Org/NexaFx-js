@@ -386,4 +386,12 @@ export class RateProviderService implements ExchangeRateProvider {
     
     this.logger.log(`Cache cleared for ${fromCurrency}/${toCurrency}`);
   }
+
+  /**
+   * Alias for getMidRate — satisfies the IExchangeRateProvider interface
+   * used by the forward contract module.
+   */
+  async getCurrentRate(base: string, quote: string): Promise<number> {
+    return this.getMidRate(base, quote);
+  }
 }
