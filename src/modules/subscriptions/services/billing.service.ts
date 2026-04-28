@@ -1,10 +1,11 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Subscription, SubscriptionStatus } from '../entities/subscription.entity';
 import { Invoice, InvoiceStatus } from '../entities/invoice.entity';
 import { SubscriptionPlan } from '../entities/subscription-plan.entity';
 import { UsageTrackerService } from './usage-tracker.service';
+import { UsersService } from '../../../users/users.service';
 
 @Injectable()
 export class BillingService {
@@ -15,6 +16,8 @@ export class BillingService {
     @InjectRepository(Invoice) private invoiceRepo: Repository<Invoice>,
     private dataSource: DataSource,
     private usageTracker: UsageTrackerService,
+    @Inject(forwardRef(() => UsersService))
+    private readonly usersService: UsersService,
   ) {}
 
   async calculateProration(currentSub: Subscription, newPlan: SubscriptionPlan): Promise<number> {
@@ -47,8 +50,8 @@ export class BillingService {
       });
       await queryRunner.manager.save(invoice);
 
-      // 2. Attempt Wallet Debit (Mocking wallet service integration)
-      const success = await this.debitUserWallet(subscription.userId, totalAmount);
+      // 2. Attempt Wallet Debit (Real atomic wallet debit inside same transaction)
+      const success = await this.debitUserWalletInTransaction(queryRunner.manager, subscription.userId, totalAmount);
 
       if (success) {
         invoice.status = InvoiceStatus.PAID;
@@ -101,8 +104,39 @@ export class BillingService {
     }
   }
 
+  private async debitUserWalletInTransaction(manager: any, userId: string, amount: number): Promise<boolean> {
+    try {
+      const user = await this.usersService.findById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // For now, assume USD currency for billing - can be extended to support multiple currencies
+      const currency = 'USD';
+      const currentBalance = Number(user.balances?.[currency] ?? 0);
+      
+      if (currentBalance < amount) {
+        this.logger.warn(`Insufficient balance for user ${userId}: need ${amount}, have ${currentBalance}`);
+        return false;
+      }
+
+      // Atomic balance update within the same transaction
+      const balances = { ...(user.balances ?? {}) };
+      balances[currency] = Number((currentBalance - amount).toFixed(8));
+      
+      // Update user balance atomically within the transaction
+      await manager.update('User', { id: userId }, { balances });
+      
+      this.logger.log(`Successfully debited ${amount} ${currency} from user ${userId}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Failed to debit user wallet for ${userId}: ${error.message}`);
+      return false;
+    }
+  }
+
   private async debitUserWallet(userId: string, amount: number): Promise<boolean> {
-    // Integration point for NexaFx wallet service
+    // Legacy stub method - kept for backward compatibility but should not be used
     return true; 
   }
 }

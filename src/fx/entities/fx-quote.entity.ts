@@ -7,7 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
+import { UserEntity as User } from '../../modules/users/entities/user.entity';
 
 export enum QuoteStatus {
   PENDING   = 'PENDING',    // Generated, not yet consumed

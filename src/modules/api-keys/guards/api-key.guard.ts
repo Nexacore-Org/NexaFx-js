@@ -1,40 +1,33 @@
-import {
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-  UnauthorizedException,
-  SetMetadata,
-} from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger } from '@nestjs/common';
 import { ApiKeyService } from '../services/api-key.service';
-import { ApiKeyScope } from '../entities/api-key.entity';
-
-export const REQUIRED_API_SCOPE = 'required_api_scope';
-export const RequireApiScope = (scope: ApiKeyScope) => SetMetadata(REQUIRED_API_SCOPE, scope);
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
-  constructor(
-    private readonly apiKeyService: ApiKeyService,
-    private readonly reflector: Reflector,
-  ) {}
+  private readonly logger = new Logger(ApiKeyGuard.name);
+  private readonly startTime = new Map<string, number>();
+
+  constructor(private readonly apiKeyService: ApiKeyService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const rawKey: string | undefined = request.headers['x-api-key'];
+    const apiKey = request.headers['x-api-key'];
 
-    if (!rawKey) {
-      throw new UnauthorizedException('X-API-Key header is required');
+    if (!apiKey) {
+      throw new UnauthorizedException('API key required in X-API-Key header');
     }
 
-    const requiredScope = this.reflector.getAllAndOverride<ApiKeyScope>(REQUIRED_API_SCOPE, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    // Start timing for latency tracking
+    this.startTime.set(request.id || 'default', Date.now());
 
-    const apiKey = await this.apiKeyService.validate(rawKey, requiredScope);
-    request.apiKey = apiKey;
+    try {
+      const validatedKey = await this.apiKeyService.validateKey(apiKey);
+      request.apiKey = validatedKey; // Attach to request for scope checks
 
-    return true;
+      this.logger.debug(`API key authenticated: ${validatedKey.prefix}...`);
+      return true;
+    } catch (error) {
+      this.logger.warn(`API key authentication failed: ${error.message}`);
+      throw error;
+    }
   }
 }

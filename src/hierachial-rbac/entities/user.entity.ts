@@ -2,17 +2,13 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   ManyToMany,
   JoinTable,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
-import { Role } from './role.entity';
+import { Role } from '../role.entity';
 
-/**
- * Lightweight User entity for RBAC module.
- * References the same 'users' table as the main UserEntity.
- */
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -21,8 +17,14 @@ export class User {
   @Column({ type: 'varchar', length: 255, unique: true })
   email: string;
 
-  @Column({ type: 'varchar', length: 50, default: 'active' })
-  status: string;
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  firstName: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  lastName: string;
+
+  @Column({ type: 'boolean', default: true })
+  isActive: boolean;
 
   @ManyToMany(() => Role, (role) => role.users)
   @JoinTable({

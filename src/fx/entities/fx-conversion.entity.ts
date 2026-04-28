@@ -7,7 +7,8 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
+import { UserEntity as User } from '../../modules/users/entities/user.entity';
+import { LoyaltyTier } from '../../loyalty-point/loyalty-account.entity';
 import { FxQuote } from './fx-quote.entity';
 
 export enum ConversionStatus {
@@ -80,6 +81,18 @@ export class FxConversion {
 
   @Column({ type: 'enum', enum: ConversionStatus, default: ConversionStatus.COMPLETED })
   status: ConversionStatus;
+
+  /** Timestamp when reversal was performed */
+  @Column({ type: 'timestamp', nullable: true })
+  reversedAt: Date | null;
+
+  /** Reason provided for the reversal */
+  @Column({ nullable: true })
+  reversalReason: string | null;
+
+  /** ID of the user or admin who performed the reversal */
+  @Column({ nullable: true })
+  reversedBy: string | null;
 
   /** Optional reference for downstream settlement / ledger systems */
   @Column({ nullable: true })

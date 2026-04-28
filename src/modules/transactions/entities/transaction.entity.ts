@@ -5,12 +5,15 @@ import {
   Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
-  Generated,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
 import { TransactionCategoryEntity } from './transaction-category.entity';
 
+export enum TransactionDirection {
+  DEBIT = 'DEBIT',
+  CREDIT = 'CREDIT',
+}
 @Entity('transactions')
 @Index('idx_transactions_status', ['status'])
 @Index('idx_transactions_created_at', ['createdAt'])
@@ -46,6 +49,13 @@ export class TransactionEntity {
 
   @Column({ type: 'varchar', length: 50 })
   status: TransactionStatusValue;
+
+  @Column({
+    type: 'enum',
+    enum: TransactionDirection,
+    default: TransactionDirection.DEBIT,
+  })
+  direction: TransactionDirection;
 
   @Column({ type: 'text', nullable: true })
   description?: string;

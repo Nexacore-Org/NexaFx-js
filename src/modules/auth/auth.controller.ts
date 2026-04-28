@@ -1,67 +1,19 @@
-import { Body, Controller, Post, ValidationPipe, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { Body, Controller, Post, ValidationPipe, Request, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IsEmail, IsString, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-
-class ForgotPasswordDto {
-  @ApiProperty({ example: '[email]', description: 'Registered email address' })
-  @IsEmail()
-  email: string;
-}
-
-class ResetPasswordDto {
-  @ApiProperty({ example: '[email]' })
-  @IsEmail()
-  email: string;
-
-  @ApiProperty({ example: 'abc123token', description: 'Password reset token from email' })
-  @IsString()
-  token: string;
-
-  @ApiProperty({ example: 'NewP@ssw0rd!', minLength: 8 })
-  @IsString()
-  @MinLength(8)
-  newPasswordHash: string;
-}
-
-class VerifyEmailDto {
-  @ApiProperty({ example: 'uuid-user-id' })
-  @IsString()
-  userId: string;
-
-  @ApiProperty({ example: 'verification-token' })
-  @IsString()
-  token: string;
-}
-
-class LoginDto {
-  @ApiProperty({ example: '[email]' })
-  @IsEmail()
-  email: string;
-
-  @ApiProperty({ example: 'P@ssw0rd123!' })
-  @IsString()
-  passwordHash: string;
-
-  @ApiProperty({ example: 'unique-device-key' })
-  @IsString()
-  deviceKey: string;
-
-  @ApiProperty({ example: 'My iPhone', required: false })
-  @IsString()
-  deviceName?: string;
-}
+import { JwtAuthGuard } from './guards/jwt.guard';
 
 class RegisterDto {
-  @ApiProperty({ example: '[email]' })
+  @ApiProperty({ example: 'user@example.com' })
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'P@ssw0rd123!' })
+  @ApiProperty({ example: 'P@ssw0rd123!', minLength: 8 })
   @IsString()
   @MinLength(8)
-  passwordHash: string;
+  password: string;
 
   @ApiProperty({ example: 'John' })
   @IsString()
@@ -76,6 +28,61 @@ class RegisterDto {
   referralCode?: string;
 }
 
+class LoginDto {
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: 'P@ssw0rd123!' })
+  @IsString()
+  password: string;
+
+  @ApiProperty({ example: 'unique-device-key' })
+  @IsString()
+  deviceKey: string;
+
+  @ApiProperty({ example: 'My iPhone', required: false })
+  @IsString()
+  deviceName?: string;
+}
+
+class RefreshTokenDto {
+  @ApiProperty({ description: 'Refresh token issued at login' })
+  @IsString()
+  refreshToken: string;
+}
+
+class ForgotPasswordDto {
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  email: string;
+}
+
+class ResetPasswordDto {
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: 'abc123token' })
+  @IsString()
+  token: string;
+
+  @ApiProperty({ example: 'NewP@ssw0rd!', minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
+}
+
+class VerifyEmailDto {
+  @ApiProperty({ example: 'uuid-user-id' })
+  @IsString()
+  userId: string;
+
+  @ApiProperty({ example: 'verification-token' })
+  @IsString()
+  token: string;
+}
+
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
@@ -84,14 +91,22 @@ export class AuthController {
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
+  @ApiResponse({ status: 409, description: 'Email already registered' })
   async register(@Body(ValidationPipe) dto: RegisterDto) {
     const { referralCode, ...userData } = dto;
-    return this.authService.register(userData, referralCode);
+    const result = await this.authService.register(userData, referralCode);
+    return {
+      user: { id: result.user.id, email: result.user.email },
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    };
   }
 
   @Post('login')
-  @ApiOperation({ summary: 'Login user and get access token' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login and receive JWT + refresh token' })
   @ApiResponse({ status: 200, description: 'Login successful' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body(ValidationPipe) dto: LoginDto, @Request() req) {
     const deviceDto = {
       deviceKey: dto.deviceKey,
@@ -99,13 +114,41 @@ export class AuthController {
       userAgent: req.headers['user-agent'],
       lastIp: req.ip,
     };
-    return this.authService.login(dto.email, dto.passwordHash, deviceDto as any);
+    const result = await this.authService.login(dto.email, dto.password, deviceDto as any);
+
+    if (result.requiresTwoFactor) {
+      return { requiresTwoFactor: true, message: 'OTP required' };
+    }
+
+    return {
+      user: { id: result.user.id, email: result.user.email },
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    };
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rotate refresh token and get new access token' })
+  @ApiResponse({ status: 200, description: 'Tokens rotated successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
+  async refresh(@Body(ValidationPipe) dto: RefreshTokenDto) {
+    return this.authService.refreshTokens(dto.refreshToken);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Logout and invalidate refresh token' })
+  @ApiResponse({ status: 204, description: 'Logged out successfully' })
+  async logout(@Request() req) {
+    await this.authService.logout(req.user.sub);
   }
 
   @Post('forgot-password')
   @ApiOperation({ summary: 'Request a password reset email' })
   @ApiResponse({ status: 200, description: 'Reset email sent if account exists' })
-  @ApiResponse({ status: 400, description: 'Validation error' })
   async forgotPassword(@Body(ValidationPipe) dto: ForgotPasswordDto) {
     await this.authService.forgotPassword(dto.email);
     return { message: 'If that email exists, a reset link has been sent.' };
@@ -116,7 +159,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Password reset successfully' })
   @ApiResponse({ status: 400, description: 'Invalid or expired token' })
   async resetPassword(@Body(ValidationPipe) dto: ResetPasswordDto) {
-    await this.authService.resetPassword(dto.email, dto.token, dto.newPasswordHash);
+    await this.authService.resetPassword(dto.email, dto.token, dto.newPassword);
     return { message: 'Password reset successfully.' };
   }
 

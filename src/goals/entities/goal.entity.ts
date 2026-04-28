@@ -41,6 +41,13 @@ export class Goal {
   @Column({ type: 'timestamp', nullable: true })
   deadline: Date;
 
+  /**
+   * @deprecated Use deadline field instead. This field is kept for backward compatibility.
+   * Will be removed in a future migration.
+   */
+  @Column({ name: 'target_date', type: 'timestamp', nullable: true })
+  targetDate?: Date;
+
   @Column({ type: 'enum', enum: GoalStatus, default: GoalStatus.ACTIVE })
   status: GoalStatus;
 
@@ -77,5 +84,14 @@ export class Goal {
     const target = parseFloat(this.targetAmount as any);
     if (!target) return 0;
     return Math.min((parseFloat(this.currentAmount as any) / target) * 100, 100);
+  }
+
+  /**
+   * Check if goal is overdue (deadline passed and goal is still ACTIVE)
+   * Uses the deadline field as the single source of truth for expiry calculations
+   */
+  get isOverdue(): boolean {
+    if (!this.deadline) return false;
+    return new Date() > new Date(this.deadline) && this.status === GoalStatus.ACTIVE;
   }
 }

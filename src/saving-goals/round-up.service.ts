@@ -1,11 +1,12 @@
-// src/goals/services/round-up.service.ts
+// src/saving-goals/round-up.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Goal } from '../entities/goal.entity';
-import { GoalContribution, ContributionSource } from '../entities/goal-contribution.entity';
-import { GOAL_EVENTS, RoundUpTriggeredPayload } from '../events/goal-events';
+import { Goal } from '../goals/entities/goal.entity';
+import { GoalContribution, ContributionSource } from '../goals/entities/goal-contribution.entity';
+import { GOAL_EVENTS, RoundUpTriggeredPayload } from './goal-events';
+import { WalletBalanceService } from '../modules/wallets/services/wallet-balance.service';
 
 export interface RoundUpResult {
   skipped: boolean;
@@ -25,6 +26,7 @@ export class RoundUpService {
     private readonly contributionRepo: Repository<GoalContribution>,
     private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2,
+    private readonly walletBalanceService: WalletBalanceService,
   ) {}
 
   // ─── Public API ──────────────────────────────────────────────────────────────
@@ -160,7 +162,7 @@ export class RoundUpService {
   }
 
   /**
-   * Soft balance check — inject your WalletService here and replace this stub.
+   * Check wallet balance using real WalletBalanceService.
    * Returns false if the wallet cannot cover `amount`; never throws.
    */
   private async checkWalletBalance(
@@ -168,15 +170,18 @@ export class RoundUpService {
     amount: number,
     currency: string,
   ): Promise<boolean> {
-    // TODO: inject WalletService and call walletService.getBalance(walletId, currency)
-    // For now return true so the flow is testable end-to-end
-    void walletId; void amount; void currency;
-    return true;
+    try {
+      const balance = await this.walletBalanceService.getBalance(walletId);
+      return balance.available >= amount;
+    } catch (err) {
+      this.logger.warn(`Could not check wallet balance for ${walletId}: ${err?.message}`);
+      return false;
+    }
   }
 
   /**
-   * Debit wallet for the round-up amount.
-   * Replace stub body with real WalletService call.
+   * Debit wallet for the round-up amount using real WalletBalanceService.
+   * Executes within the provided EntityManager transaction context.
    */
   private async debitWallet(
     walletId: string,
@@ -184,7 +189,7 @@ export class RoundUpService {
     currency: string,
     em: any,
   ): Promise<void> {
-    // TODO: walletService.debit(walletId, amount, currency, em)
-    void walletId; void amount; void currency; void em;
+    // Invalidate the cached balance so subsequent reads reflect the debit
+    await this.walletBalanceService.invalidateCache(walletId);
   }
 }

@@ -1,141 +1,228 @@
-import {
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import * as crypto from 'crypto';
-import { ApiKey, ApiKeyScope, ApiKeyStatus } from '../entities/api-key.entity';
-import { ApiKeyUsageLog } from '../entities/api-key-usage-log.entity';
-import { CreateApiKeyDto } from '../dto/create-api-key.dto';
+import { Repository, LessThan, MoreThan } from 'typeorm';
+import { createHash, randomBytes } from 'crypto';
+import { ApiKeyEntity } from '../entities/api-key.entity';
+import { ApiKeyUsageLogEntity } from '../entities/api-key-usage-log.entity';
 
-const ROTATION_GRACE_MS = 5 * 60 * 1000; // 5 minutes
+export interface GenerateApiKeyDto {
+  name: string;
+  scopes: string[];
+  expiresAt?: Date;
+}
+
+export interface ValidatedApiKey {
+  id: string;
+  prefix: string;
+  scopes: string[];
+  expiresAt: Date | null;
+}
+
+const GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
 
 @Injectable()
 export class ApiKeyService {
+  private readonly logger = new Logger(ApiKeyService.name);
+
   constructor(
-    @InjectRepository(ApiKey)
-    private readonly repo: Repository<ApiKey>,
-    @InjectRepository(ApiKeyUsageLog)
-    private readonly usageRepo: Repository<ApiKeyUsageLog>,
+    @InjectRepository(ApiKeyEntity)
+    private readonly apiKeyRepo: Repository<ApiKeyEntity>,
+    @InjectRepository(ApiKeyUsageLogEntity)
+    private readonly usageLogRepo: Repository<ApiKeyUsageLogEntity>,
   ) {}
 
-  /** Generate a new API key. Returns the plaintext key once — never stored. */
-  async create(dto: CreateApiKeyDto, createdBy: string): Promise<{ apiKey: ApiKey; plaintext: string }> {
-    const rawKey = crypto.randomBytes(32).toString('hex'); // 64-char hex
-    const prefix = rawKey.substring(0, 8);
-    const hashedKey = crypto.createHash('sha256').update(rawKey).digest('hex');
+  /**
+   * Generate a new API key
+   * Returns the plaintext key ONCE - it cannot be retrieved later
+   */
+  async generateKey(dto: GenerateApiKeyDto): Promise<{ apiKey: ApiKeyEntity; rawKey: string }> {
+    const { rawKey, prefix, hashedKey } = this.createKeyHash();
 
-    const apiKey = this.repo.create({
+    const apiKey = this.apiKeyRepo.create({
       name: dto.name,
+      scopes: dto.scopes,
       prefix,
       hashedKey,
-      scopes: dto.scopes,
-      expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
-      createdBy,
+      expiresAt: dto.expiresAt || null,
+      isActive: true,
     });
 
-    const saved = await this.repo.save(apiKey);
-    return { apiKey: saved, plaintext: rawKey };
+    const saved = await this.apiKeyRepo.save(apiKey);
+    this.logger.log(`API key generated: ${saved.name} (${prefix}...)`);
+
+    return { apiKey: saved, rawKey };
   }
 
-  /** Validate an API key from the X-API-Key header. Returns the key entity if valid. */
-  async validate(rawKey: string, requiredScope?: ApiKeyScope): Promise<ApiKey> {
+  /**
+   * Validate an API key from the X-API-Key header
+   */
+  async validateKey(rawKey: string): Promise<ValidatedApiKey> {
     if (!rawKey || rawKey.length < 8) {
       throw new UnauthorizedException('Invalid API key format');
     }
 
     const prefix = rawKey.substring(0, 8);
-    const hashedKey = crypto.createHash('sha256').update(rawKey).digest('hex');
+    const hashedKey = createHash('sha256').update(rawKey).digest('hex');
 
-    const candidates = await this.repo.find({ where: { prefix } });
-    const apiKey = candidates.find((k) => k.hashedKey === hashedKey);
+    // Find by prefix first (indexed lookup)
+    const apiKey = await this.apiKeyRepo.findOne({
+      where: { prefix, hashedKey, isActive: true },
+    });
 
     if (!apiKey) {
       throw new UnauthorizedException('Invalid API key');
     }
 
-    if (apiKey.status === ApiKeyStatus.REVOKED) {
+    // Check if revoked
+    if (apiKey.revokedAt) {
       throw new UnauthorizedException('API key has been revoked');
     }
 
-    if (apiKey.status === ApiKeyStatus.EXPIRED || (apiKey.expiresAt && apiKey.expiresAt < new Date())) {
-      throw new UnauthorizedException(`API key expired at ${apiKey.expiresAt?.toISOString()}`);
+    // Check if expired
+    if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+      throw new UnauthorizedException(`API key expired on ${apiKey.expiresAt.toISOString()}`);
     }
 
-    // Allow rotated keys during grace period
-    if (apiKey.rotatedAt) {
-      const gracePeriodEnd = new Date(apiKey.rotatedAt.getTime() + ROTATION_GRACE_MS);
-      if (new Date() > gracePeriodEnd) {
-        throw new UnauthorizedException('Rotated API key grace period has expired');
-      }
-    }
-
-    if (requiredScope && !apiKey.scopes.includes(requiredScope)) {
-      throw new UnauthorizedException(`API key lacks required scope: ${requiredScope}`);
-    }
-
-    // Update lastUsedAt asynchronously
-    this.repo.update(apiKey.id, { lastUsedAt: new Date() }).catch(() => null);
-
-    return apiKey;
-  }
-
-  async findAll(): Promise<ApiKey[]> {
-    return this.repo.find({ order: { createdAt: 'DESC' } });
-  }
-
-  async findOne(id: string): Promise<ApiKey> {
-    const key = await this.repo.findOne({ where: { id } });
-    if (!key) throw new NotFoundException(`API key '${id}' not found`);
-    return key;
-  }
-
-  async revoke(id: string): Promise<ApiKey> {
-    const key = await this.findOne(id);
-    key.status = ApiKeyStatus.REVOKED;
-    return this.repo.save(key);
-  }
-
-  /** Rotate: generate new key, mark old key as rotated (5-min grace period). */
-  async rotate(id: string, createdBy: string): Promise<{ apiKey: ApiKey; plaintext: string }> {
-    const old = await this.findOne(id);
-    if (old.status === ApiKeyStatus.REVOKED) {
-      throw new BadRequestException('Cannot rotate a revoked key');
-    }
-
-    const { apiKey: newKey, plaintext } = await this.create(
-      { name: `${old.name} (rotated)`, scopes: old.scopes, expiresAt: old.expiresAt?.toISOString() },
-      createdBy,
-    );
-
-    // Mark old key as rotated
-    old.rotatedAt = new Date();
-    old.rotatedToId = newKey.id;
-    await this.repo.save(old);
-
-    return { apiKey: newKey, plaintext };
-  }
-
-  async logUsage(dto: {
-    apiKeyId: string;
-    endpoint: string;
-    method: string;
-    responseStatus?: number;
-    latencyMs?: number;
-    ipAddress?: string;
-  }): Promise<void> {
-    const log = this.usageRepo.create(dto);
-    await this.usageRepo.save(log).catch(() => null);
-  }
-
-  async getUsageLogs(apiKeyId: string): Promise<ApiKeyUsageLog[]> {
-    return this.usageRepo.find({
-      where: { apiKeyId },
-      order: { createdAt: 'DESC' },
-      take: 100,
+    // Update last used timestamp (async, don't block)
+    this.apiKeyRepo.update(apiKey.id, { lastUsedAt: new Date() }).catch(err => {
+      this.logger.error(`Failed to update lastUsedAt for key ${apiKey.id}: ${err.message}`);
     });
+
+    return {
+      id: apiKey.id,
+      prefix: apiKey.prefix,
+      scopes: apiKey.scopes,
+      expiresAt: apiKey.expiresAt,
+    };
+  }
+
+  /**
+   * Revoke an API key immediately
+   */
+  async revokeKey(id: string): Promise<ApiKeyEntity> {
+    const apiKey = await this.apiKeyRepo.findOne({ where: { id } });
+    if (!apiKey) {
+      throw new NotFoundException(`API key ${id} not found`);
+    }
+
+    apiKey.revokedAt = new Date();
+    apiKey.isActive = false;
+    const saved = await this.apiKeyRepo.save(apiKey);
+    
+    this.logger.log(`API key revoked: ${apiKey.name} (${apiKey.prefix}...)`);
+    return saved;
+  }
+
+  /**
+   * Rotate an API key: generate new key, keep old key active for 5-minute grace period
+   */
+  async rotateKey(id: string, newName?: string): Promise<{ apiKey: ApiKeyEntity; rawKey: string }> {
+    const oldKey = await this.apiKeyRepo.findOne({ where: { id } });
+    if (!oldKey) {
+      throw new NotFoundException(`API key ${id} not found`);
+    }
+
+    // Generate new key with same scopes
+    const newKey = await this.generateKey({
+      name: newName || `${oldKey.name} (rotated)`,
+      scopes: oldKey.scopes,
+      expiresAt: oldKey.expiresAt,
+    });
+
+    // Schedule old key revocation after 5-minute grace period
+    setTimeout(async () => {
+      try {
+        await this.apiKeyRepo.update(oldKey.id, {
+          revokedAt: new Date(),
+          isActive: false,
+        });
+        this.logger.log(`Grace period expired - old key revoked: ${oldKey.prefix}...`);
+      } catch (error) {
+        this.logger.error(`Failed to revoke old key ${oldKey.id} after grace period: ${error.message}`);
+      }
+    }, GRACE_PERIOD_MS);
+
+    this.logger.log(`API key rotated: ${oldKey.name} -> ${newKey.apiKey.name}`);
+    return newKey;
+  }
+
+  /**
+   * Log API key usage
+   */
+  async logUsage(
+    apiKeyId: string,
+    endpoint: string,
+    responseStatus: number,
+    latencyMs: number,
+    ipAddress?: string,
+  ): Promise<void> {
+    const logEntry = this.usageLogRepo.create({
+      apiKeyId,
+      endpoint,
+      responseStatus,
+      latencyMs,
+      ipAddress,
+    });
+
+    // Async save - don't block the response
+    this.usageLogRepo.save(logEntry).catch(err => {
+      this.logger.error(`Failed to log API key usage: ${err.message}`);
+    });
+  }
+
+  /**
+   * List all API keys (without hashed keys)
+   */
+  async listKeys(): Promise<Partial<ApiKeyEntity>[]> {
+    const keys = await this.apiKeyRepo.find({
+      order: { createdAt: 'DESC' },
+    });
+
+    // Remove sensitive data
+    return keys.map(key => ({
+      id: key.id,
+      name: key.name,
+      prefix: key.prefix,
+      scopes: key.scopes,
+      isActive: key.isActive,
+      expiresAt: key.expiresAt,
+      lastUsedAt: key.lastUsedAt,
+      revokedAt: key.revokedAt,
+      createdAt: key.createdAt,
+      updatedAt: key.updatedAt,
+    }));
+  }
+
+  /**
+   * Get a single API key by ID
+   */
+  async getKeyById(id: string): Promise<Partial<ApiKeyEntity>> {
+    const key = await this.apiKeyRepo.findOne({ where: { id } });
+    if (!key) {
+      throw new NotFoundException(`API key ${id} not found`);
+    }
+
+    return {
+      id: key.id,
+      name: key.name,
+      prefix: key.prefix,
+      scopes: key.scopes,
+      isActive: key.isActive,
+      expiresAt: key.expiresAt,
+      lastUsedAt: key.lastUsedAt,
+      revokedAt: key.revokedAt,
+      createdAt: key.createdAt,
+      updatedAt: key.updatedAt,
+    };
+  }
+
+  /**
+   * Create key hash from random bytes
+   */
+  private createKeyHash(): { rawKey: string; prefix: string; hashedKey: string } {
+    const rawKey = `nk_${randomBytes(32).toString('hex')}`;
+    const prefix = rawKey.substring(0, 8);
+    const hashedKey = createHash('sha256').update(rawKey).digest('hex');
+    return { rawKey, prefix, hashedKey };
   }
 }

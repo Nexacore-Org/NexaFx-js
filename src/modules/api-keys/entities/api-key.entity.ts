@@ -1,64 +1,42 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
+  Entity,
   Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
-export enum ApiKeyScope {
-  WEBHOOK = 'webhook',
-  READ = 'read',
-  WRITE = 'write',
-  ADMIN = 'admin',
-}
-
-export enum ApiKeyStatus {
-  ACTIVE = 'active',
-  REVOKED = 'revoked',
-  EXPIRED = 'expired',
-}
-
 @Entity('api_keys')
-@Index(['prefix'])
-@Index(['status'])
-export class ApiKey {
+@Index('idx_api_keys_prefix', ['prefix'])
+@Index('idx_api_keys_hashed', ['hashedKey'], { unique: true })
+export class ApiKeyEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 8, unique: true })
+  prefix: string; // First 8 chars in plain text for lookup
+
+  @Column({ type: 'varchar', length: 64, unique: true })
+  hashedKey: string; // SHA-256 hash of full key
+
+  @Column({ type: 'varchar', length: 100 })
   name: string;
 
-  /** First 8 chars of the raw key — stored in plain text for lookup */
-  @Column({ length: 8 })
-  prefix: string;
-
-  /** SHA-256 hash of the full key */
-  @Column({ length: 64 })
-  hashedKey: string;
-
   @Column({ type: 'simple-array' })
-  scopes: ApiKeyScope[];
+  scopes: string[]; // e.g., ['webhook:read', 'admin:write']
 
-  @Column({ type: 'enum', enum: ApiKeyStatus, default: ApiKeyStatus.ACTIVE })
-  status: ApiKeyStatus;
+  @Column({ type: 'boolean', default: true })
+  isActive: boolean;
 
-  @Column({ nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   expiresAt: Date;
 
-  @Column({ nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   lastUsedAt: Date;
 
-  /** For rotation: old key stays valid for 5 minutes after rotation */
-  @Column({ nullable: true })
-  rotatedAt: Date;
-
-  @Column({ nullable: true })
-  rotatedToId: string;
-
-  @Column({ nullable: true })
-  createdBy: string;
+  @Column({ type: 'timestamptz', nullable: true })
+  revokedAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;

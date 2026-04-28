@@ -19,12 +19,14 @@ import { WalletSyncJob } from './jobs/wallet-sync.job';
 import { PortfolioSnapshotJob } from './jobs/portfolio-snapshot.job';
 import { PortfolioSnapshot } from './entities/portfolio-snapshot.entity';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { FxModule } from '../../fx/fx.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([TransactionEntity, WalletEntity, BeneficiaryEntity, WalletAliasEntity, PortfolioSnapshot]),
     CacheModule.register(),
     BlockchainModule,
+    FxModule,
   ],
   controllers: [WalletController, BeneficiaryController, AdminWalletController],
   providers: [WalletBalanceService, StatementService, BeneficiaryService, WalletAliasService, SpendCapGuard, WalletSyncJob, PortfolioService, PortfolioSnapshotJob, WalletKeyEncryptionService],

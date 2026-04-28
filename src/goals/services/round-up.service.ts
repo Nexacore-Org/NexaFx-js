@@ -47,6 +47,12 @@ export class RoundUpService {
         .getOne();
 
       if (!goal || goal.isCompleted || !goal.roundUpEnabled || goal.linkedWalletId !== linkedWalletId) return;
+      
+      // Skip round-up contributions for EXPIRED goals
+      if (goal.status === 'expired') {
+        this.logger.debug(`Skipping round-up for expired goal ${goalId}`);
+        return;
+      }
 
       const existing = await em.findOne(GoalContribution, { where: { goalId, transactionId } });
       if (existing) return;

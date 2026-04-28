@@ -7,7 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type ReconciliationStatus = 'OPEN' | 'AUTO_RESOLVED' | 'ESCALATED';
+export type ReconciliationStatus = 'OPEN' | 'AUTO_RESOLVED' | 'ESCALATED' | 'MANUALLY_RESOLVED';
 export type MismatchType =
   | 'PROVIDER_MISMATCH'
   | 'BLOCKCHAIN_MISMATCH'
@@ -43,6 +43,15 @@ export class ReconciliationIssueEntity {
 
   @Column({ type: 'jsonb', nullable: true })
   rawSnapshot?: Record<string, any>;
+
+  @Column({ type: 'timestamp', nullable: true })
+  detectedAt?: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  resolvedAt?: Date;
+
+  @Column({ type: 'text', nullable: true })
+  resolutionNote?: string;
 
   @CreateDateColumn()
   createdAt: Date;

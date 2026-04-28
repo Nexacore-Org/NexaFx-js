@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
-import { LedgerEntry } from './entities/ledger-entry.entity';
-import { LedgerAccount } from './entities/ledger-account.entity';
+import { LedgerEntry } from './ledger-entry.entity';
+import { LedgerAccount } from './ledger-account.entity';
 import { LedgerService } from './ledger.service';
 import { LedgerController } from './ledger.controller';
-import { LedgerIntegrityJob } from './jobs/ledger-integrity.job';
+import { LedgerIntegrityJob } from './ledger-integrity.job';
 
 @Module({
   imports: [

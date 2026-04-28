@@ -1,74 +1,110 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Permission } from '../entities/permission.entity';
+import { Permission } from '../permission.entity';
 import { RbacAuditService } from './rbac-audit.service';
-import { RbacAuditAction } from '../entities/rbac-audit-log.entity';
-import { CreatePermissionDto, UpdatePermissionDto } from '../dto/permission.dto';
+
+export interface CreatePermissionDto {
+  name: string;
+  description?: string;
+  action: string;
+  resource: string;
+  scope?: string;
+  conditions?: Record<string, any>;
+}
+
+export interface UpdatePermissionDto {
+  name?: string;
+  description?: string;
+  scope?: string;
+  conditions?: Record<string, any>;
+}
 
 @Injectable()
 export class PermissionService {
+  private readonly logger = new Logger(PermissionService.name);
+
   constructor(
     @InjectRepository(Permission)
-    private readonly repo: Repository<Permission>,
+    private readonly permRepo: Repository<Permission>,
     private readonly auditService: RbacAuditService,
   ) {}
 
   async create(dto: CreatePermissionDto, actorId: string): Promise<Permission> {
-    const existing = await this.repo.findOne({
-      where: { action: dto.action, resource: dto.resource, scope: dto.scope ?? null },
+    const existing = await this.permRepo.findOne({
+      where: { name: dto.name },
     });
-    if (existing) throw new ConflictException('Permission with this action/resource/scope already exists');
+    if (existing) {
+      throw new ConflictException(`Permission name '${dto.name}' already exists`);
+    }
 
-    const perm = this.repo.create(dto);
-    const saved = await this.repo.save(perm);
+    const permission = this.permRepo.create({
+      name: dto.name,
+      description: dto.description,
+      action: dto.action as any,
+      resource: dto.resource as any,
+      scope: dto.scope,
+      conditions: dto.conditions,
+    });
+
+    const saved = await this.permRepo.save(permission);
 
     await this.auditService.log({
-      action: RbacAuditAction.PERMISSION_CREATED,
+      action: 'PERMISSION_CREATED',
       actorId,
-      targetPermissionId: saved.id,
-      newState: dto,
+      newState: { name: saved.name, action: saved.action, resource: saved.resource },
     });
 
+    this.logger.log(`Permission created: ${saved.name} by ${actorId}`);
     return saved;
   }
 
   async findAll(): Promise<Permission[]> {
-    return this.repo.find({ order: { resource: 'ASC', action: 'ASC' } });
+    return this.permRepo.find({
+      order: { resource: 'ASC', action: 'ASC' },
+    });
   }
 
   async findOne(id: string): Promise<Permission> {
-    const perm = await this.repo.findOne({ where: { id } });
-    if (!perm) throw new NotFoundException(`Permission '${id}' not found`);
-    return perm;
+    const permission = await this.permRepo.findOne({ where: { id } });
+    if (!permission) {
+      throw new NotFoundException(`Permission ${id} not found`);
+    }
+    return permission;
   }
 
   async update(id: string, dto: UpdatePermissionDto, actorId: string): Promise<Permission> {
-    const perm = await this.findOne(id);
-    const prev = { name: perm.name, isActive: perm.isActive };
+    const permission = await this.findOne(id);
+    const oldState = { name: permission.name, scope: permission.scope };
 
-    Object.assign(perm, dto);
-    const saved = await this.repo.save(perm);
+    if (dto.name) permission.name = dto.name;
+    if (dto.description !== undefined) permission.description = dto.description;
+    if (dto.scope !== undefined) permission.scope = dto.scope;
+    if (dto.conditions !== undefined) permission.conditions = dto.conditions;
+
+    const saved = await this.permRepo.save(permission);
 
     await this.auditService.log({
-      action: RbacAuditAction.PERMISSION_UPDATED,
+      action: 'PERMISSION_UPDATED',
       actorId,
-      targetPermissionId: id,
-      previousState: prev,
-      newState: dto,
+      targetRoleId: id,
+      oldState,
+      newState: { name: saved.name, scope: saved.scope },
     });
 
     return saved;
   }
 
   async remove(id: string, actorId: string): Promise<void> {
-    const perm = await this.findOne(id);
-    await this.repo.remove(perm);
-
+    const permission = await this.findOne(id);
+    
     await this.auditService.log({
-      action: RbacAuditAction.PERMISSION_DELETED,
+      action: 'PERMISSION_DELETED',
       actorId,
-      targetPermissionId: id,
+      oldState: { name: permission.name },
     });
+
+    await this.permRepo.remove(permission);
+    this.logger.log(`Permission deleted: ${permission.name} by ${actorId}`);
   }
 }

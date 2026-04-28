@@ -1,64 +1,38 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
   Index,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
 
-export enum RbacAuditAction {
-  ROLE_CREATED = 'ROLE_CREATED',
-  ROLE_UPDATED = 'ROLE_UPDATED',
-  ROLE_DELETED = 'ROLE_DELETED',
-  PERMISSION_CREATED = 'PERMISSION_CREATED',
-  PERMISSION_UPDATED = 'PERMISSION_UPDATED',
-  PERMISSION_DELETED = 'PERMISSION_DELETED',
-  ROLE_PERMISSION_ASSIGNED = 'ROLE_PERMISSION_ASSIGNED',
-  ROLE_PERMISSION_REVOKED = 'ROLE_PERMISSION_REVOKED',
-  USER_ROLE_ASSIGNED = 'USER_ROLE_ASSIGNED',
-  USER_ROLE_REVOKED = 'USER_ROLE_REVOKED',
-  ACCESS_GRANTED = 'ACCESS_GRANTED',
-  ACCESS_DENIED = 'ACCESS_DENIED',
-}
-
 @Entity('rbac_audit_logs')
-@Index(['actorId'])
-@Index(['targetUserId'])
-@Index(['action'])
-@Index(['createdAt'])
+@Index('idx_rbac_audit_actor', ['actorId'])
+@Index('idx_rbac_audit_created', ['createdAt'])
 export class RbacAuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'enum', enum: RbacAuditAction })
-  action: RbacAuditAction;
+  @Column({ type: 'varchar', length: 50 })
+  action: string; // ROLE_CREATED, ROLE_UPDATED, ROLE_DELETED, PERMISSION_ASSIGNED, etc.
 
-  @Column({ nullable: true })
+  @Column({ type: 'uuid' })
   actorId: string;
 
-  @Column({ nullable: true })
-  targetUserId: string;
-
-  @Column({ nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   targetRoleId: string;
 
-  @Column({ nullable: true })
-  targetPermissionId: string;
+  @Column({ type: 'uuid', nullable: true })
+  targetUserId: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  previousState: Record<string, any>;
+  oldState: Record<string, any>;
 
   @Column({ type: 'jsonb', nullable: true })
   newState: Record<string, any>;
 
-  @Column({ type: 'jsonb', nullable: true })
-  metadata: Record<string, any>;
-
-  @Column({ length: 45, nullable: true })
-  ipAddress: string;
-
-  @Column({ type: 'text', nullable: true })
-  userAgent: string;
+  @Column({ type: 'varchar', nullable: true })
+  reason: string;
 
   @CreateDateColumn()
   createdAt: Date;

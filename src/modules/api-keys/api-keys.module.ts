@@ -1,20 +1,28 @@
-import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ApiKey } from './entities/api-key.entity';
-import { ApiKeyUsageLog } from './entities/api-key-usage-log.entity';
+import { ApiKeyEntity } from './entities/api-key.entity';
+import { ApiKeyUsageLogEntity } from './entities/api-key-usage-log.entity';
 import { ApiKeyService } from './services/api-key.service';
+import { ApiKeyController, WebhookExampleController } from './controllers/api-key.controller';
 import { ApiKeyGuard } from './guards/api-key.guard';
-import { ApiKeyController } from './controllers/api-key.controller';
-import { ApiUsageMiddleware } from './middleware/api-usage.middleware';
+import { ApiKeyScopeGuard } from './guards/api-key-scope.guard';
+import { ApiKeyLoggingInterceptor } from './interceptors/api-key-logging.interceptor';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ApiKey, ApiKeyUsageLog])],
-  controllers: [ApiKeyController],
-  providers: [ApiKeyService, ApiKeyGuard],
-  exports: [ApiKeyService, ApiKeyGuard],
+  imports: [TypeOrmModule.forFeature([ApiKeyEntity, ApiKeyUsageLogEntity])],
+  controllers: [ApiKeyController, WebhookExampleController],
+  providers: [
+    ApiKeyService,
+    ApiKeyGuard,
+    ApiKeyScopeGuard,
+    ApiKeyLoggingInterceptor,
+  ],
+  exports: [
+    ApiKeyService,
+    ApiKeyGuard,
+    ApiKeyScopeGuard,
+    ApiKeyLoggingInterceptor,
+    TypeOrmModule,
+  ],
 })
-export class ApiKeysModule implements NestModule {
-  configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(ApiUsageMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL });
-  }
-}
+export class ApiKeysModule {}

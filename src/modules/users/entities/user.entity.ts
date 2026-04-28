@@ -53,4 +53,24 @@ export class UserEntity {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   emailVerificationTokenHash?: string;
+
+  // Refresh token rotation
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  refreshTokenHash?: string;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  refreshTokenFamily?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  refreshTokenExpiry?: Date;
+
+  // 2FA fields
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  twoFactorSecret?: string;
+
+  @Column({ type: 'boolean', default: false })
+  twoFactorEnabled: boolean;
+
+  @Column({ type: 'simple-array', nullable: true })
+  twoFactorBackupCodes?: string[];
 }

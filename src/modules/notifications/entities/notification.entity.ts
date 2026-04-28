@@ -1,6 +1,7 @@
 import {
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   Index,
   PrimaryGeneratedColumn,
@@ -38,6 +39,12 @@ export class NotificationEntity {
 
   @Column({ type: 'boolean', default: false })
   isArchived: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  isDeleted: boolean;
+
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  deletedAt?: Date;
 
   @CreateDateColumn()
   createdAt: Date;
