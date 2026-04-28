@@ -27,6 +27,9 @@ export interface CircuitBreakerState {
   failureCount: number;
   lastFailureTime: number;
   nextAttemptTime: number;
+  lastSuccessAt?: number;
+  latencyHistory: number[];
+  consecutiveFailures: number;
 }
 
 @Injectable()
@@ -36,6 +39,7 @@ export class RateProviderService implements ExchangeRateProvider {
   private readonly STALE_CACHE_TTL = 5 * 60; // 5 minutes
   private readonly CIRCUIT_BREAKER_THRESHOLD = 5;
   private readonly CIRCUIT_BREAKER_TIMEOUT = 30 * 1000; // 30 seconds
+  private readonly MAX_LATENCY_HISTORY = 10;
 
   private readonly providers: Map<string, RateProviderConfig> = new Map();
   private readonly circuitBreakers: Map<string, CircuitBreakerState> = new Map();
@@ -107,8 +111,8 @@ export class RateProviderService implements ExchangeRateProvider {
       return parseFloat(staleRate);
     }
 
-    // Fetch from providers
-    const rate = await this.fetchFromProviders(fromCurrency, toCurrency);
+    // Fetch from providers with failover
+    const rate = await this.fetchWithFailover(fromCurrency, toCurrency);
     
     if (rate === null) {
       // All providers failed, try to return last known rate from stale cache
@@ -134,49 +138,32 @@ export class RateProviderService implements ExchangeRateProvider {
   }
 
   /**
-   * Fetch rate from multiple providers with failover and median calculation
+   * Sequential failover logic
    */
-  private async fetchFromProviders(fromCurrency: string, toCurrency: string): Promise<number | null> {
+  private async fetchWithFailover(fromCurrency: string, toCurrency: string): Promise<number | null> {
     const enabledProviders = Array.from(this.providers.entries())
       .filter(([_, config]) => config.enabled);
 
-    if (enabledProviders.length === 0) {
-      this.logger.error('No enabled rate providers configured');
-      return null;
-    }
-
-    // Try all enabled providers in parallel
-    const ratePromises = enabledProviders.map(async ([name, config]) => {
+    for (const [name, config] of enabledProviders) {
       if (this.isCircuitBreakerOpen(name)) {
         this.logger.debug(`Circuit breaker open for provider ${name}, skipping`);
-        return null;
+        continue;
       }
 
+      const startTime = Date.now();
       try {
         const rate = await this.fetchFromProvider(name, config, fromCurrency, toCurrency);
-        this.recordSuccess(name);
-        return { provider: name, rate };
+        const latency = Date.now() - startTime;
+        this.recordSuccess(name, latency);
+        return rate;
       } catch (error) {
         this.recordFailure(name);
         this.logger.error(`Provider ${name} failed: ${error.message}`);
-        return null;
+        // Continue to next provider
       }
-    });
-
-    const results = await Promise.all(ratePromises);
-    const validResults = results.filter(result => result !== null);
-
-    if (validResults.length === 0) {
-      return null;
     }
 
-    // Use median of all successful providers
-    const rates = validResults.map(r => r!.rate);
-    const medianRate = this.calculateMedian(rates);
-
-    this.logger.debug(`Rate for ${fromCurrency}/${toCurrency}: ${medianRate} (from ${validResults.map(r => r!.provider).join(', ')})`);
-
-    return medianRate;
+    return null;
   }
 
   /**
@@ -229,41 +216,22 @@ export class RateProviderService implements ExchangeRateProvider {
    * Parse provider-specific response format
    */
   private parseProviderResponse(providerName: string, data: any, fromCurrency: string, toCurrency: string): number {
+    // Note: providerName here is the key from initializeProviders (e.g. 'openexchangerates')
     switch (providerName) {
-      case 'Open Exchange Rates':
-        if (!data.rates || !data.rates[toCurrency]) {
-          throw new Error(`Invalid response format: missing rate for ${toCurrency}`);
-        }
-        return data.rates[toCurrency];
-
-      case 'Frankfurter':
-        if (!data.rates || !data.rates[toCurrency]) {
-          throw new Error(`Invalid response format: missing rate for ${toCurrency}`);
-        }
-        return data.rates[toCurrency];
-
-      case 'ExchangeRate.host':
+      case 'openexchangerates':
+      case 'frankfurter':
+      case 'exchangeratehost':
         if (!data.rates || !data.rates[toCurrency]) {
           throw new Error(`Invalid response format: missing rate for ${toCurrency}`);
         }
         return data.rates[toCurrency];
 
       default:
-        throw new Error(`Unknown provider: ${providerName}`);
-    }
-  }
-
-  /**
-   * Calculate median of an array of numbers
-   */
-  private calculateMedian(numbers: number[]): number {
-    const sorted = [...numbers].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    
-    if (sorted.length % 2 === 0) {
-      return (sorted[mid - 1] + sorted[mid]) / 2;
-    } else {
-      return sorted[mid];
+        // Fallback for case variations
+        if (data.rates && data.rates[toCurrency]) {
+          return data.rates[toCurrency];
+        }
+        throw new Error(`Unknown provider format for: ${providerName}`);
     }
   }
 
@@ -286,34 +254,51 @@ export class RateProviderService implements ExchangeRateProvider {
     return state.isOpen;
   }
 
-  private recordSuccess(providerName: string): void {
-    const state = this.circuitBreakers.get(providerName);
-    if (state) {
-      state.failureCount = 0;
-      state.isOpen = false;
+  private recordSuccess(providerName: string, latency: number): void {
+    let state = this.circuitBreakers.get(providerName);
+    if (!state) {
+      state = this.initBreakerState();
+      this.circuitBreakers.set(providerName, state);
+    }
+    
+    state.failureCount = 0;
+    state.consecutiveFailures = 0;
+    state.isOpen = false;
+    state.lastSuccessAt = Date.now();
+    
+    state.latencyHistory.push(latency);
+    if (state.latencyHistory.length > this.MAX_LATENCY_HISTORY) {
+      state.latencyHistory.shift();
     }
   }
 
   private recordFailure(providerName: string): void {
     let state = this.circuitBreakers.get(providerName);
     if (!state) {
-      state = {
-        isOpen: false,
-        failureCount: 0,
-        lastFailureTime: 0,
-        nextAttemptTime: 0,
-      };
+      state = this.initBreakerState();
       this.circuitBreakers.set(providerName, state);
     }
 
     state.failureCount++;
+    state.consecutiveFailures++;
     state.lastFailureTime = Date.now();
 
-    if (state.failureCount >= this.CIRCUIT_BREAKER_THRESHOLD) {
+    if (state.consecutiveFailures >= this.CIRCUIT_BREAKER_THRESHOLD) {
       state.isOpen = true;
       state.nextAttemptTime = Date.now() + this.CIRCUIT_BREAKER_TIMEOUT;
-      this.logger.warn(`Circuit breaker opened for provider ${providerName} after ${state.failureCount} failures`);
+      this.logger.warn(`Circuit breaker opened for provider ${providerName} after ${state.consecutiveFailures} consecutive failures`);
     }
+  }
+
+  private initBreakerState(): CircuitBreakerState {
+    return {
+      isOpen: false,
+      failureCount: 0,
+      consecutiveFailures: 0,
+      lastFailureTime: 0,
+      nextAttemptTime: 0,
+      latencyHistory: [],
+    };
   }
 
   /**
@@ -331,30 +316,46 @@ export class RateProviderService implements ExchangeRateProvider {
     if (fromCurrency.toUpperCase() === toCurrency.toUpperCase()) {
       throw new Error('Source and target currencies must be different');
     }
-
-    // Convert to uppercase
-    fromCurrency = fromCurrency.toUpperCase();
-    toCurrency = toCurrency.toUpperCase();
   }
 
   /**
    * Get provider status for monitoring
    */
   async getProviderStatus(): Promise<any> {
-    const status = {};
+    const status: any[] = [];
     
     for (const [name, config] of this.providers.entries()) {
       const breakerState = this.circuitBreakers.get(name);
-      status[name] = {
+      const avgLatency = breakerState?.latencyHistory.length 
+        ? breakerState.latencyHistory.reduce((a, b) => a + b, 0) / breakerState.latencyHistory.length 
+        : 0;
+
+      status.push({
+        provider: name,
+        displayName: config.name,
         enabled: config.enabled,
-        circuitBreakerOpen: breakerState?.isOpen || false,
-        failureCount: breakerState?.failureCount || 0,
-        lastFailureTime: breakerState?.lastFailureTime || null,
-        nextAttemptTime: breakerState?.nextAttemptTime || null,
-      };
+        circuitBreakerState: breakerState?.isOpen ? 'OPEN' : 'CLOSED',
+        consecutiveFailures: breakerState?.consecutiveFailures || 0,
+        lastSuccessAt: breakerState?.lastSuccessAt ? new Date(breakerState.lastSuccessAt).toISOString() : null,
+        lastFailureAt: breakerState?.lastFailureTime ? new Date(breakerState.lastFailureTime).toISOString() : null,
+        avgLatencyMs: Math.round(avgLatency),
+      });
     }
 
     return status;
+  }
+
+  /**
+   * SLA Alerting check
+   */
+  async getProvidersWithHighFailures(threshold: number = 5): Promise<string[]> {
+    const failing: string[] = [];
+    for (const [name, state] of this.circuitBreakers.entries()) {
+      if (state.consecutiveFailures >= threshold) {
+        failing.push(name);
+      }
+    }
+    return failing;
   }
 
   /**
@@ -365,6 +366,7 @@ export class RateProviderService implements ExchangeRateProvider {
     if (state) {
       state.isOpen = false;
       state.failureCount = 0;
+      state.consecutiveFailures = 0;
       this.logger.log(`Circuit breaker reset for provider ${providerName}`);
     }
   }

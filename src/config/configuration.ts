@@ -158,6 +158,12 @@ export default () => {
       velocityBurstMaxCount: parseInt(process.env.AML_VELOCITY_MAX_COUNT || '10', 10),
       riskScoreWeight: parseInt(process.env.AML_RISK_SCORE_WEIGHT || '30', 10),
     },
+    // FX configuration
+    fx: {
+      reversalWindowMinutes: parseInt(process.env.FX_REVERSAL_WINDOW_MINUTES || '5', 10),
+      openExchangeRatesApiKey: process.env.OPEN_EXCHANGE_RATES_API_KEY || '',
+      exchangeRateHostApiKey: process.env.EXCHANGE_RATE_HOST_API_KEY || '',
+    },
   };
 };
 

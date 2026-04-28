@@ -7,7 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type DisputeSubjectType = 'ESCROW' | 'TRANSACTION';
+export type DisputeSubjectType = 'ESCROW' | 'TRANSACTION' | 'FX_CONVERSION';
 export type DisputeStatus = 'OPEN' | 'UNDER_REVIEW' | 'RESOLVED' | 'REJECTED' | 'TIMED_OUT' | 'CLOSED';
 
 @Entity('disputes')
