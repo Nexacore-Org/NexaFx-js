@@ -16,8 +16,14 @@ import { FxQuote, QuoteStatus } from '../entities/fx-quote.entity';
 import { FxConversion, ConversionStatus } from '../entities/fx-conversion.entity';
 import { FeeCalculatorService } from './fee-calculator.service';
 import { RegulatoryDisclosureService } from './regulatory-disclosure.service';
-import { LoyaltyTier } from '../../loyalty/entities/loyalty-account.entity';
+import { LoyaltyTier } from '../../loyalty-point/loyalty-account.entity';
 import { RateProviderService } from './rate-provider.service';
+import { ConfigService } from '@nestjs/config';
+import { DisputesService } from '../../modules/disputes/services/disputes.service';
+import { AdminAuditService, ActorType } from '../../modules/admin-audit/admin-audit.service';
+import { WalletEntity } from '../../modules/users/entities/wallet.entity';
+import { TransactionEntity, TransactionDirection, TransactionStatus } from '../../modules/transactions/entities/transaction.entity';
+import { OpenDisputeDto } from '../../modules/disputes/dto/dispute.dto';
 
 export const QUOTE_TTL_SECONDS = 60;
 const REDIS_QUOTE_PREFIX = 'fx:quote:';
@@ -76,6 +82,13 @@ export class FxConversionService {
     private readonly disclosure: RegulatoryDisclosureService,
     private readonly dataSource: DataSource,
     private readonly rateProvider: RateProviderService,
+    private readonly configService: ConfigService,
+    private readonly disputesService: DisputesService,
+    private readonly adminAuditService: AdminAuditService,
+    @InjectRepository(WalletEntity)
+    private readonly walletRepo: Repository<WalletEntity>,
+    @InjectRepository(TransactionEntity)
+    private readonly txRepo: Repository<TransactionEntity>,
   ) {}
 
   // ── Quote ──────────────────────────────────────────────────────────────────
@@ -288,6 +301,154 @@ export class FxConversionService {
 
     const [data, total] = await qb.getManyAndCount();
     return { data, total, page, limit };
+  }
+
+  // ── Reversal & Disputes ──────────────────────────────────────────────────
+
+  /**
+   * POST /fx/convert/:id/reverse
+   * Reverses a conversion within a 5-minute window.
+   */
+  async reverseConversion(
+    userId: string,
+    conversionId: string,
+    reason: string,
+    actorId?: string,
+    actorType: ActorType = ActorType.USER,
+  ): Promise<FxConversion> {
+    const conversion = await this.conversionRepo.findOne({
+      where: { id: conversionId },
+    });
+
+    if (!conversion) throw new NotFoundException('Conversion not found');
+    if (conversion.userId !== userId && actorType !== ActorType.ADMIN) {
+      throw new BadRequestException('Conversion does not belong to this user');
+    }
+    if (conversion.status === ConversionStatus.REVERSED) {
+      throw new ConflictException('Conversion is already reversed');
+    }
+
+    const windowMinutes = this.configService.get<number>('fx.reversalWindowMinutes') || 5;
+    const windowMs = windowMinutes * 60 * 1000;
+    const elapsed = Date.now() - conversion.createdAt.getTime();
+
+    if (elapsed > windowMs) {
+      throw new ConflictException({
+        message: 'Reversal window has passed. Please open a dispute instead.',
+        disputeLink: `/fx/convert/${conversionId}/dispute`,
+      });
+    }
+
+    return await this.dataSource.transaction(async (em) => {
+      // Re-fetch with lock to prevent concurrent reversals
+      const conv = await em.findOne(FxConversion, {
+        where: { id: conversionId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (conv!.status === ConversionStatus.REVERSED) {
+        throw new ConflictException('Conversion was just reversed by another process');
+      }
+
+      // 1. Mark as reversed
+      conv!.status = ConversionStatus.REVERSED;
+      conv!.reversedAt = new Date();
+      conv!.reversalReason = reason;
+      conv!.reversedBy = actorId || userId;
+      await em.save(conv!);
+
+      // 2. Fetch wallets
+      const fromWallet = await em.findOne(WalletEntity, {
+        where: { userId: conv!.userId, type: conv!.fromCurrency },
+      });
+      const toWallet = await em.findOne(WalletEntity, {
+        where: { userId: conv!.userId, type: conv!.toCurrency },
+      });
+
+      if (!fromWallet || !toWallet) {
+        throw new Error('Wallets not found for reversal');
+      }
+
+      // 3. Create compensating transactions
+      // Leg 1: Credit back the original source amount (fromAmount)
+      const creditTx = em.getRepository(TransactionEntity).create({
+        userId: conv!.userId,
+        walletId: fromWallet.id,
+        amount: conv!.fromAmount,
+        currency: conv!.fromCurrency,
+        direction: TransactionDirection.CREDIT,
+        status: TransactionStatus.SUCCESS,
+        description: `Reversal of FX conversion ${conv!.id}: ${reason}`,
+        metadata: { conversionId: conv!.id, type: 'FX_REVERSAL_CREDIT' },
+      });
+      await em.save(creditTx);
+
+      // Leg 2: Debit back the received amount (toAmount)
+      const debitTx = em.getRepository(TransactionEntity).create({
+        userId: conv!.userId,
+        walletId: toWallet.id,
+        amount: conv!.toAmount,
+        currency: conv!.toCurrency,
+        direction: TransactionDirection.DEBIT,
+        status: TransactionStatus.SUCCESS,
+        description: `Reversal of FX conversion ${conv!.id}: ${reason}`,
+        metadata: { conversionId: conv!.id, type: 'FX_REVERSAL_DEBIT' },
+      });
+      await em.save(debitTx);
+
+      // 4. Audit Log
+      await this.adminAuditService.logFinancialEvent(
+        { actorId: actorId || userId, actorType },
+        {
+          userId: conv!.userId,
+          action: 'TRANSACTION_REVERSED',
+          entityId: conv!.id,
+          entityType: 'FXConversion',
+          amount: conv!.fromAmount,
+          currency: conv!.fromCurrency,
+          metadata: {
+            reason,
+            toAmount: conv!.toAmount,
+            toCurrency: conv!.toCurrency,
+            reversalTxIds: [creditTx.id, debitTx.id],
+          },
+        },
+      );
+
+      return conv!;
+    });
+  }
+
+  /**
+   * POST /fx/convert/:id/dispute
+   * Opens a formal dispute for a conversion after the reversal window.
+   */
+  async openDispute(
+    userId: string,
+    conversionId: string,
+    dto: OpenDisputeDto,
+  ) {
+    return this.disputesService.openFxConversionDispute(conversionId, userId, dto);
+  }
+
+  /**
+   * GET /admin/fx/reversals
+   * Admin-only: list all reversed conversions.
+   */
+  async getAllReversals(filters: { startDate?: string; endDate?: string }) {
+    const qb = this.conversionRepo
+      .createQueryBuilder('c')
+      .where('c.status = :status', { status: ConversionStatus.REVERSED })
+      .orderBy('c.reversedAt', 'DESC');
+
+    if (filters.startDate) {
+      qb.andWhere('c.reversedAt >= :start', { start: new Date(filters.startDate) });
+    }
+    if (filters.endDate) {
+      qb.andWhere('c.reversedAt <= :end', { end: new Date(filters.endDate) });
+    }
+
+    return qb.getMany();
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

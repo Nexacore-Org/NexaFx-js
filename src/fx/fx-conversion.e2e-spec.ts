@@ -25,11 +25,11 @@ import { Repository } from 'typeorm';
 import Redis from 'ioredis';
 
 import { AppModule } from '../src/app.module';
-import { FxQuote, QuoteStatus } from '../src/modules/fx/entities/fx-quote.entity';
-import { FxConversion } from '../src/modules/fx/entities/fx-conversion.entity';
-import { FxConversionService, QUOTE_TTL_SECONDS } from '../src/modules/fx/services/fx-conversion.service';
-import { FeeCalculatorService } from '../src/modules/fx/services/fee-calculator.service';
-import { LoyaltyTier } from '../src/modules/loyalty/entities/loyalty-account.entity';
+import { FxQuote, QuoteStatus } from '../src/fx/entities/fx-quote.entity';
+import { FxConversion } from '../src/fx/entities/fx-conversion.entity';
+import { FxConversionService, QUOTE_TTL_SECONDS } from '../src/fx/services/fx-conversion.service';
+import { FeeCalculatorService } from '../src/fx/services/fee-calculator.service';
+import { LoyaltyTier } from '../src/loyalty-point/loyalty-account.entity';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
