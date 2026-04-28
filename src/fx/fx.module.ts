@@ -7,6 +7,7 @@ import { FxConversion } from './entities/fx-conversion.entity';
 import { FxConversionService } from './services/fx-conversion.service';
 import { FeeCalculatorService } from './services/fee-calculator.service';
 import { RegulatoryDisclosureService } from './services/regulatory-disclosure.service';
+import { RateProviderService } from './services/rate-provider.service';
 
 import { FxConversionController } from './controllers/fx-conversion.controller';
 
@@ -27,7 +28,8 @@ import { FxConversionController } from './controllers/fx-conversion.controller';
     FxConversionService,
     FeeCalculatorService,
     RegulatoryDisclosureService,
+    RateProviderService,
   ],
-  exports: [FxConversionService, FeeCalculatorService],
+  exports: [FxConversionService, FeeCalculatorService, RateProviderService],
 })
 export class FxModule {}

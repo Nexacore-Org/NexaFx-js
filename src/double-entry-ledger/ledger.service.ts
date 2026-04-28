@@ -9,14 +9,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import * as crypto from 'crypto';
-import { LedgerEntry, EntryType } from './entities/ledger-entry.entity';
-import { LedgerAccount } from './entities/ledger-account.entity';
+import { LedgerEntry, EntryType } from './ledger-entry.entity';
+import { LedgerAccount } from './ledger-account.entity';
 import {
   CreateDoubleEntryDto,
   ReconciliationQueryDto,
   ReconciliationResultDto,
   LedgerBalanceDto,
-} from './dto/ledger.dto';
+} from './ledger.dto';
 
 @Injectable()
 export class LedgerService {
