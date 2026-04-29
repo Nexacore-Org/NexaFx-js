@@ -1,9 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { Deprecated } from '../decorators/deprecated.decorator';
-import { ApiVersion } from '../decorators/api-version.decorator';
-import { VersioningService } from '../services/versioning.service';
-import { UserResponseV1Dto } from '../dto/v1/user-response-v1.dto';
+import { Deprecated } from './deprecated.decorator';
+import { ApiVersion } from './api-version.decorator';
+import { VersioningService } from './versioning.service';
+import { UserResponseV1Dto } from './user-response-v1.dto';
 
 @ApiTags('Users V1 (Deprecated)')
 @Controller({ path: 'users', version: '1' })

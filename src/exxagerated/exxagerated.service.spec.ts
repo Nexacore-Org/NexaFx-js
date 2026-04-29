@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AnonymizationService } from '../services/anonymization.service';
+import { AnonymizationService } from '../anonymization.service';
 
 describe('AnonymizationService', () => {
   let service: AnonymizationService;

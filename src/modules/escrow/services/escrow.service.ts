@@ -173,7 +173,7 @@ export class EscrowService {
     return escrow;
   }
 
-  private async applySettlement(...) {
+  private async applySettlement(id: string, actorUserId: string, status: string, note?: string): Promise<EscrowActionResult> {
     // unchanged logic
     return {
       escrow: {} as EscrowEntity,

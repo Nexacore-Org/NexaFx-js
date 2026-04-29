@@ -17,7 +17,7 @@ interface EvaluationResult {
   reason: string;
 }
 
-interface EvaluationStats {
+export interface EvaluationStats {
   flagId: string;
   flagName: string;
   totalEvaluations: number;

@@ -16,7 +16,7 @@ export interface AnalyticsFilters {
   endDate?: Date;
 }
 
-interface Summary {
+export interface Summary {
   volume: number;
   successRate: number;
   avgValue: number;

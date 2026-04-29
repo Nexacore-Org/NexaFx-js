@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { InsightsController } from './controllers/insights.controller';
 import { AnalyticsAdminController } from './controllers/analytics-admin.controller';
+import { ExxageratedController } from './exxagerated.controller';
 
 import { InsightsService } from './insights.service';
 import { AggregationService } from './services/aggregation.service';
@@ -16,8 +17,9 @@ import { DataLineage } from './entities/data-lineage.entity';
     TypeOrmModule.forFeature([DataLineage]),
   ],
   controllers: [
-    InsightsController,           // ✅ NEW
-    AnalyticsAdminController,     // ✅ NEW
+    InsightsController,
+    AnalyticsAdminController,
+    ExxageratedController,
   ],
   providers: [
     InsightsService,

@@ -20,7 +20,7 @@ import {
   VERSION_DEPRECATION_SCHEDULE,
   CURRENT_API_VERSION,
   DeprecationInfo,
-} from '../constants/api-version.constants';
+} from './api-version.constants';
 
 @Injectable()
 export class VersioningInterceptor implements NestInterceptor {

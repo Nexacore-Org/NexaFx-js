@@ -8,10 +8,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 
-import { Wallet } from '../entities/wallet.entity';
+import { Wallet } from './wallet.entity';
 import { WalletEncryptionService } from './wallet-encryption.service';
-import { CreateWalletDto, UpdateWalletPrivateKeyDto } from '../dto/create-wallet.dto';
-import { WalletResponseDto } from '../dto/wallet-response.dto';
+import { CreateWalletDto, UpdateWalletPrivateKeyDto } from './create-wallet.dto';
+import { WalletResponseDto } from './wallet-response.dto';
 
 @Injectable()
 export class WalletService {

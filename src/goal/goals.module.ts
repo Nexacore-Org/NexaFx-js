@@ -23,4 +23,4 @@ import { GoalsMarketplaceController } from './controllers/goals-marketplace.cont
   providers: [GoalTemplateService, CommunityChallengeService],
   exports: [GoalTemplateService, CommunityChallengeService],
 })
-export class GoalsModule {}
+export class GoalsMarketplaceModule {}

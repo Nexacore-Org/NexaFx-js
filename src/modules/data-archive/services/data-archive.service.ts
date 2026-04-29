@@ -9,7 +9,7 @@ import { DataSource } from 'typeorm';
 import { QueryArchivedTransactionsDto } from '../dto/query-archived-transactions.dto';
 import { QueryArchivedApiLogsDto } from '../dto/query-archived-api-logs.dto';
 
-interface ArchiveRunSummary {
+export interface ArchiveRunSummary {
   cutoffDate: string;
   archivedTransactions: number;
   archivedTransactionSnapshots: number;

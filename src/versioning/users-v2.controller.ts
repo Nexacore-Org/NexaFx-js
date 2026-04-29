@@ -1,8 +1,8 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { ApiVersion } from '../decorators/api-version.decorator';
-import { VersioningService } from '../services/versioning.service';
-import { UserResponseV2Dto } from '../dto/v2/user-response-v2.dto';
+import { ApiVersion } from './api-version.decorator';
+import { VersioningService } from './versioning.service';
+import { UserResponseV2Dto } from './user-response-v2.dto';
 
 @ApiTags('Users V2')
 @Controller({ path: 'users', version: '2' })

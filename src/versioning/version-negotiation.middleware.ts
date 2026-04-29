@@ -5,7 +5,7 @@ import {
   DEPRECATED_VERSIONS,
   CURRENT_API_VERSION,
   API_VERSION_HEADER,
-} from '../constants/api-version.constants';
+} from './api-version.constants';
 
 @Injectable()
 export class VersionNegotiationMiddleware implements NestMiddleware {

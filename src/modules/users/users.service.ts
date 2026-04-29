@@ -342,7 +342,4 @@ export class UsersService {
 
     return { updated, failed };
   }
-
-    return { updated, failed };
-  }
 }

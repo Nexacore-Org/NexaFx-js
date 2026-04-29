@@ -1,11 +1,11 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
-import { VersioningInterceptor } from './interceptors/versioning.interceptor';
-import { UnsupportedVersionFilter } from './filters/unsupported-version.filter';
-import { VersionNegotiationMiddleware } from './middleware/version-negotiation.middleware';
-import { VersioningService } from './services/versioning.service';
-import { UsersV1Controller } from './controllers/users-v1.controller';
-import { UsersV2Controller } from './controllers/users-v2.controller';
+import { VersioningInterceptor } from './versioning.interceptor';
+import { UnsupportedVersionFilter } from './unsupported-version.filter';
+import { VersionNegotiationMiddleware } from './version-negotiation.middleware';
+import { VersioningService } from './versioning.service';
+import { UsersV1Controller } from './users-v1.controller';
+import { UsersV2Controller } from './users-v2.controller';
 
 @Module({
   controllers: [UsersV1Controller, UsersV2Controller],

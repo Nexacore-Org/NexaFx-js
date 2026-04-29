@@ -25,8 +25,8 @@ import { AdminFxAlertController } from './controllers/admin-fx-alert.controller'
 @Module({
   imports: [
     ConfigModule,
-    ScheduleModule.forRoot(),
-    EventEmitterModule.forRoot(),
+    ScheduleModule,
+    EventEmitterModule,
     TypeOrmModule.forFeature([FxForwardContract, FxAlert, FxAlertHistory, FxTargetOrder]),
   ],
   controllers: [FxForwardContractController, FxAlertController, AdminFxAlertController],

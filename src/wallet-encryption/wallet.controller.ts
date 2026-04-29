@@ -12,10 +12,10 @@ import {
   ClassSerializerInterceptor,
 } from '@nestjs/common';
 
-import { WalletService } from './services/wallet.service';
-import { KeyRotationJob } from './jobs/key-rotation.job';
-import { CreateWalletDto, UpdateWalletPrivateKeyDto } from './dto/create-wallet.dto';
-import { WalletResponseDto } from './dto/wallet-response.dto';
+import { WalletService } from './wallet.service';
+import { KeyRotationJob } from './key-rotation.job';
+import { CreateWalletDto, UpdateWalletPrivateKeyDto } from './create-wallet.dto';
+import { WalletResponseDto } from './wallet-response.dto';
 
 class RotateKeysDto {
   oldKeyHex: string;

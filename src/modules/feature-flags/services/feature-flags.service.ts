@@ -24,10 +24,6 @@ export class FeatureFlagsService {
     return this.repo.findOne({ where: { id } });
   }
 
-    const tenantConfig = await this.tenantService.getTenantConfig(tenantId);
-    if (tenantConfig.featureFlags && flagKey in tenantConfig.featureFlags) {
-      return tenantConfig.featureFlags[flagKey];
-    }
 
   async deleteFlag(id: string): Promise<void> {
     const flag = await this.repo.findOne({ where: { id } });

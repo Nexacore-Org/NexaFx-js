@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { VersioningType, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { AppModule } from './app.module';
+import { AppModule } from '../app.module';
 import {
   SUPPORTED_VERSIONS,
   CURRENT_API_VERSION,
   API_VERSIONS,
-} from './versioning/constants/api-version.constants';
+} from './api-version.constants';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

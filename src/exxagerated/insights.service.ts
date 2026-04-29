@@ -6,7 +6,7 @@ import {
   AggregatedUserMetrics,
   AggregatedRevenueMetrics,
   AggregationPeriodEnum,
-} from '../entities/aggregated-metrics.entity';
+} from '../aggregated-metrics.entity';
 import {
   GetInsightsQueryDto,
   TimeRangeEnum,
@@ -15,8 +15,8 @@ import {
   UserMetricsDto,
   RevenueMetricsDto,
   TimeSeriesDataPoint,
-} from '../dto/insights.dto';
-import { AnonymizationValidatorService } from './services/anonymization-validator.service';
+} from '../insights.dto';
+import { AnonymizationValidatorService } from './anonymization-validator.service';
 
 @Injectable()
 export class InsightsService {
@@ -355,5 +355,39 @@ export class InsightsService {
    */
   getPrivacyMetadata() {
     return this.anonymizationService.generatePrivacyMetadata();
+  }
+
+  // ── User-Specific Insights ──────────────────────────────────────────────────
+
+  async getSpendingInsights(userId: string) {
+    // Stub implementation to satisfy controller
+    return {
+      userId,
+      totalSpent: 0,
+      savings: 0,
+      recommendations: ['Maintain your current savings rate.'],
+    };
+  }
+
+  async getCategoryBreakdown(userId: string) {
+    // Stub implementation to satisfy controller
+    return {
+      userId,
+      categories: [
+        { name: 'Food', amount: 0 },
+        { name: 'Transport', amount: 0 },
+      ],
+    };
+  }
+
+  async getSpendingTrends(userId: string) {
+    // Stub implementation to satisfy controller
+    return {
+      userId,
+      trends: [
+        { month: 'January', amount: 0 },
+        { month: 'February', amount: 0 },
+      ],
+    };
   }
 }
