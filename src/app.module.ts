@@ -64,6 +64,8 @@ import { CacheModule } from './modules/cache/cache.module';
 import { MailModule } from './modules/mail/mail.module';
 import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
 import { CircuitBreakerModule } from './common/circuit-breaker/circuit-breaker.module';
+import { RbacModule } from './hierachial-rbac/rbac.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 
 // New Modules
 import { EscrowModule } from './modules/escrow/escrow.module';
@@ -200,6 +202,8 @@ const enableBull =
     FxRulesModule,
     FxAlertModule,
     WalletEncryptionModule,
+    RbacModule,
+    ApiKeysModule,
   ],
   controllers: [AppController],
   providers: [

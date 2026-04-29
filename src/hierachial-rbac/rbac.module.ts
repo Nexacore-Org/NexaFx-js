@@ -7,9 +7,10 @@ import { RbacAuditLog } from './entities/rbac-audit-log.entity';
 import { RoleService } from './services/role.service';
 import { PermissionService } from './services/permission.service';
 import { RbacAuditService } from './services/rbac-audit.service';
-import { PermissionResolutionService } from './policies/permission-resolution.service';
+import { PermissionResolutionService } from './permission-resolution.service';
+import { PermissionCacheService } from './permission-cache.service';
 import { PolicyEvaluatorService } from './policies/policy-evaluator.service';
-import { PermissionsGuard } from './guards/permissions.guard';
+import { PermissionsGuard } from './permissions.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RbacAdminController } from './admin/rbac-admin.controller';
 
@@ -21,6 +22,7 @@ import { RbacAdminController } from './admin/rbac-admin.controller';
     RoleService,
     PermissionService,
     RbacAuditService,
+    PermissionCacheService,
     PermissionResolutionService,
     PolicyEvaluatorService,
     PermissionsGuard,
@@ -30,6 +32,7 @@ import { RbacAdminController } from './admin/rbac-admin.controller';
     RoleService,
     PermissionService,
     RbacAuditService,
+    PermissionCacheService,
     PermissionResolutionService,
     PolicyEvaluatorService,
     PermissionsGuard,
