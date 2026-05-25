@@ -5,9 +5,17 @@ import { WalletBalance } from './wallets.types';
 export class WalletsService {
   private readonly wallets = new Map<string, WalletBalance>();
 
-  adjustBalance(accountId: string, currency: string, delta: number): WalletBalance {
+  adjustBalance(
+    accountId: string,
+    currency: string,
+    delta: number,
+  ): WalletBalance {
     const key = this.buildKey(accountId, currency);
-    const current = this.wallets.get(key) ?? { accountId, currency, balance: 0 };
+    const current = this.wallets.get(key) ?? {
+      accountId,
+      currency,
+      balance: 0,
+    };
     const next = {
       ...current,
       balance: Number((current.balance + delta).toFixed(2)),
@@ -28,7 +36,9 @@ export class WalletsService {
   }
 
   getBalancesForAccount(accountId: string): WalletBalance[] {
-    return [...this.wallets.values()].filter((wallet) => wallet.accountId === accountId);
+    return [...this.wallets.values()].filter(
+      (wallet) => wallet.accountId === accountId,
+    );
   }
 
   private buildKey(accountId: string, currency: string): string {
