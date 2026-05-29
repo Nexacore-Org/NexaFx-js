@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
-import { ConfigModule } from './config/config.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { Configuration } from './config/configuration';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -14,31 +15,44 @@ const enableBull =
     ConfigModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: () => ({
-        type: 'postgres',
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
-        username: process.env.DB_USER || 'postgres',
-        password: process.env.DB_PASSWORD || 'postgres',
-        database: process.env.DB_NAME || 'nexafx_dev',
-        synchronize: process.env.NODE_ENV !== 'production',
-        logging: process.env.NODE_ENV === 'development',
-        autoLoadEntities: true,
-      }),
+      useFactory: (configService: ConfigService<Configuration>) => {
+        const config =
+          configService.get<Configuration['database']>('database')!;
+        return {
+          type: 'postgres' as const,
+          host: config.host,
+          port: config.port,
+          username: config.username,
+          password: config.password,
+          database: config.database,
+          synchronize: process.env.NODE_ENV !== 'production',
+          logging: process.env.NODE_ENV === 'development',
+          autoLoadEntities: true,
+        };
+      },
+      inject: [ConfigService],
     }),
     ...(enableBull
       ? [
-          BullModule.forRoot({
-            redis: {
-              host: process.env.REDIS_HOST || 'localhost',
-              port: parseInt(process.env.REDIS_PORT || '6379', 10),
-              enableReadyCheck: false,
-              lazyConnect: true,
+          BullModule.forRootAsync({
+            imports: [ConfigModule],
+            useFactory: (configService: ConfigService<Configuration>) => {
+              const config =
+                configService.get<Configuration['redis']>('redis')!;
+              return {
+                redis: {
+                  host: config.host,
+                  port: config.port,
+                  enableReadyCheck: false,
+                  lazyConnect: true,
+                },
+                defaultJobOptions: {
+                  removeOnComplete: true,
+                  removeOnFail: true,
+                },
+              };
             },
-            defaultJobOptions: {
-              removeOnComplete: true,
-              removeOnFail: true,
-            },
+            inject: [ConfigService],
           }),
         ]
       : []),
