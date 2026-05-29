@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { WalletBalance } from './wallets.types';
 
 @Injectable()
@@ -20,6 +20,10 @@ export class WalletsService {
       ...current,
       balance: Number((current.balance + delta).toFixed(2)),
     };
+
+    if (next.balance < 0) {
+      throw new UnprocessableEntityException('Insufficient funds');
+    }
 
     this.wallets.set(key, next);
     return next;
