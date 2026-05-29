@@ -4,6 +4,8 @@ import { BullModule } from '@nestjs/bull';
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DocumentsModule } from './documents/documents.module';
+import { MailModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 
 const enableBull =
@@ -40,9 +42,12 @@ const enableBull =
               removeOnFail: true,
             },
           }),
+          BullModule.registerQueue({ name: 'default' }),
         ]
       : []),
     IdempotencyModule,
+    MailModule,
+    DocumentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
