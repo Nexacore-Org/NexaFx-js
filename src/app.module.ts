@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { UsersModule } from './users/users.module';
+import { TransactionsModule } from './transactions/transactions.module';
+import { AuditModule } from './audit/audit.module';
+import { KycModule } from './kyc/kyc.module';
+import { WalletsModule } from './wallet/wallets.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -43,6 +49,12 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    EventEmitterModule.forRoot(),
+    WalletsModule,
+    UsersModule,
+    TransactionsModule,
+    AuditModule,
+    KycModule,
   ],
   controllers: [AppController],
   providers: [AppService],
