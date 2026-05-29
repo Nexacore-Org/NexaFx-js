@@ -18,8 +18,10 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
-import { MailModule } from './mail/mail.module';
+import { MailModule, MailQueueModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { NotificationQueueModule } from './notification/notification.module';
+import { TransactionQueueModule } from './transaction/transaction.module';
 import { AccountClosureModule } from './users/account-closure.module';
 import { OtpModule } from './otp/otp.module';
 import { AmlModule } from './aml/aml.module';
@@ -111,6 +113,9 @@ const enableBull =
             },
           }),
           BullModule.registerQueue({ name: 'default' }),
+          MailQueueModule,
+          NotificationQueueModule,
+          TransactionQueueModule,
         ]
       : []),
     IdempotencyModule,
