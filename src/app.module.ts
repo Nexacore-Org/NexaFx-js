@@ -5,6 +5,9 @@ import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { FxModule } from './fx/fx.module';
+import { PushModule } from './notifications/push/push.module';
+import { ReferralModule } from './referral/referral.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -43,6 +46,9 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    FxModule,
+    PushModule,
+    ReferralModule,
   ],
   controllers: [AppController],
   providers: [AppService],
