@@ -145,6 +145,19 @@ export const envSchema = z.object({
     .default(() => 100),
 
   // ============================================
+  // Idempotency Configuration
+  // ============================================
+  IDEMPOTENCY_TTL_HOURS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 24),
+  IDEMPOTENCY_CLEANUP_CRON: z
+    .string()
+    .min(1)
+    .default(() => '0 0 * * *'),
+
+  // ============================================
   // Data Archival Configuration
   // ============================================
   ARCHIVE_ENABLED: z

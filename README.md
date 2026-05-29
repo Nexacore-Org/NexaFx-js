@@ -25,6 +25,26 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Database Migrations
+
+Schema changes are managed exclusively through TypeORM migrations. Auto-sync (`synchronize`) is disabled in all environments to prevent accidental schema changes.
+
+```bash
+# Generate a migration from entity changes
+$ npm run migration:generate
+
+# Apply pending migrations
+$ npm run migration:run
+
+# Revert the last migration
+$ npm run migration:revert
+
+# Dry-run: check for pending migrations without applying (also runs in CI)
+$ npm run migration:dryrun
+```
+
+> **Note:** Never rely on `synchronize: true` in any environment. Always generate and commit migrations alongside entity changes.
+
 ## Project setup
 
 ```bash

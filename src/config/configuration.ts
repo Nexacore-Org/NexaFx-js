@@ -33,6 +33,10 @@ export default () => {
     process.env.BODY_LIMIT_URLENCODED || '10',
     10,
   );
+  const idempotencyTtlHours = parseInt(
+    process.env.IDEMPOTENCY_TTL_HOURS || '24',
+    10,
+  );
   const dbPort = parseInt(process.env.DB_PORT || '5432', 10);
   const jwtExpiry = parseInt(process.env.JWT_EXPIRY || '3600', 10);
   const refreshTokenExpiry = parseInt(
@@ -141,6 +145,12 @@ export default () => {
     rateLimit: {
       windowMs: rateLimitWindowMs,
       maxRequests: rateLimitMaxRequests,
+    },
+
+    // Idempotency configuration
+    idempotency: {
+      ttlHours: idempotencyTtlHours,
+      cleanupCron: process.env.IDEMPOTENCY_CLEANUP_CRON || '0 0 * * *',
     },
 
     // Data archival configuration
