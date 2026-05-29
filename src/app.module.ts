@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bull';
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 
 const enableBull =
@@ -43,6 +44,7 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
