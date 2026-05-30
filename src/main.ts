@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -26,9 +27,17 @@ async function bootstrap() {
       transform: true,
     }),
   );
+   app.useGlobalPipes(
+     new ValidationPipe({
+       whitelist: true,
+       forbidNonWhitelisted: true,
+       transform: true,
+     }),
+   );
+   app.useGlobalFilters(new GlobalExceptionFilter());
   app.enableShutdownHooks();
 
-  const swaggerConfig = new DocumentBuilder()
+   const swaggerConfig = new DocumentBuilder()
     .setTitle('NexaFx API')
     .setDescription('NexaFx financial platform REST API')
     .setVersion('1.0')
