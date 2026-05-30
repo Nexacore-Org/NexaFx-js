@@ -55,4 +55,16 @@ export class Transaction {
 
   @Column({ type: 'timestamp', nullable: true })
   completedAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  reversedAt: Date;
+
+  @Column({ type: 'uuid', nullable: true })
+  reversedBy: string;
+
+  @Column({ type: 'text', nullable: true })
+  reversalReason: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  reversalTransactionId: string;
 }

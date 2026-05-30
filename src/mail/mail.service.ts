@@ -11,6 +11,23 @@ interface MailTemplateContext {
   body: string;
 }
 
+export interface StatementReadyEmail {
+  to: string;
+  fullName: string;
+  currency: string;
+  from: string;
+  toDate: string;
+  openingBalance: number;
+  closingBalance: number;
+}
+
+export interface TransactionReversalEmail {
+  to: string;
+  transactionId: string;
+  reversedBy: string;
+  reason: string;
+}
+
 type TemplateName =
   | 'base'
   | 'email-verification'
@@ -83,10 +100,16 @@ export class MailService {
     });
   }
 
-  renderTransactionConfirmation(payload: TransactionConfirmationTemplateDto): string {
-    const context = plainToInstance(TransactionConfirmationTemplateDto, payload, {
-      enableImplicitConversion: true,
-    });
+  renderTransactionConfirmation(
+    payload: TransactionConfirmationTemplateDto,
+  ): string {
+    const context = plainToInstance(
+      TransactionConfirmationTemplateDto,
+      payload,
+      {
+        enableImplicitConversion: true,
+      },
+    );
     return this.render('transaction-confirmation', {
       title: 'Transaction confirmed',
       fullName: context.fullName,
@@ -108,12 +131,29 @@ export class MailService {
     });
   }
 
-  private render(templateName: Exclude<TemplateName, 'base'>, context: Record<string, unknown>): string {
+  sendStatementReadyEmail(payload: StatementReadyEmail): void {
+    this.logger.log(
+      `Statement ready email queued for ${payload.to} (${payload.currency} ${payload.from} - ${payload.toDate})`,
+    );
+  }
+
+  sendTransactionReversalNotice(payload: TransactionReversalEmail): void {
+    this.logger.log(
+      `Reversal notice queued for ${payload.to} on transaction ${payload.transactionId}`,
+    );
+  }
+
+  private render(
+    templateName: Exclude<TemplateName, 'base'>,
+    context: Record<string, unknown>,
+  ): string {
     const bodyTemplate = this.getTemplate(templateName);
     const baseTemplate = this.getTemplate('base');
     const body = bodyTemplate(context);
+    const title =
+      'title' in context ? String(context.title) : 'NexaFx Notification';
     return baseTemplate({
-      title: String(context.title ?? 'NexaFx Notification'),
+      title,
       year: new Date().getFullYear(),
       body,
     } as MailTemplateContext);

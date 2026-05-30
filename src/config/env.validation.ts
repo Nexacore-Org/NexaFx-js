@@ -62,6 +62,15 @@ export const envSchema = z.object({
     .default(() => 3600),
 
   // ============================================
+  // Observability Configuration
+  // ============================================
+  SLOW_QUERY_THRESHOLD_MS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().positive())
+    .default(() => 1000),
+
+  // ============================================
   // Refresh Token Configuration
   // ============================================
   REFRESH_TOKEN_SECRET: z
@@ -165,6 +174,8 @@ export const envSchema = z.object({
     .string()
     .min(1)
     .default(() => '0 3 * * *'),
+  TERMS_CURRENT_VERSION: z.string().min(1).default('1.0'),
+  BLOCKED_COUNTRIES: z.string().optional().default(''),
   // ============================================
   // External API Configuration
   // ============================================
