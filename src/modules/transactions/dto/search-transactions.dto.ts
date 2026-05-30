@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -32,6 +32,24 @@ export class SearchTransactionsDto {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
+
+
+  @ApiPropertyOptional({ description: 'Transaction type filter', example: 'SEND' })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @ApiPropertyOptional({ description: 'Minimum amount filter', example: 10.0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Maximum amount filter', example: 1000.0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  maxAmount?: number;
 
   @ApiPropertyOptional({ description: 'Page number (1-based)', example: 1, minimum: 1 })
   @IsOptional()
