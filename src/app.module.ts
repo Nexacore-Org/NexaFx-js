@@ -26,6 +26,9 @@ const enableBull =
         synchronize: process.env.NODE_ENV !== 'production',
         logging: process.env.NODE_ENV === 'development',
         autoLoadEntities: true,
+        // Retry settings to handle DB startup race conditions (Docker Compose)
+        retryAttempts: 10,
+        retryDelay: 3000,
       }),
     }),
     ...(enableBull
