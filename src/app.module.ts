@@ -1,25 +1,26 @@
 import {
-  Module,
   MiddlewareConsumer,
+  Module,
   NestModule,
   RequestMethod,
 } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { CacheModule } from '@nestjs/cache-manager';
+import { ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { redisStore } from 'cache-manager-redis-store';
 import { ConfigModule } from './config/config.module';
+import { Configuration } from './config/configuration';
+import { TypeOrmSlowQueryLogger } from './database/typeorm-slow-query.logger';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MailModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
-import { WalletsModule } from './wallet/wallets.module';
-import { TypeOrmSlowQueryLogger } from './database/typeorm-slow-query.logger';
 import { AccountClosureModule } from './users/account-closure.module';
-import { Configuration } from './config/configuration';
 import { OtpModule } from './otp/otp.module';
 import { AmlModule } from './aml/aml.module';
 import { ArchivalModule } from './archival/archival.module';
@@ -31,9 +32,13 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { AuditModule } from './audit/audit.module';
 import { KycModule } from './kyc/kyc.module';
 import { WalletsModule } from './wallet/wallets.module';
-import { AuthModule } from './auth/auth.module';
 import { TermsModule } from './terms/terms.module';
 import { StatementsModule } from './statements/statements.module';
+import { SupportTicketsModule } from './support/support-tickets.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { CurrenciesModule } from './currencies/currencies.module';
+import { AdminModule } from './admin/admin.module';
+import { SecurityModule } from './common/security.module';
 import { GeoRestrictionMiddleware } from './common/middleware/geo-restriction.middleware';
 
 const enableBull =
@@ -42,58 +47,59 @@ const enableBull =
 @Module({
   imports: [
     ConfigModule,
+    CacheModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService<Configuration>) => {
+        const redis = configService.get<Configuration['redis']>('redis')!;
+        const cache = configService.get<Configuration['cache']>('cache')!;
+        return {
+          store: await redisStore({
+            host: redis.host,
+            port: redis.port,
+            password: redis.password,
+            ttl: cache.defaultTtlSeconds,
+          }),
+        };
+      },
+    }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
+      inject: [ConfigService],
       useFactory: (configService: ConfigService<Configuration>) => {
-        const config =
+        const database =
           configService.get<Configuration['database']>('database')!;
+        const slowQueryThresholdMs =
+          configService.get<number>('slowQueryThresholdMs') ?? 1000;
         return {
           type: 'postgres' as const,
-          host: config.host,
-          port: config.port,
-          username: config.username,
-          password: config.password,
-          database: config.database,
+          host: database.host,
+          port: database.port,
+          username: database.username,
+          password: database.password,
+          database: database.database,
           synchronize: process.env.NODE_ENV !== 'production',
           logging: process.env.NODE_ENV === 'development',
           autoLoadEntities: true,
+          retryAttempts: 10,
+          retryDelay: 3000,
+          maxQueryExecutionTime: slowQueryThresholdMs,
+          logger: new TypeOrmSlowQueryLogger(slowQueryThresholdMs),
         };
       },
-      inject: [ConfigService],
-      useFactory: () => ({
-        type: 'postgres',
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
-        username: process.env.DB_USER || 'postgres',
-        password: process.env.DB_PASSWORD || 'postgres',
-        database: process.env.DB_NAME || 'nexafx_dev',
-        synchronize: process.env.NODE_ENV !== 'production',
-        logging: process.env.NODE_ENV === 'development',
-        maxQueryExecutionTime: parseInt(
-          process.env.SLOW_QUERY_THRESHOLD_MS || '1000',
-          10,
-        ),
-        logger: new TypeOrmSlowQueryLogger(
-          parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || '1000', 10),
-        ),
-        autoLoadEntities: true,
-        // Retry settings to handle DB startup race conditions (Docker Compose)
-        retryAttempts: 10,
-        retryDelay: 3000,
-      }),
     }),
     ScheduleModule.forRoot(),
     ...(enableBull
       ? [
           BullModule.forRootAsync({
             imports: [ConfigModule],
+            inject: [ConfigService],
             useFactory: (configService: ConfigService<Configuration>) => {
-              const config =
-                configService.get<Configuration['redis']>('redis')!;
+              const redis = configService.get<Configuration['redis']>('redis')!;
               return {
                 redis: {
-                  host: config.host,
-                  port: config.port,
+                  host: redis.host,
+                  port: redis.port,
                   enableReadyCheck: false,
                   lazyConnect: true,
                 },
@@ -103,24 +109,20 @@ const enableBull =
                 },
               };
             },
-            inject: [ConfigService],
           }),
           BullModule.registerQueue({ name: 'default' }),
         ]
       : []),
     IdempotencyModule,
-    WalletsModule,
     AccountClosureModule,
-    WalletsModule,
     AuthModule,
-    EventEmitterModule.forRoot(),
+    EventEmitterModule.forRoot({ global: true }),
     OtpModule,
     AmlModule,
     ArchivalModule,
     FxModule,
     PushModule,
     ReferralModule,
-    EventEmitterModule.forRoot(),
     WalletsModule,
     UsersModule,
     TransactionsModule,
@@ -128,9 +130,13 @@ const enableBull =
     KycModule,
     MailModule,
     DocumentsModule,
-    AuthModule,
     TermsModule,
     StatementsModule,
+    SupportTicketsModule,
+    WebhooksModule,
+    CurrenciesModule,
+    AdminModule,
+    SecurityModule,
   ],
   controllers: [AppController],
   providers: [AppService, GeoRestrictionMiddleware],

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Transaction, TransactionStatus } from './transaction.entity';
 import { WalletsService } from '../wallet/wallets.service';
 import { AuditService } from '../audit/audit.service';
@@ -43,6 +44,7 @@ export class TransactionsService {
     private readonly auditService: AuditService,
     private readonly mailService: MailService,
     private readonly usersService: UsersService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async transfer(dto: TransferDto): Promise<Transaction> {
@@ -81,7 +83,16 @@ export class TransactionsService {
 
       tx.status = TransactionStatus.COMPLETED;
       tx.completedAt = new Date();
-      return manager.save(Transaction, tx);
+      const saved = await manager.save(Transaction, tx);
+      this.events.emit('transactions.completed', {
+        transactionId: saved.id,
+        senderId: saved.senderId,
+        receiverId: saved.receiverId,
+        amount: saved.amount,
+        currency: saved.currency,
+        reference: saved.reference,
+      });
+      return saved;
     });
   }
 
@@ -170,13 +181,13 @@ export class TransactionsService {
       const sender = await this.usersService.findById(transaction.senderId);
       const receiver = await this.usersService.findById(transaction.receiverId);
 
-      await this.mailService.sendTransactionReversalNotice({
+      this.mailService.sendTransactionReversalNotice({
         to: sender.email,
         transactionId: transaction.id,
         reversedBy: input.reversedBy,
         reason: input.reason,
       });
-      await this.mailService.sendTransactionReversalNotice({
+      this.mailService.sendTransactionReversalNotice({
         to: receiver.email,
         transactionId: transaction.id,
         reversedBy: input.reversedBy,
@@ -192,6 +203,13 @@ export class TransactionsService {
           reversalTransactionId: savedReversal.id,
           reason: input.reason,
         },
+      });
+
+      this.events.emit('transactions.reversed', {
+        transactionId: transaction.id,
+        reversalTransactionId: savedReversal.id,
+        reversedBy: input.reversedBy,
+        reason: input.reason,
       });
 
       return transaction;

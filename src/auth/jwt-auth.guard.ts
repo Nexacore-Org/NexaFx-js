@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 interface JwtPayload {
   sub: string;
   email?: string;
+  role?: string;
   roles?: string[];
 }
 

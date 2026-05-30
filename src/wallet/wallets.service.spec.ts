@@ -1,5 +1,10 @@
 import { ActivityFeedService } from '../activity-feed/activity-feed.service';
 import { WalletsService } from './wallets.service';
+
+describe('WalletsService', () => {
+  it('starts balances at zero and normalizes currencies', () => {
+    const service = new WalletsService();
+
 import { UnprocessableEntityException } from '@nestjs/common';
 import { WalletsService } from './wallets.service';
 
@@ -59,6 +64,8 @@ describe('WalletsService', () => {
   });
 
   it('adjusts balances with two-decimal precision', () => {
+    const service = new WalletsService();
+
     expect(service.adjustBalance('acct-1', 'usd', 10.125)).toEqual({
       accountId: 'acct-1',
       currency: 'usd',
@@ -72,11 +79,9 @@ describe('WalletsService', () => {
     });
   });
 
-  it('returns all balances for an account', () => {
-    service.adjustBalance('acct-1', 'usd', 10.125);
-    service.adjustBalance('acct-1', 'eur', 4);
-    service.adjustBalance('acct-2', 'usd', 5);
   it('returns balances for an account', () => {
+    const service = new WalletsService();
+
     service.adjustBalance('acct-1', 'usd', 5);
     service.adjustBalance('acct-1', 'eur', 4);
     service.adjustBalance('acct-2', 'usd', 8);
@@ -85,7 +90,6 @@ describe('WalletsService', () => {
       {
         accountId: 'acct-1',
         currency: 'usd',
-        balance: 10.13,
         balance: 5,
       },
       {
@@ -97,15 +101,15 @@ describe('WalletsService', () => {
   });
 
   it('emits an activity event when a balance changes', () => {
-    const recordActivityMock = jest.fn();
+    const recordActivity = jest.fn();
     const activityFeedService = {
-      recordActivity: recordActivityMock,
+      recordActivity,
     } as unknown as ActivityFeedService;
-    const walletService = new WalletsService(activityFeedService);
+    const service = new WalletsService(activityFeedService);
 
-    walletService.adjustBalance('acct-1', 'usd', 12.5);
+    service.adjustBalance('acct-1', 'usd', 12.5);
 
-    expect(recordActivityMock).toHaveBeenCalledWith(
+    expect(recordActivity).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'acct-1',
         type: 'wallet.balance_adjusted',
