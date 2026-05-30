@@ -209,4 +209,39 @@ export class AuthService {
       await this.logAuthEvent(auditContext, 'EMAIL_VERIFIED', userId);
     }
   }
+
+  /**
+   * Enforces account lockout after 5 consecutive failed login attempts.
+   * Locked accounts are unlocked automatically after 15 minutes.
+   */
+  async checkLoginLockout(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) return;
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new UnauthorizedException(
+        'Account is temporarily locked due to too many failed login attempts. Please try again later.',
+      );
+    }
+  }
+
+  async recordFailedLogin(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) return;
+    const attempts = (user.failedLoginAttempts ?? 0) + 1;
+    const update: Partial<typeof user> = { failedLoginAttempts: attempts };
+    if (attempts >= 5) {
+      update.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+      try {
+        await this.mailService.sendAccountLockedAlert(user.email);
+      } catch { /* non-fatal */ }
+    }
+    await this.userRepository.update(userId, update as any);
+  }
+
+  async recordSuccessfulLogin(userId: string): Promise<void> {
+    await this.userRepository.update(userId, {
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    } as any);
+  }
 }

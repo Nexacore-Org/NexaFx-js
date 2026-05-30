@@ -20,7 +20,7 @@ export const envSchema = z.object({
     .string()
     .transform(Number)
     .pipe(z.number().min(1).max(65535))
-    .default(() => 3000),
+    .default(3000),
 
   // ============================================
   // Request Body Size Limits (environment-configurable)
@@ -29,12 +29,12 @@ export const envSchema = z.object({
     .string()
     .transform(Number)
     .pipe(z.number().min(1).max(100))
-    .default(() => 10), // MB
+    .default(10), // MB
   BODY_LIMIT_URLENCODED: z
     .string()
     .transform(Number)
     .pipe(z.number().min(1).max(100))
-    .default(() => 10), // MB
+    .default(10), // MB
 
   // ============================================
   // Database Configuration
@@ -50,7 +50,7 @@ export const envSchema = z.object({
   DB_SSL: z
     .string()
     .transform((val) => val === "true")
-    .default(() => false),
+    .default(false),
 
   // ============================================
   // JWT Configuration
@@ -62,7 +62,7 @@ export const envSchema = z.object({
     .string()
     .transform(Number)
     .pipe(z.number().positive())
-    .default(() => 3600),
+    .default(3600),
 
   // ============================================
   // Refresh Token Configuration
@@ -74,7 +74,7 @@ export const envSchema = z.object({
     .string()
     .transform(Number)
     .pipe(z.number().positive())
-    .default(() => 604800), // 7 days in seconds
+    .default(604800), // 7 days in seconds
 
   // ============================================
   // OTP Configuration
@@ -86,7 +86,7 @@ export const envSchema = z.object({
     .string()
     .transform(Number)
     .pipe(z.number().positive())
-    .default(() => 300), // 5 minutes in seconds
+    .default(300), // 5 minutes in seconds
 
   // ============================================
   // Wallet Encryption Configuration
@@ -104,7 +104,7 @@ export const envSchema = z.object({
     .string()
     .transform(Number)
     .pipe(z.number().positive())
-    .default(() => 30000),
+    .default(30000),
 
   // ============================================
   // Mail Configuration
@@ -120,7 +120,7 @@ export const envSchema = z.object({
   MAIL_SECURE: z
     .string()
     .transform((val) => val === "true")
-    .default(() => false),
+    .default(false),
 
   // ============================================
   // Redis Configuration (optional, for caching/sessions)
@@ -130,7 +130,7 @@ export const envSchema = z.object({
     .string()
     .transform(Number)
     .pipe(z.number().min(1).max(65535))
-    .default(() => 6379),
+    .default(6379),
   REDIS_PASSWORD: z.string().optional(),
 
   // ============================================
@@ -140,12 +140,12 @@ export const envSchema = z.object({
     .string()
     .transform(Number)
     .pipe(z.number().positive())
-    .default(() => 60000),
+    .default(60000),
   RATE_LIMIT_MAX_REQUESTS: z
     .string()
     .transform(Number)
     .pipe(z.number().positive())
-    .default(() => 100),
+    .default(100),
 
   // ============================================
   // Data Archival Configuration
@@ -153,18 +153,18 @@ export const envSchema = z.object({
   ARCHIVE_ENABLED: z
     .string()
     .transform((val) => val === 'true')
-    .default(() => true),
+    .default(true),
   ARCHIVE_THRESHOLD_MONTHS: z
     .string()
     .transform(Number)
     .pipe(z.number().int().min(1).max(120))
-    .default(() => 12),
+    .default(12),
   ARCHIVE_BATCH_SIZE: z
     .string()
     .transform(Number)
     .pipe(z.number().int().min(10).max(5000))
-    .default(() => 500),
-  ARCHIVE_CRON: z.string().min(1).default(() => '0 3 * * *'),
+    .default(500),
+  ARCHIVE_CRON: z.string().min(1).default('0 3 * * *'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

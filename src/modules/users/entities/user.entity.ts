@@ -53,4 +53,16 @@ export class UserEntity {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   emailVerificationTokenHash?: string;
+
+  @Column({ default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lockedUntil: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  twoFactorSecret: string | null;
+
+  @Column({ default: false })
+  isTwoFactorEnabled: boolean;
 }
