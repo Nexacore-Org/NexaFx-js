@@ -57,6 +57,18 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Operational logging
+
+Slow database queries are emitted as JSON log entries with the event name `typeorm.slow_query`.
+The payload includes these fields:
+
+- `thresholdMs`
+- `durationMs`
+- `query`
+- `parameters`
+
+Set `SLOW_QUERY_THRESHOLD_MS` to adjust the slow-query warning threshold. The default is `1000` milliseconds.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

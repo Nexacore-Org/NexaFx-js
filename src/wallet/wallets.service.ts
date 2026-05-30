@@ -1,3 +1,4 @@
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { Injectable } from '@nestjs/common';
 import { ActivityFeedService } from '../activity-feed/activity-feed.service';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -35,6 +36,11 @@ export class WalletsService {
         balance: next.balance,
       },
     });
+    if (next.balance < 0) {
+      throw new UnprocessableEntityException('Insufficient funds');
+    }
+
+    this.wallets.set(key, next);
     return next;
   }
     return await this.walletRepo.manager.transaction(async (manager) => {
