@@ -15,6 +15,7 @@ async function bootstrap() {
   app.use(express.urlencoded({ limit: urlencodedLimit, extended: true }));
 
   app.setGlobalPrefix('api/v1');
+  app.enableShutdownHooks();
 
   // Configure Swagger/OpenAPI
   const swaggerConfig = new DocumentBuilder()
