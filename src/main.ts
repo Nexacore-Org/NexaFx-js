@@ -28,6 +28,7 @@ async function bootstrap() {
      }),
    );
    app.useGlobalFilters(new GlobalExceptionFilter());
+  app.enableShutdownHooks();
 
    const swaggerConfig = new DocumentBuilder()
     .setTitle('NexaFx API')
