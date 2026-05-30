@@ -8,6 +8,7 @@ import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
 import { AuthModule } from '../auth/auth.module';
+import { SecurityModule } from '../common/security.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { AuthModule } from '../auth/auth.module';
     MailModule,
     UsersModule,
     AuthModule,
+    SecurityModule,
   ],
   controllers: [TransactionsController],
   providers: [TransactionsService],

@@ -66,6 +66,40 @@ export default () => {
     process.env.ARCHIVE_BATCH_SIZE || '500',
     10,
   );
+  const supportedCurrencies = (
+    process.env.SUPPORTED_CURRENCIES || 'USD,EUR,GBP,NGN'
+  )
+    .split(',')
+    .map((currency) => currency.trim().toUpperCase())
+    .filter(Boolean);
+  const cacheExchangeRateTtlSeconds = parseInt(
+    process.env.CACHE_EXCHANGE_RATE_TTL_SECONDS || '60',
+    10,
+  );
+  const cacheSupportedCurrenciesTtlSeconds = parseInt(
+    process.env.CACHE_SUPPORTED_CURRENCIES_TTL_SECONDS || '86400',
+    10,
+  );
+  const cacheAdminStatsTtlSeconds = parseInt(
+    process.env.CACHE_ADMIN_STATS_TTL_SECONDS || '60',
+    10,
+  );
+  const adminAllowedIps = (process.env.ADMIN_ALLOWED_IPS || '')
+    .split(',')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+  const webhookMaxAttempts = parseInt(
+    process.env.WEBHOOK_MAX_ATTEMPTS || '5',
+    10,
+  );
+  const webhookBackoffDelayMs = parseInt(
+    process.env.WEBHOOK_BACKOFF_DELAY_MS || '1000',
+    10,
+  );
+  const webhookReplayWindowHours = parseInt(
+    process.env.WEBHOOK_REPLAY_WINDOW_HOURS || '24',
+    10,
+  );
   const blockedCountries = (process.env.BLOCKED_COUNTRIES || '')
     .split(',')
     .map((country) => country.trim().toUpperCase())
@@ -160,6 +194,27 @@ export default () => {
       thresholdMonths: archiveThresholdMonths,
       batchSize: archiveBatchSize,
       cron: process.env.ARCHIVE_CRON || '0 3 * * *',
+    },
+
+    cache: {
+      exchangeRateTtlSeconds: cacheExchangeRateTtlSeconds,
+      supportedCurrenciesTtlSeconds: cacheSupportedCurrenciesTtlSeconds,
+      adminStatsTtlSeconds: cacheAdminStatsTtlSeconds,
+      defaultTtlSeconds: cacheExchangeRateTtlSeconds,
+    },
+
+    currencies: {
+      supported: supportedCurrencies,
+    },
+
+    security: {
+      adminAllowedIps,
+    },
+
+    webhooks: {
+      maxAttempts: webhookMaxAttempts,
+      backoffDelayMs: webhookBackoffDelayMs,
+      replayWindowHours: webhookReplayWindowHours,
     },
 
     // Terms and conditions configuration

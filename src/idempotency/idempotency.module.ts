@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { IdempotencyKey } from './idempotency.entity';
 import { IdempotencyService } from './idempotency.service';
 import { IdempotencyGuard } from './idempotency.guard';

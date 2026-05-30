@@ -5,6 +5,18 @@ import { WalletsService } from '../wallet/wallets.service';
 import { AuditService } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+
+type TransactionManager = {
+  create: <T extends Record<string, unknown>>(
+    entity: new () => T,
+    value: T,
+  ) => T;
+  save: <T extends { id?: string }>(
+    entity: new () => T,
+    value: T,
+  ) => Promise<T>;
+};
 
 describe('TransactionsService', () => {
   const txRepo = {
@@ -27,6 +39,9 @@ describe('TransactionsService', () => {
   const usersService = {
     findById: jest.fn(),
   } as unknown as UsersService;
+  const events = {
+    emit: jest.fn(),
+  } as unknown as EventEmitter2;
   const service = new TransactionsService(
     txRepo,
     dataSource,
@@ -34,6 +49,7 @@ describe('TransactionsService', () => {
     auditService,
     mailService,
     usersService,
+    events,
   );
 
   beforeEach(() => {
@@ -59,14 +75,17 @@ describe('TransactionsService', () => {
       id: 'user-2',
       email: 'receiver@example.com',
     });
-    (dataSource.transaction as jest.Mock).mockImplementation(async (cb: any) =>
-      cb({
-        create: (_entity: any, value: any) => value,
-        save: async (_entity: any, value: any) => ({
+    const manager: TransactionManager = {
+      create: (_entity, value) => value,
+      save: (_entity, value) =>
+        Promise.resolve({
           ...value,
           id: value.id ?? 'reversal-1',
         }),
-      }),
+    };
+    (dataSource.transaction as jest.Mock).mockImplementation(
+      async (callback: (manager: TransactionManager) => Promise<unknown>) =>
+        callback(manager),
     );
 
     await expect(

@@ -28,6 +28,21 @@ export interface TransactionReversalEmail {
   reason: string;
 }
 
+export interface SupportTicketCreatedEmail {
+  to: string;
+  fullName: string;
+  ticketId: string;
+  subject: string;
+  category: string;
+}
+
+export interface SupportTicketStatusUpdateEmail {
+  to: string;
+  fullName: string;
+  ticketId: string;
+  status: string;
+}
+
 type TemplateName =
   | 'base'
   | 'email-verification'
@@ -140,6 +155,20 @@ export class MailService {
   sendTransactionReversalNotice(payload: TransactionReversalEmail): void {
     this.logger.log(
       `Reversal notice queued for ${payload.to} on transaction ${payload.transactionId}`,
+    );
+  }
+
+  sendSupportTicketCreatedEmail(payload: SupportTicketCreatedEmail): void {
+    this.logger.log(
+      `Support ticket ${payload.ticketId} created for ${payload.to} (${payload.category})`,
+    );
+  }
+
+  sendSupportTicketStatusUpdateEmail(
+    payload: SupportTicketStatusUpdateEmail,
+  ): void {
+    this.logger.log(
+      `Support ticket ${payload.ticketId} updated to ${payload.status} for ${payload.to}`,
     );
   }
 

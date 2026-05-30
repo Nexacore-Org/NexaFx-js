@@ -7,8 +7,8 @@ import {
   Param,
   HttpCode,
   HttpStatus,
-  ForbiddenException,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import {
   TransactionsService,
@@ -18,7 +18,15 @@ import {
 } from './transactions.service';
 import { TransactionStatus } from './transaction.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { UseGuards } from '@nestjs/common';
+import { AdminRoleGuard } from '../common/guards/admin-role.guard';
+import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
+
+interface AuthenticatedRequest {
+  user?: {
+    sub?: string;
+    role?: string;
+  };
+}
 
 @Controller('api/v1/transactions')
 export class TransactionsController {
@@ -53,17 +61,13 @@ export class TransactionsController {
     return this.txService.findById(id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post(':id/reverse')
   reverse(
     @Param('id') id: string,
     @Body() body: ReverseTransactionDto,
-    @Req() request: { user?: { sub?: string; role?: string } },
+    @Req() request: AuthenticatedRequest,
   ) {
-    if (request.user?.role !== 'admin') {
-      throw new ForbiddenException('Admin access required');
-    }
-
     return this.txService.reverseTransaction(id, {
       reversedBy: request.user?.sub ?? '',
       reason: body.reason,

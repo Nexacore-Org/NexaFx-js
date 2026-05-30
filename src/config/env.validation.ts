@@ -174,6 +174,38 @@ export const envSchema = z.object({
     .string()
     .min(1)
     .default(() => '0 3 * * *'),
+  SUPPORTED_CURRENCIES: z.string().min(1).default('USD,EUR,GBP,NGN'),
+  CACHE_EXCHANGE_RATE_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 60),
+  CACHE_SUPPORTED_CURRENCIES_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 86400),
+  CACHE_ADMIN_STATS_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 60),
+  ADMIN_ALLOWED_IPS: z.string().optional().default(''),
+  WEBHOOK_MAX_ATTEMPTS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 5),
+  WEBHOOK_BACKOFF_DELAY_MS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 1000),
+  WEBHOOK_REPLAY_WINDOW_HOURS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 24),
   TERMS_CURRENT_VERSION: z.string().min(1).default('1.0'),
   BLOCKED_COUNTRIES: z.string().optional().default(''),
   // ============================================
