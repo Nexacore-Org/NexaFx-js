@@ -7,7 +7,10 @@ import { IdempotencyInterceptor } from './idempotency.interceptor';
 import { IdempotencyCleanupJob } from './cleanup.job';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([IdempotencyKey])],
+  imports: [
+    TypeOrmModule.forFeature([IdempotencyKey]),
+    ScheduleModule.forRoot(),
+  ],
   providers: [
     IdempotencyService,
     IdempotencyGuard,

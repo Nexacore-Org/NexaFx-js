@@ -79,15 +79,15 @@ export default () => {
       urlencoded: bodyLimitUrlencoded * 1024 * 1024,
     },
 
-    // Database configuration
+    // Database configuration (validated via Zod in env.validation.ts)
     database: {
-      host: process.env.DB_HOST || 'localhost',
+      host: process.env.DB_HOST!,
       port: dbPort,
-      username: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'nexafx',
+      username: process.env.DB_USER!,
+      password: process.env.DB_PASSWORD!,
+      database: process.env.DB_NAME!,
       ssl: process.env.DB_SSL === 'true',
-      url: `postgresql://${process.env.DB_USER || 'postgres'}:${process.env.DB_PASSWORD || ''}@${process.env.DB_HOST || 'localhost'}:${dbPort}/${process.env.DB_NAME || 'nexafx'}`,
+      url: `postgresql://${process.env.DB_USER!}:${process.env.DB_PASSWORD!}@${process.env.DB_HOST!}:${dbPort}/${process.env.DB_NAME!}`,
     },
 
     // JWT configuration
