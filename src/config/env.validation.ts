@@ -165,6 +165,8 @@ export const envSchema = z.object({
     .string()
     .min(1)
     .default(() => '0 3 * * *'),
+  TERMS_CURRENT_VERSION: z.string().min(1).default('1.0'),
+  BLOCKED_COUNTRIES: z.string().optional().default(''),
   // ============================================
   // External API Configuration
   // ============================================

@@ -32,3 +32,4 @@ export class WalletBalanceEntity {
   @VersionColumn()
   version: number;
 }
+}

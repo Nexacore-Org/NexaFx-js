@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnApplicationShutdown, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationShutdown,
+  Optional,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { DataSource } from 'typeorm';
 import { Queue } from 'bull';
@@ -8,8 +13,8 @@ export class AppService implements OnApplicationShutdown {
   private readonly logger = new Logger(AppService.name);
 
   constructor(
-    @Optional() @InjectQueue('default') private readonly defaultQueue?: Queue,
     private readonly dataSource: DataSource,
+    @Optional() @InjectQueue('default') private readonly defaultQueue?: Queue,
   ) {}
 
   getHello(): string {

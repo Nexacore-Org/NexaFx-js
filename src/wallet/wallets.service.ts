@@ -80,6 +80,56 @@ export class WalletsService {
       balance: wallet.balance,
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
+    const upperCurrency = currency.toUpperCase();
+
+    return await this.walletRepo.manager.transaction(async (manager) => {
+      const wallet = await manager.findOne(WalletBalanceEntity, {
+        where: { accountId, currency: upperCurrency },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      let newBalance: number;
+      if (wallet) {
+        const currentBalance = parseFloat(wallet.balance);
+        newBalance = Number((currentBalance + delta).toFixed(8));
+        await manager.update(WalletBalanceEntity, { accountId, currency: upperCurrency }, {
+          balance: newBalance.toFixed(8),
+        });
+      } else {
+        newBalance = delta;
+        await manager.insert(WalletBalanceEntity, {
+          accountId,
+          currency: upperCurrency,
+          balance: newBalance.toFixed(8),
+        });
+      }
+
+      return {
+        accountId,
+        currency: upperCurrency,
+        balance: newBalance,
+      };
+    });
+  }
+
+  async getBalance(accountId: string, currency: string): Promise<WalletBalance> {
+    const upperCurrency = currency.toUpperCase();
+    const wallet = await this.walletRepo.findOne({
+      where: { accountId, currency: upperCurrency },
+    });
+
+    if (wallet) {
+      return {
+        accountId: wallet.accountId,
+        currency: wallet.currency,
+        balance: parseFloat(wallet.balance),
+      };
+    }
+
+    return {
+      accountId,
+      currency: upperCurrency,
+      balance: 0,
     };
   }
 
