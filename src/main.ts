@@ -21,6 +21,7 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix('api/v1');
+  app.enableShutdownHooks();
 
   app.use(
     helmet({
