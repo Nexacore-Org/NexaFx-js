@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
@@ -11,6 +12,11 @@ import { IdempotencyModule } from './idempotency/idempotency.module';
 import { FxModule } from './fx/fx.module';
 import { PushModule } from './notifications/push/push.module';
 import { ReferralModule } from './referral/referral.module';
+import { UsersModule } from './users/users.module';
+import { TransactionsModule } from './transactions/transactions.module';
+import { AuditModule } from './audit/audit.module';
+import { KycModule } from './kyc/kyc.module';
+import { WalletsModule } from './wallet/wallets.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -57,6 +63,12 @@ const enableBull =
     FxModule,
     PushModule,
     ReferralModule,
+    EventEmitterModule.forRoot(),
+    WalletsModule,
+    UsersModule,
+    TransactionsModule,
+    AuditModule,
+    KycModule,
     MailModule,
     DocumentsModule,
   ],
