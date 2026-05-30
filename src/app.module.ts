@@ -1,4 +1,9 @@
-import { Module } from '@nestjs/common';
+import {
+  Module,
+  MiddlewareConsumer,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -20,6 +25,10 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { AuditModule } from './audit/audit.module';
 import { KycModule } from './kyc/kyc.module';
 import { WalletsModule } from './wallet/wallets.module';
+import { AuthModule } from './auth/auth.module';
+import { TermsModule } from './terms/terms.module';
+import { StatementsModule } from './statements/statements.module';
+import { GeoRestrictionMiddleware } from './common/middleware/geo-restriction.middleware';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -78,8 +87,20 @@ const enableBull =
     KycModule,
     MailModule,
     DocumentsModule,
+    AuthModule,
+    TermsModule,
+    StatementsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, GeoRestrictionMiddleware],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(GeoRestrictionMiddleware)
+      .forRoutes(
+        { path: 'api/v1/auth/login', method: RequestMethod.POST },
+        { path: 'api/v1/auth/register', method: RequestMethod.POST },
+      );
+  }
+}

@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { StatementView } from '../statements/statements.types';
 
-interface TransactionRecord {
+interface ReceiptRecord {
   id: string;
   date: string;
   description: string;
@@ -11,28 +12,34 @@ interface TransactionRecord {
 
 @Injectable()
 export class PdfService {
-  async generateStatementPdf(userId: string, from?: string, to?: string): Promise<Uint8Array> {
-    const fromDate = from ? new Date(from) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const toDate = to ? new Date(to) : new Date();
-
-    const transactions = this.sampleTransactions(userId).filter((tx) => {
-      const txDate = new Date(tx.date);
-      return txDate >= fromDate && txDate <= toDate;
-    });
+  async generateStatementPdf(statement: StatementView): Promise<Uint8Array> {
+    const heading = `Statement for ${statement.user.firstName} ${statement.user.lastName}`;
+    const metadata = [
+      `Account: ${statement.user.email}`,
+      `Period: ${statement.period.from.substring(0, 10)} - ${statement.period.to.substring(0, 10)}`,
+      `Opening balance: ${this.formatCurrency(statement.openingBalance, statement.currency)}`,
+      `Closing balance: ${this.formatCurrency(statement.closingBalance, statement.currency)}`,
+      `Generated: ${statement.generatedAt}`,
+    ];
 
     return this.buildPdf(
-      `Statement for ${userId}`,
-      userId,
-      [
-        `Statement period: ${fromDate.toISOString().substring(0, 10)} - ${toDate.toISOString().substring(0, 10)}`,
-        `Generated: ${new Date().toISOString()}`,
-      ],
-      transactions,
+      heading,
+      statement.user.email,
+      metadata,
+      statement.lines.map((line) => ({
+        id: line.reference,
+        date: line.date.substring(0, 10),
+        description: `${line.description} (${line.source})`,
+        amount: line.amount,
+        status: line.amount >= 0 ? 'Credit' : 'Debit',
+      })),
     );
   }
 
   async generateReceiptPdf(transactionId: string): Promise<Uint8Array> {
-    const transaction = this.sampleTransactions('receipt-user').find((tx) => tx.id === transactionId) ?? {
+    const transaction = this.sampleTransactions('receipt-user').find(
+      (tx) => tx.id === transactionId,
+    ) ?? {
       id: transactionId,
       date: new Date().toISOString().substring(0, 10),
       description: 'Transaction receipt',
@@ -52,12 +59,12 @@ export class PdfService {
     heading: string,
     userName: string,
     metadata: string[],
-    transactions: TransactionRecord[],
+    transactions: ReceiptRecord[],
   ): Promise<Uint8Array> {
     const doc = await PDFDocument.create();
     const helvetica = await doc.embedFont(StandardFonts.Helvetica);
     const page = doc.addPage([612, 792]);
-    const { width, height } = page.getSize();
+    const { height } = page.getSize();
     const margin = 50;
     const lineHeight = 16;
 
@@ -96,17 +103,52 @@ export class PdfService {
     });
 
     const tableTop = height - margin - 140;
-    page.drawText('Date', { x: margin, y: tableTop, size: 10, font: helvetica, color: rgb(0, 0, 0) });
-    page.drawText('Description', { x: 140, y: tableTop, size: 10, font: helvetica, color: rgb(0, 0, 0) });
-    page.drawText('Amount', { x: 400, y: tableTop, size: 10, font: helvetica, color: rgb(0, 0, 0) });
-    page.drawText('Status', { x: 500, y: tableTop, size: 10, font: helvetica, color: rgb(0, 0, 0) });
+    page.drawText('Date', {
+      x: margin,
+      y: tableTop,
+      size: 10,
+      font: helvetica,
+      color: rgb(0, 0, 0),
+    });
+    page.drawText('Description', {
+      x: 140,
+      y: tableTop,
+      size: 10,
+      font: helvetica,
+      color: rgb(0, 0, 0),
+    });
+    page.drawText('Amount', {
+      x: 400,
+      y: tableTop,
+      size: 10,
+      font: helvetica,
+      color: rgb(0, 0, 0),
+    });
+    page.drawText('Status', {
+      x: 500,
+      y: tableTop,
+      size: 10,
+      font: helvetica,
+      color: rgb(0, 0, 0),
+    });
 
     const rows = transactions.slice(0, 20);
     rows.forEach((tx, index) => {
       const y = tableTop - 22 - index * 18;
       page.drawText(tx.date, { x: margin, y, size: 9, font: helvetica });
-      page.drawText(tx.description, { x: 140, y, size: 9, font: helvetica, maxWidth: 240 });
-      page.drawText(this.formatCurrency(tx.amount), { x: 400, y, size: 9, font: helvetica });
+      page.drawText(tx.description, {
+        x: 140,
+        y,
+        size: 9,
+        font: helvetica,
+        maxWidth: 240,
+      });
+      page.drawText(this.formatCurrency(tx.amount), {
+        x: 400,
+        y,
+        size: 9,
+        font: helvetica,
+      });
       page.drawText(tx.status, { x: 500, y, size: 9, font: helvetica });
     });
 
@@ -130,25 +172,31 @@ export class PdfService {
     return doc.save();
   }
 
-  private sampleTransactions(userId: string): TransactionRecord[] {
+  private sampleTransactions(userId: string): ReceiptRecord[] {
     return [
       {
         id: `${userId}-txn-001`,
-        date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10),
+        date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .substring(0, 10),
         description: 'EUR deposit',
         amount: 1420.5,
         status: 'Completed',
       },
       {
         id: `${userId}-txn-002`,
-        date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10),
+        date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .substring(0, 10),
         description: 'FX transfer to USD',
         amount: -520.0,
         status: 'Completed',
       },
       {
         id: `${userId}-txn-003`,
-        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10),
+        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .substring(0, 10),
         description: 'Service fee',
         amount: -12.75,
         status: 'Completed',
@@ -156,7 +204,7 @@ export class PdfService {
     ];
   }
 
-  private formatCurrency(value: number): string {
-    return `${value < 0 ? '-' : ''}€${Math.abs(value).toFixed(2)}`;
+  private formatCurrency(value: number, currency = 'EUR'): string {
+    return `${value < 0 ? '-' : ''}${currency.toUpperCase()} ${Math.abs(value).toFixed(2)}`;
   }
 }
