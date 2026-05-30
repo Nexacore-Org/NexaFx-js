@@ -16,6 +16,7 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MailModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { WalletsModule } from './wallet/wallets.module';
 import { TypeOrmSlowQueryLogger } from './database/typeorm-slow-query.logger';
 import { AccountClosureModule } from './users/account-closure.module';
 import { Configuration } from './config/configuration';
@@ -108,6 +109,7 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    WalletsModule,
     AccountClosureModule,
     WalletsModule,
     AuthModule,
