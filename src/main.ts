@@ -12,6 +12,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  app.enableShutdownHooks();
 
   // Configure Swagger/OpenAPI
   const swaggerConfig = new DocumentBuilder()
