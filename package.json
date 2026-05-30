@@ -18,9 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "migration:run": "ts-node -r tsconfig-paths/register src/database/data-source.ts && typeorm migration:run -d src/database/data-source.ts",
-    "migration:revert": "typeorm migration:revert -d src/database/data-source.ts",
-    "migration:generate": "typeorm migration:generate -d src/database/data-source.ts",
+    "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
+    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
+    "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:dryrun": "ts-node -r tsconfig-paths/register src/scripts/migrate-dryrun.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts"
   },
@@ -47,12 +47,14 @@
     "@types/socket.io-client": "^1.4.36",
     "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
+    "axios": "^1.16.1",
     "bull": "^4.12.0",
     "cache-manager": "^7.2.8",
     "cache-manager-redis-store": "^3.0.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "handlebars": "^4.7.9",
+    "helmet": "^8.2.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^8.0.4",
@@ -114,6 +116,26 @@
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 8,
+        "functions": 45,
+        "lines": 55,
+        "statements": 55
+      },
+      "src/idempotency/**/*.ts": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      },
+      "src/wallet/**/*.ts": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      }
+    },
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

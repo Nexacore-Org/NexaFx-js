@@ -62,6 +62,15 @@ export const envSchema = z.object({
     .default(() => 3600),
 
   // ============================================
+  // Observability Configuration
+  // ============================================
+  SLOW_QUERY_THRESHOLD_MS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().positive())
+    .default(() => 1000),
+
+  // ============================================
   // Refresh Token Configuration
   // ============================================
   REFRESH_TOKEN_SECRET: z
@@ -165,6 +174,147 @@ export const envSchema = z.object({
     .string()
     .min(1)
     .default(() => '0 3 * * *'),
+  SUPPORTED_CURRENCIES: z.string().min(1).default('USD,EUR,GBP,NGN'),
+  CACHE_EXCHANGE_RATE_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 60),
+  CACHE_SUPPORTED_CURRENCIES_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 86400),
+  CACHE_ADMIN_STATS_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 60),
+  ADMIN_ALLOWED_IPS: z.string().optional().default(''),
+  WEBHOOK_MAX_ATTEMPTS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 5),
+  WEBHOOK_BACKOFF_DELAY_MS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 1000),
+  WEBHOOK_REPLAY_WINDOW_HOURS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 24),
+  TERMS_CURRENT_VERSION: z.string().min(1).default('1.0'),
+  BLOCKED_COUNTRIES: z.string().optional().default(''),
+  // ============================================
+  // External API Configuration
+  // ============================================
+  EXTERNAL_API_KEY: z.string().optional(),
+  EXTERNAL_API_URL: z.string().optional(),
+  EXTERNAL_API_TIMEOUT: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().positive())
+    .default(() => 30000),
+
+  // ============================================
+  // Push Notification Configuration
+  // ============================================
+  FCM_SERVER_KEY: z.string().optional(),
+  APNS_KEY_ID: z.string().optional(),
+  APNS_TEAM_ID: z.string().optional(),
+  APNS_BUNDLE_ID: z.string().optional(),
+  APNS_PRIVATE_KEY: z.string().optional(),
+
+  // ============================================
+  // Referral Program
+  // ============================================
+  REFERRAL_REWARD_AMOUNT: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().nonnegative())
+    .default(() => 10),
+  REFERRAL_MAX_REFERRALS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 100),
+  REFERRAL_PROGRAM_ACTIVE: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => true),
+
+  // ============================================
+  // AML Monitoring Tuning
+  // ============================================
+  AML_STRUCTURING_THRESHOLD: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().nonnegative())
+    .default(() => 10000),
+  AML_STRUCTURING_WINDOW_HOURS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 24),
+  AML_STRUCTURING_MIN_COUNT: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 3),
+  AML_SMURFING_WINDOW_HOURS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 1),
+  AML_SMURFING_MIN_WALLETS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 3),
+  AML_SMURFING_VARIANCE_PCT: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().nonnegative())
+    .default(() => 5),
+  AML_VELOCITY_WINDOW_HOURS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 1),
+  AML_VELOCITY_MAX_COUNT: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 10),
+  AML_RISK_SCORE_WEIGHT: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 30),
+
+  // ============================================
+  // FX / Exchange Rates
+  // ============================================
+  FX_REVERSAL_WINDOW_MINUTES: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 5),
+  OPEN_EXCHANGE_RATES_API_KEY: z.string().optional(),
+  EXCHANGE_RATE_HOST_API_KEY: z.string().optional(),
+
+  // ============================================
+  // Wallet Encryption Key (64-char hex)
+  // ============================================
+  WALLET_ENCRYPTION_KEY: z
+    .string()
+    .optional()
+    .refine((val) => !val || (hexStringRegex.test(val) && val.length === 64), {
+      message: 'WALLET_ENCRYPTION_KEY must be a 64-character hex string',
+    }),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
