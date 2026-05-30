@@ -1,3 +1,4 @@
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -18,6 +19,13 @@ export class WalletsService {
   ): Promise<WalletBalance> {
     const upperCurrency = currency.toUpperCase();
 
+    if (next.balance < 0) {
+      throw new UnprocessableEntityException('Insufficient funds');
+    }
+
+    this.wallets.set(key, next);
+    return next;
+  }
     return await this.walletRepo.manager.transaction(async (manager) => {
       const wallet = await manager.findOne(WalletBalanceEntity, {
         where: { accountId, currency: upperCurrency },
