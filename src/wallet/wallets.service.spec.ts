@@ -38,6 +38,14 @@ describe('WalletsService', () => {
     service = new WalletsService();
   });
 
+  it('starts accounts at zero and normalizes currencies', () => {
+    expect(service.getBalance('acct-1', 'usd')).toEqual({
+      accountId: 'acct-1',
+      currency: 'usd',
+      balance: 0,
+    });
+  });
+
   it('adjusts balances with two-decimal precision', () => {
     expect(service.adjustBalance('acct-1', 'usd', 10.125)).toEqual({
       accountId: 'acct-1',
@@ -52,6 +60,10 @@ describe('WalletsService', () => {
     });
   });
 
+  it('returns all balances for an account', () => {
+    service.adjustBalance('acct-1', 'usd', 10.125);
+    service.adjustBalance('acct-1', 'eur', 4);
+    service.adjustBalance('acct-2', 'usd', 5);
   it('returns balances for an account', () => {
     service.adjustBalance('acct-1', 'usd', 5);
     service.adjustBalance('acct-1', 'eur', 4);
@@ -61,6 +73,7 @@ describe('WalletsService', () => {
       {
         accountId: 'acct-1',
         currency: 'usd',
+        balance: 10.13,
         balance: 5,
       },
       {
