@@ -62,6 +62,10 @@ export default () => {
     process.env.ARCHIVE_BATCH_SIZE || '500',
     10,
   );
+  const blockedCountries = (process.env.BLOCKED_COUNTRIES || '')
+    .split(',')
+    .map((country) => country.trim().toUpperCase())
+    .filter(Boolean);
 
   return {
     // Application settings
@@ -149,6 +153,16 @@ export default () => {
       thresholdMonths: archiveThresholdMonths,
       batchSize: archiveBatchSize,
       cron: process.env.ARCHIVE_CRON || '0 3 * * *',
+    },
+
+    // Terms and conditions configuration
+    terms: {
+      currentVersion: process.env.TERMS_CURRENT_VERSION || '1.0',
+    },
+
+    // Compliance / geo-blocking configuration
+    compliance: {
+      blockedCountries,
     },
 
     // Push notification configuration

@@ -2,11 +2,15 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Transaction, TransactionStatus } from './transaction.entity';
 import { WalletsService } from '../wallet/wallets.service';
+import { AuditService } from '../audit/audit.service';
+import { MailService } from '../mail/mail.service';
+import { UsersService } from '../users/users.service';
 
 export interface TransferDto {
   senderId: string;
@@ -25,6 +29,10 @@ export interface TransactionFilters {
   limit?: number;
 }
 
+export interface ReverseTransactionDto {
+  reason: string;
+}
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -32,6 +40,9 @@ export class TransactionsService {
     private readonly txRepo: Repository<Transaction>,
     private readonly dataSource: DataSource,
     private readonly walletsService: WalletsService,
+    private readonly auditService: AuditService,
+    private readonly mailService: MailService,
+    private readonly usersService: UsersService,
   ) {}
 
   async transfer(dto: TransferDto): Promise<Transaction> {
@@ -57,8 +68,16 @@ export class TransactionsService {
       });
       await manager.save(Transaction, tx);
 
-      this.walletsService.adjustBalance(dto.senderId, dto.currency, -dto.amount);
-      this.walletsService.adjustBalance(dto.receiverId, dto.currency, dto.amount);
+      this.walletsService.adjustBalance(
+        dto.senderId,
+        dto.currency,
+        -dto.amount,
+      );
+      this.walletsService.adjustBalance(
+        dto.receiverId,
+        dto.currency,
+        dto.amount,
+      );
 
       tx.status = TransactionStatus.COMPLETED;
       tx.completedAt = new Date();
@@ -100,5 +119,82 @@ export class TransactionsService {
     const tx = await this.txRepo.findOne({ where: { id } });
     if (!tx) throw new NotFoundException(`Transaction ${id} not found`);
     return tx;
+  }
+
+  async reverseTransaction(
+    id: string,
+    input: { reversedBy: string; reason: string },
+  ): Promise<Transaction> {
+    const transaction = await this.findById(id);
+    if (transaction.reversedAt) {
+      throw new UnprocessableEntityException(
+        'Transaction has already been reversed',
+      );
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      this.walletsService.adjustBalance(
+        transaction.senderId,
+        transaction.currency,
+        Number(transaction.amount),
+      );
+      this.walletsService.adjustBalance(
+        transaction.receiverId,
+        transaction.currency,
+        -Number(transaction.amount),
+      );
+
+      const reversal = manager.create(Transaction, {
+        senderId: transaction.receiverId,
+        receiverId: transaction.senderId,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        fee: 0,
+        status: TransactionStatus.REVERSED,
+        reference: `${transaction.reference}-reversal`,
+        metadata: {
+          reversalOf: transaction.id,
+          reason: input.reason,
+        },
+        completedAt: new Date(),
+      });
+      const savedReversal = await manager.save(Transaction, reversal);
+
+      transaction.status = TransactionStatus.REVERSED;
+      transaction.reversedAt = new Date();
+      transaction.reversedBy = input.reversedBy;
+      transaction.reversalReason = input.reason;
+      transaction.reversalTransactionId = savedReversal.id;
+      await manager.save(Transaction, transaction);
+
+      const sender = await this.usersService.findById(transaction.senderId);
+      const receiver = await this.usersService.findById(transaction.receiverId);
+
+      await this.mailService.sendTransactionReversalNotice({
+        to: sender.email,
+        transactionId: transaction.id,
+        reversedBy: input.reversedBy,
+        reason: input.reason,
+      });
+      await this.mailService.sendTransactionReversalNotice({
+        to: receiver.email,
+        transactionId: transaction.id,
+        reversedBy: input.reversedBy,
+        reason: input.reason,
+      });
+
+      await this.auditService.log({
+        userId: input.reversedBy,
+        action: 'transaction.reversed',
+        entityType: 'transaction',
+        entityId: transaction.id,
+        after: {
+          reversalTransactionId: savedReversal.id,
+          reason: input.reason,
+        },
+      });
+
+      return transaction;
+    });
   }
 }
