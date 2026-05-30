@@ -11,6 +11,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MailModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
@@ -72,6 +73,7 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    AuthModule,
     EventEmitterModule.forRoot(),
     OtpModule,
     AmlModule,
