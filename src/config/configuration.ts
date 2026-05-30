@@ -35,6 +35,10 @@ export default () => {
   );
   const dbPort = parseInt(process.env.DB_PORT || '5432', 10);
   const jwtExpiry = parseInt(process.env.JWT_EXPIRY || '3600', 10);
+  const slowQueryThresholdMs = parseInt(
+    process.env.SLOW_QUERY_THRESHOLD_MS || '1000',
+    10,
+  );
   const refreshTokenExpiry = parseInt(
     process.env.REFRESH_TOKEN_EXPIRY || '604800',
     10,
@@ -95,6 +99,9 @@ export default () => {
       secret: process.env.JWT_SECRET || '',
       expiry: jwtExpiry,
     },
+
+    // Observability configuration
+    slowQueryThresholdMs,
 
     // Refresh token configuration
     refreshToken: {
