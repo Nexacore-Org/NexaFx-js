@@ -16,6 +16,8 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MailModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { WalletsModule } from './wallet/wallets.module';
+import { TypeOrmSlowQueryLogger } from './database/typeorm-slow-query.logger';
 import { AccountClosureModule } from './users/account-closure.module';
 import { Configuration } from './config/configuration';
 import { OtpModule } from './otp/otp.module';
@@ -67,6 +69,13 @@ const enableBull =
         database: process.env.DB_NAME || 'nexafx_dev',
         synchronize: process.env.NODE_ENV !== 'production',
         logging: process.env.NODE_ENV === 'development',
+        maxQueryExecutionTime: parseInt(
+          process.env.SLOW_QUERY_THRESHOLD_MS || '1000',
+          10,
+        ),
+        logger: new TypeOrmSlowQueryLogger(
+          parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || '1000', 10),
+        ),
         autoLoadEntities: true,
         // Retry settings to handle DB startup race conditions (Docker Compose)
         retryAttempts: 10,
@@ -100,6 +109,7 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    WalletsModule,
     AccountClosureModule,
     WalletsModule,
     AuthModule,

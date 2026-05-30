@@ -1,4 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import {  UnprocessableEntityException } from '@nestjs/common';
+import { ActivityFeedService } from '../activity-feed/activity-feed.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WalletBalance } from './wallets.types';
@@ -11,6 +13,9 @@ export class WalletsService {
     private readonly walletRepository: Repository<WalletBalanceEntity>,
   ) {}
 
+  constructor(private readonly activityFeedService?: ActivityFeedService) {}
+
+  adjustBalance(
   async adjustBalance(
     accountId: string,
     currency: string,
@@ -82,6 +87,26 @@ export class WalletsService {
       updatedAt: wallet.updatedAt,
     const upperCurrency = currency.toUpperCase();
 
+    this.wallets.set(key, next);
+    void this.activityFeedService?.recordActivity({
+      userId: accountId,
+      type: 'wallet.balance_adjusted',
+      description: `${delta >= 0 ? 'Credited' : 'Debited'} ${currency.toUpperCase()} balance by ${Math.abs(delta).toFixed(2)}`,
+      securityEvent: false,
+      metadata: {
+        accountId,
+        currency,
+        delta,
+        balance: next.balance,
+      },
+    });
+    if (next.balance < 0) {
+      throw new UnprocessableEntityException('Insufficient funds');
+    }
+
+    this.wallets.set(key, next);
+    return next;
+  }
     return await this.walletRepo.manager.transaction(async (manager) => {
       const wallet = await manager.findOne(WalletBalanceEntity, {
         where: { accountId, currency: upperCurrency },

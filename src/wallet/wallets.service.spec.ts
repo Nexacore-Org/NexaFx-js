@@ -1,3 +1,31 @@
+import { ActivityFeedService } from '../activity-feed/activity-feed.service';
+import { WalletsService } from './wallets.service';
+import { UnprocessableEntityException } from '@nestjs/common';
+import { WalletsService } from './wallets.service';
+
+describe('WalletsService', () => {
+  let walletsService: WalletsService;
+
+  beforeEach(() => {
+    walletsService = new WalletsService();
+  });
+
+  it('allows a debit that lands exactly on zero', () => {
+    walletsService.adjustBalance('account-1', 'usd', 5);
+
+    expect(walletsService.adjustBalance('account-1', 'usd', -5)).toMatchObject({
+      accountId: 'account-1',
+      currency: 'usd',
+      balance: 0,
+    });
+  });
+
+  it('rejects a debit that would make the balance negative', () => {
+    expect(() =>
+      walletsService.adjustBalance('account-1', 'usd', -0.01),
+    ).toThrowError(new UnprocessableEntityException('Insufficient funds'));
+  });
+});
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { WalletsService } from './wallets.service';
@@ -18,6 +46,77 @@ describe('WalletsService', () => {
 
   beforeEach(async () => {
     mockManager = {
+  beforeEach(() => {
+    service = new WalletsService();
+  });
+
+  it('starts accounts at zero and normalizes currencies', () => {
+    expect(service.getBalance('acct-1', 'usd')).toEqual({
+      accountId: 'acct-1',
+      currency: 'usd',
+      balance: 0,
+    });
+  });
+
+  it('adjusts balances with two-decimal precision', () => {
+    expect(service.adjustBalance('acct-1', 'usd', 10.125)).toEqual({
+      accountId: 'acct-1',
+      currency: 'usd',
+      balance: 10.13,
+    });
+
+    expect(service.adjustBalance('acct-1', 'usd', -0.03)).toEqual({
+      accountId: 'acct-1',
+      currency: 'usd',
+      balance: 10.1,
+    });
+  });
+
+  it('returns all balances for an account', () => {
+    service.adjustBalance('acct-1', 'usd', 10.125);
+    service.adjustBalance('acct-1', 'eur', 4);
+    service.adjustBalance('acct-2', 'usd', 5);
+  it('returns balances for an account', () => {
+    service.adjustBalance('acct-1', 'usd', 5);
+    service.adjustBalance('acct-1', 'eur', 4);
+    service.adjustBalance('acct-2', 'usd', 8);
+
+    expect(service.getBalancesForAccount('acct-1')).toEqual([
+      {
+        accountId: 'acct-1',
+        currency: 'usd',
+        balance: 10.13,
+        balance: 5,
+      },
+      {
+        accountId: 'acct-1',
+        currency: 'eur',
+        balance: 4,
+      },
+    ]);
+  });
+
+  it('emits an activity event when a balance changes', () => {
+    const recordActivityMock = jest.fn();
+    const activityFeedService = {
+      recordActivity: recordActivityMock,
+    } as unknown as ActivityFeedService;
+    const walletService = new WalletsService(activityFeedService);
+
+    walletService.adjustBalance('acct-1', 'usd', 12.5);
+
+    expect(recordActivityMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'acct-1',
+        type: 'wallet.balance_adjusted',
+        securityEvent: false,
+      }),
+    );
+  });
+});
+  const createMockRepository = () => ({
+    manager: {
+      transaction: jest.fn(),
       findOne: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),

@@ -1,10 +1,24 @@
-import { NestFactory, ValidationPipe } from '@nestjs/core';
+﻿import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api/v1');
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
+      },
+    }),
+  );
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -14,7 +28,6 @@ async function bootstrap() {
   );
   app.enableShutdownHooks();
 
-  // Configure Swagger/OpenAPI
   const swaggerConfig = new DocumentBuilder()
     .setTitle('NexaFx API')
     .setDescription('NexaFx financial platform REST API')
@@ -30,4 +43,4 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 3000);
 }
 
-bootstrap();
+void bootstrap();
