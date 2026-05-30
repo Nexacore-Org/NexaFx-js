@@ -64,6 +64,7 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    WalletsModule,
     AuthModule,
     EventEmitterModule.forRoot(),
     OtpModule,
