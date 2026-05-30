@@ -8,6 +8,7 @@ async function bootstrap() {
 
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix('api/v1');
+  app.enableShutdownHooks();
 
   const nodeEnv = process.env.NODE_ENV || 'development';
   const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true';
