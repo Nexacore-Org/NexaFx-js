@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -139,6 +140,7 @@ const enableBull =
     CacheModule,
     MailModule,
     TransactionApprovalModule,
+  EventEmitterModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],
