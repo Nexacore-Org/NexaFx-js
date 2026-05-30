@@ -1,25 +1,23 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { WalletBalance } from './wallets.types';
+import { WalletBalanceEntity } from './wallet-balance.entity';
 
 @Injectable()
 export class WalletsService {
-  private readonly wallets = new Map<string, WalletBalance>();
+  constructor(
+    @InjectRepository(WalletBalanceEntity)
+    private walletRepo: Repository<WalletBalanceEntity>,
+  ) {}
 
-  adjustBalance(
+  async adjustBalance(
     accountId: string,
     currency: string,
     delta: number,
-  ): WalletBalance {
-    const key = this.buildKey(accountId, currency);
-    const current = this.wallets.get(key) ?? {
-      accountId,
-      currency,
-      balance: 0,
-    };
-    const next = {
-      ...current,
-      balance: Number((current.balance + delta).toFixed(2)),
-    };
+  ): Promise<WalletBalance> {
+    const upperCurrency = currency.toUpperCase();
 
     if (next.balance < 0) {
       throw new UnprocessableEntityException('Insufficient funds');
@@ -28,24 +26,66 @@ export class WalletsService {
     this.wallets.set(key, next);
     return next;
   }
+    return await this.walletRepo.manager.transaction(async (manager) => {
+      const wallet = await manager.findOne(WalletBalanceEntity, {
+        where: { accountId, currency: upperCurrency },
+        lock: { mode: 'pessimistic_write' },
+      });
 
-  getBalance(accountId: string, currency: string): WalletBalance {
-    return (
-      this.wallets.get(this.buildKey(accountId, currency)) ?? {
-        accountId,
-        currency,
-        balance: 0,
+      let newBalance: number;
+      if (wallet) {
+        const currentBalance = parseFloat(wallet.balance);
+        newBalance = Number((currentBalance + delta).toFixed(8));
+        await manager.update(WalletBalanceEntity, { accountId, currency: upperCurrency }, {
+          balance: newBalance.toFixed(8),
+        });
+      } else {
+        newBalance = delta;
+        await manager.insert(WalletBalanceEntity, {
+          accountId,
+          currency: upperCurrency,
+          balance: newBalance.toFixed(8),
+        });
       }
-    );
+
+      return {
+        accountId,
+        currency: upperCurrency,
+        balance: newBalance,
+      };
+    });
   }
 
-  getBalancesForAccount(accountId: string): WalletBalance[] {
-    return [...this.wallets.values()].filter(
-      (wallet) => wallet.accountId === accountId,
-    );
+  async getBalance(accountId: string, currency: string): Promise<WalletBalance> {
+    const upperCurrency = currency.toUpperCase();
+    const wallet = await this.walletRepo.findOne({
+      where: { accountId, currency: upperCurrency },
+    });
+
+    if (wallet) {
+      return {
+        accountId: wallet.accountId,
+        currency: wallet.currency,
+        balance: parseFloat(wallet.balance),
+      };
+    }
+
+    return {
+      accountId,
+      currency: upperCurrency,
+      balance: 0,
+    };
   }
 
-  private buildKey(accountId: string, currency: string): string {
-    return `${accountId}:${currency.toUpperCase()}`;
+  async getBalancesForAccount(accountId: string): Promise<WalletBalance[]> {
+    const wallets = await this.walletRepo.find({
+      where: { accountId },
+    });
+
+    return wallets.map((wallet) => ({
+      accountId: wallet.accountId,
+      currency: wallet.currency,
+      balance: parseFloat(wallet.balance),
+    }));
   }
 }
