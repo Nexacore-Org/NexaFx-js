@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MailModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { AccountClosureModule } from './users/account-closure.module';
 import { Configuration } from './config/configuration';
 import { OtpModule } from './otp/otp.module';
 import { AmlModule } from './aml/aml.module';
@@ -90,6 +91,7 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    AccountClosureModule,
     WalletsModule,
     AuthModule,
     EventEmitterModule.forRoot(),
