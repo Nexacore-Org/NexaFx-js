@@ -19,6 +19,7 @@ describe('AppController (e2e)', () => {
     process.env.OTP_SECRET = 'test-otp-secret';
     process.env.WALLET_ENCRYPTION_KEY =
       '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    process.env.WALLET_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
     process.env.BLOCKCHAIN_RPC_URL = 'http://localhost:8545';
     process.env.PROVIDER_API_URL = 'https://api.example.com';
     process.env.PROVIDER_API_KEY = 'test-provider-key';

@@ -25,6 +25,11 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Documentation
+
+- [Contributing guide](./CONTRIBUTING.md)
+- [Architecture overview](./docs/architecture.md)
+
 ## Project setup
 
 ```bash
@@ -56,6 +61,18 @@ $ npm run test:e2e
 # test coverage
 $ npm run test:cov
 ```
+
+## Operational logging
+
+Slow database queries are emitted as JSON log entries with the event name `typeorm.slow_query`.
+The payload includes these fields:
+
+- `thresholdMs`
+- `durationMs`
+- `query`
+- `parameters`
+
+Set `SLOW_QUERY_THRESHOLD_MS` to adjust the slow-query warning threshold. The default is `1000` milliseconds.
 
 ## Deployment
 

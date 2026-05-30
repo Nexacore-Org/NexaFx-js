@@ -108,6 +108,26 @@
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 8,
+        "functions": 45,
+        "lines": 55,
+        "statements": 55
+      },
+      "src/idempotency/**/*.ts": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      },
+      "src/wallet/**/*.ts": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      }
+    },
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }
