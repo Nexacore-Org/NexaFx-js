@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from './config/config.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DocumentsModule } from './documents/documents.module';
+import { MailModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { FxModule } from './fx/fx.module';
 import { PushModule } from './notifications/push/push.module';
@@ -27,8 +30,12 @@ const enableBull =
         synchronize: process.env.NODE_ENV !== 'production',
         logging: process.env.NODE_ENV === 'development',
         autoLoadEntities: true,
+        // Retry settings to handle DB startup race conditions (Docker Compose)
+        retryAttempts: 10,
+        retryDelay: 3000,
       }),
     }),
+    ScheduleModule.forRoot(),
     ...(enableBull
       ? [
           BullModule.forRoot({
@@ -43,12 +50,15 @@ const enableBull =
               removeOnFail: true,
             },
           }),
+          BullModule.registerQueue({ name: 'default' }),
         ]
       : []),
     IdempotencyModule,
     FxModule,
     PushModule,
     ReferralModule,
+    MailModule,
+    DocumentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
