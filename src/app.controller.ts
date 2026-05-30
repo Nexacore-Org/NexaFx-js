@@ -1,6 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
+import { Controller, Get, Post, Body } from '@nestjs/common';
 import { AppService } from './app.service';
+import { CreateCatDto } from './dtos/create-cat.dto';
 
 @SkipThrottle()
 @Controller()
@@ -10,5 +11,10 @@ export class AppController {
   @Get()
   getHello(): string {
     return this.appService.getHello();
+  }
+
+  @Post('cats')
+  createCat(@Body() createCatDto: CreateCatDto) {
+    return 'This action adds a new cat';
   }
 }

@@ -44,6 +44,10 @@ $ npm run migration:dryrun
 ```
 
 > **Note:** Never rely on `synchronize: true` in any environment. Always generate and commit migrations alongside entity changes.
+## Documentation
+
+- [Contributing guide](./CONTRIBUTING.md)
+- [Architecture overview](./docs/architecture.md)
 
 ## Project setup
 
@@ -76,6 +80,18 @@ $ npm run test:e2e
 # test coverage
 $ npm run test:cov
 ```
+
+## Operational logging
+
+Slow database queries are emitted as JSON log entries with the event name `typeorm.slow_query`.
+The payload includes these fields:
+
+- `thresholdMs`
+- `durationMs`
+- `query`
+- `parameters`
+
+Set `SLOW_QUERY_THRESHOLD_MS` to adjust the slow-query warning threshold. The default is `1000` milliseconds.
 
 ## Deployment
 

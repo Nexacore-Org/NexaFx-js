@@ -4,6 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { KycDocument, KycDocumentStatus } from './kyc-document.entity';
 
@@ -24,6 +25,7 @@ export class KycService {
   constructor(
     @InjectRepository(KycDocument)
     private readonly kycRepo: Repository<KycDocument>,
+    private readonly events: EventEmitter2,
   ) {}
 
   async submit(dto: SubmitKycDto): Promise<KycDocument> {
@@ -41,7 +43,9 @@ export class KycService {
     doc.status = dto.status;
     doc.reviewedBy = dto.reviewerId;
     doc.reviewedAt = new Date();
-    return this.kycRepo.save(doc);
+    const saved = await this.kycRepo.save(doc);
+    this.events.emit('kyc.reviewed', saved);
+    return saved;
   }
 
   async isApproved(userId: string): Promise<boolean> {

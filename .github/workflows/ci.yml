@@ -42,11 +42,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -60,3 +72,8 @@ jobs:
 
       - name: Check for missing migrations (dry run)
         run: npm run migration:dryrun
+      - name: Test with coverage
+        run: npm run test:cov
+
+      - name: Build
+        run: npm run build
