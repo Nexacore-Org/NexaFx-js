@@ -35,6 +35,10 @@ export default () => {
   );
   const dbPort = parseInt(process.env.DB_PORT || '5432', 10);
   const jwtExpiry = parseInt(process.env.JWT_EXPIRY || '3600', 10);
+  const slowQueryThresholdMs = parseInt(
+    process.env.SLOW_QUERY_THRESHOLD_MS || '1000',
+    10,
+  );
   const refreshTokenExpiry = parseInt(
     process.env.REFRESH_TOKEN_EXPIRY || '604800',
     10,
@@ -62,6 +66,44 @@ export default () => {
     process.env.ARCHIVE_BATCH_SIZE || '500',
     10,
   );
+  const supportedCurrencies = (
+    process.env.SUPPORTED_CURRENCIES || 'USD,EUR,GBP,NGN'
+  )
+    .split(',')
+    .map((currency) => currency.trim().toUpperCase())
+    .filter(Boolean);
+  const cacheExchangeRateTtlSeconds = parseInt(
+    process.env.CACHE_EXCHANGE_RATE_TTL_SECONDS || '60',
+    10,
+  );
+  const cacheSupportedCurrenciesTtlSeconds = parseInt(
+    process.env.CACHE_SUPPORTED_CURRENCIES_TTL_SECONDS || '86400',
+    10,
+  );
+  const cacheAdminStatsTtlSeconds = parseInt(
+    process.env.CACHE_ADMIN_STATS_TTL_SECONDS || '60',
+    10,
+  );
+  const adminAllowedIps = (process.env.ADMIN_ALLOWED_IPS || '')
+    .split(',')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+  const webhookMaxAttempts = parseInt(
+    process.env.WEBHOOK_MAX_ATTEMPTS || '5',
+    10,
+  );
+  const webhookBackoffDelayMs = parseInt(
+    process.env.WEBHOOK_BACKOFF_DELAY_MS || '1000',
+    10,
+  );
+  const webhookReplayWindowHours = parseInt(
+    process.env.WEBHOOK_REPLAY_WINDOW_HOURS || '24',
+    10,
+  );
+  const blockedCountries = (process.env.BLOCKED_COUNTRIES || '')
+    .split(',')
+    .map((country) => country.trim().toUpperCase())
+    .filter(Boolean);
 
   return {
     // Application settings
@@ -79,15 +121,15 @@ export default () => {
       urlencoded: bodyLimitUrlencoded * 1024 * 1024,
     },
 
-    // Database configuration
+    // Database configuration (validated via Zod in env.validation.ts)
     database: {
-      host: process.env.DB_HOST || 'localhost',
+      host: process.env.DB_HOST!,
       port: dbPort,
-      username: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'nexafx',
+      username: process.env.DB_USER!,
+      password: process.env.DB_PASSWORD!,
+      database: process.env.DB_NAME!,
       ssl: process.env.DB_SSL === 'true',
-      url: `postgresql://${process.env.DB_USER || 'postgres'}:${process.env.DB_PASSWORD || ''}@${process.env.DB_HOST || 'localhost'}:${dbPort}/${process.env.DB_NAME || 'nexafx'}`,
+      url: `postgresql://${process.env.DB_USER!}:${process.env.DB_PASSWORD!}@${process.env.DB_HOST!}:${dbPort}/${process.env.DB_NAME!}`,
     },
 
     // JWT configuration
@@ -95,6 +137,9 @@ export default () => {
       secret: process.env.JWT_SECRET || '',
       expiry: jwtExpiry,
     },
+
+    // Observability configuration
+    slowQueryThresholdMs,
 
     // Refresh token configuration
     refreshToken: {
@@ -149,6 +194,37 @@ export default () => {
       thresholdMonths: archiveThresholdMonths,
       batchSize: archiveBatchSize,
       cron: process.env.ARCHIVE_CRON || '0 3 * * *',
+    },
+
+    cache: {
+      exchangeRateTtlSeconds: cacheExchangeRateTtlSeconds,
+      supportedCurrenciesTtlSeconds: cacheSupportedCurrenciesTtlSeconds,
+      adminStatsTtlSeconds: cacheAdminStatsTtlSeconds,
+      defaultTtlSeconds: cacheExchangeRateTtlSeconds,
+    },
+
+    currencies: {
+      supported: supportedCurrencies,
+    },
+
+    security: {
+      adminAllowedIps,
+    },
+
+    webhooks: {
+      maxAttempts: webhookMaxAttempts,
+      backoffDelayMs: webhookBackoffDelayMs,
+      replayWindowHours: webhookReplayWindowHours,
+    },
+
+    // Terms and conditions configuration
+    terms: {
+      currentVersion: process.env.TERMS_CURRENT_VERSION || '1.0',
+    },
+
+    // Compliance / geo-blocking configuration
+    compliance: {
+      blockedCountries,
     },
 
     // Push notification configuration

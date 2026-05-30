@@ -1,6 +1,8 @@
 export interface WalletBalance {
-    accountId: string;
-    currency: string;
-    balance: number;
-  }
-  
+  id?: string;
+  accountId: string;
+  currency: string;
+  balance: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
