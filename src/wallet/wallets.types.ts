@@ -1,6 +1,5 @@
 export interface WalletBalance {
-    accountId: string;
-    currency: string;
-    balance: number;
-  }
-  
+  accountId: string;
+  currency: string;
+  balance: number;
+}
