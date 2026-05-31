@@ -1,8 +1,10 @@
+import { SkipThrottle } from '@nestjs/throttler';
 import { Controller, Get, Post, Body } from '@nestjs/common';
 import { AppService } from './app.service';
 import { Public } from './auth/decorators/public.decorator';
 import { CreateCatDto } from './dtos/create-cat.dto';
 
+@SkipThrottle()
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}

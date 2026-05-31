@@ -1,19 +1,12 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { QUEUE_NAMES } from '../queues/queue.constants';
-import { MailProcessor } from './mail.processor';
-import { MailService } from './mail.service';
-
-@Module({
-  providers: [MailService],
-  exports: [MailService],
-})
-export class MailModule {}
+import { TransactionProcessor } from './transaction.processor';
 
 @Module({
   imports: [
     BullModule.registerQueue({
-      name: QUEUE_NAMES.EMAIL,
+      name: QUEUE_NAMES.TRANSACTION,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -25,7 +18,7 @@ export class MailModule {}
       },
     }),
   ],
-  providers: [MailProcessor],
+  providers: [TransactionProcessor],
   exports: [BullModule],
 })
-export class MailQueueModule {}
+export class TransactionQueueModule {}
