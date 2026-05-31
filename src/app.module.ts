@@ -5,6 +5,8 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -12,14 +14,20 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { redisStore } from 'cache-manager-redis-store';
 import { ConfigModule } from './config/config.module';
+import { ConfigService } from '@nestjs/config';
 import { Configuration } from './config/configuration';
 import { TypeOrmSlowQueryLogger } from './database/typeorm-slow-query.logger';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
-import { MailModule } from './mail/mail.module';
+import { MailModule, MailQueueModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
+import { NotificationQueueModule } from './notification/notification.module';
+import { TransactionQueueModule } from './transaction/transaction.module';
 import { AccountClosureModule } from './users/account-closure.module';
 import { OtpModule } from './otp/otp.module';
 import { AmlModule } from './aml/aml.module';
@@ -65,6 +73,20 @@ const enableBull =
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
+      useFactory: () => ({
+        type: 'postgres',
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432', 10),
+        username: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || 'postgres',
+        database: process.env.DB_NAME || 'nexafx_dev',
+        synchronize: false,
+        logging: process.env.NODE_ENV === 'development',
+        autoLoadEntities: true,
+        // Retry settings to handle DB startup race conditions (Docker Compose)
+        retryAttempts: 10,
+        retryDelay: 3000,
+      }),
       inject: [ConfigService],
       useFactory: (configService: ConfigService<Configuration>) => {
         const database =
@@ -87,6 +109,18 @@ const enableBull =
           logger: new TypeOrmSlowQueryLogger(slowQueryThresholdMs),
         };
       },
+    }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: config.get<number>('rateLimit.windowMs')!,
+            limit: config.get<number>('rateLimit.maxRequests')!,
+          },
+        ],
+      }),
     }),
     ScheduleModule.forRoot(),
     ...(enableBull
@@ -111,9 +145,20 @@ const enableBull =
             },
           }),
           BullModule.registerQueue({ name: 'default' }),
+          MailQueueModule,
+          NotificationQueueModule,
+          TransactionQueueModule,
         ]
       : []),
     IdempotencyModule,
+    AuthModule,
+  ],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
     AccountClosureModule,
     AuthModule,
     EventEmitterModule.forRoot({ global: true }),
@@ -139,6 +184,13 @@ const enableBull =
     SecurityModule,
   ],
   controllers: [AppController],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
   providers: [AppService, GeoRestrictionMiddleware],
 })
 export class AppModule implements NestModule {

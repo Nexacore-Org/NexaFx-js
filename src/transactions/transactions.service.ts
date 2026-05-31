@@ -55,7 +55,7 @@ export class TransactionsService {
       throw new BadRequestException('Sender and receiver must differ');
     }
 
-    const senderBalance = this.walletsService.getBalance(
+    const senderBalance = await this.walletsService.getBalance(
       dto.senderId,
       dto.currency,
     );
@@ -70,12 +70,12 @@ export class TransactionsService {
       });
       await manager.save(Transaction, tx);
 
-      this.walletsService.adjustBalance(
+      await this.walletsService.adjustBalance(
         dto.senderId,
         dto.currency,
         -dto.amount,
       );
-      this.walletsService.adjustBalance(
+      await this.walletsService.adjustBalance(
         dto.receiverId,
         dto.currency,
         dto.amount,
@@ -144,12 +144,12 @@ export class TransactionsService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      this.walletsService.adjustBalance(
+      await this.walletsService.adjustBalance(
         transaction.senderId,
         transaction.currency,
         Number(transaction.amount),
       );
-      this.walletsService.adjustBalance(
+      await this.walletsService.adjustBalance(
         transaction.receiverId,
         transaction.currency,
         -Number(transaction.amount),
