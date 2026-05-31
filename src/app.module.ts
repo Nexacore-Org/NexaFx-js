@@ -1,3 +1,7 @@
+import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
+import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
+import { PaymentsModule } from './payments/payments.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   MiddlewareConsumer,
   Module,
@@ -174,6 +178,13 @@ const enableBull =
     AuditModule,
     KycModule,
     MailModule,
+    TransactionApprovalModule,
+  PaymentsModule,
+  ],
+  controllers: [AppController],
+  // PaymentsModule added for issue #612
+
+  providers: [AppService],
     DocumentsModule,
     TermsModule,
     StatementsModule,
@@ -196,6 +207,9 @@ const enableBull =
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer
+      .apply(RequestLoggingMiddleware)
+      .exclude({ path: 'health', method: RequestMethod.GET })
+      .forRoutes('*');
       .apply(GeoRestrictionMiddleware)
       .forRoutes(
         { path: 'api/v1/auth/login', method: RequestMethod.POST },
