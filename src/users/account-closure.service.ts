@@ -65,7 +65,7 @@ export class AccountClosureService {
 
     this.assertPassword(account, currentPassword);
     this.assertTwoFactorCode(account.twoFactorSecret, twoFactorCode);
-    this.assertZeroBalance(account.id);
+    await this.assertZeroBalance(account.id);
 
     const now = new Date();
     const piiPurgeAt = this.buildPiiPurgeDate(now);
@@ -158,8 +158,8 @@ export class AccountClosureService {
     }
   }
 
-  private assertZeroBalance(accountId: string): void {
-    const balances = this.walletsService.getBalancesForAccount(accountId);
+  private async assertZeroBalance(accountId: string): Promise<void> {
+    const balances = await this.walletsService.getBalancesForAccount(accountId);
     const hasFunds = balances.some((balance) => balance.balance !== 0);
 
     if (hasFunds) {

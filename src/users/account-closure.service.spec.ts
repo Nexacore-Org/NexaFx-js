@@ -62,7 +62,7 @@ describe('AccountClosureService', () => {
     };
 
     walletsService = {
-      getBalancesForAccount: jest.fn().mockReturnValue([]),
+      getBalancesForAccount: jest.fn().mockResolvedValue([]),
     };
 
     jwtService = {
@@ -193,7 +193,7 @@ describe('AccountClosureService', () => {
       refreshTokenId: '33333333-3333-3333-3333-333333333333',
     });
     userAccountRepository.findOne.mockResolvedValue(account);
-    walletsService.getBalancesForAccount.mockReturnValue([
+    walletsService.getBalancesForAccount.mockResolvedValue([
       { accountId: userId, currency: 'USD', balance: 10 },
     ]);
 
