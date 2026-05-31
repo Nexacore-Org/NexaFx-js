@@ -23,6 +23,9 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MailModule, MailQueueModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { NotificationQueueModule } from './notification/notification.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
 import { AccountClosureModule } from './users/account-closure.module';
@@ -148,6 +151,14 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    AuthModule,
+  ],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
     AccountClosureModule,
     AuthModule,
     EventEmitterModule.forRoot({ global: true }),

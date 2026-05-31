@@ -1,5 +1,11 @@
 import {
   Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { Role } from '../auth/enums/role.enum';
   Column,
   PrimaryGeneratedColumn,
   CreateDateColumn,
@@ -29,6 +35,28 @@ export class User {
   email: string;
 
   @Column()
+  password: string;
+
+  @Column({ type: 'enum', enum: Role, default: Role.USER })
+  role: Role;
+
+  @Column({ default: false })
+  isEmailVerified: boolean;
+
+  @Column({ nullable: true, type: 'varchar' })
+  emailVerificationOtp: string | null;
+
+  @Column({ nullable: true, type: 'timestamptz' })
+  emailVerificationOtpExpiry: Date | null;
+
+  @Column({ default: 0 })
+  resendCount: number;
+
+  @Column({ nullable: true, type: 'timestamptz' })
+  resendWindowStart: Date | null;
+
+  @Column({ nullable: true, type: 'varchar' })
+  refreshToken: string | null;
   passwordHash: string;
 
   @Column()
