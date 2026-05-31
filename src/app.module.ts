@@ -1,59 +1,56 @@
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { CacheModule } from '@nestjs/cache-manager';
+import { ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
-import { EscrowModule } from './modules/escrow/escrow.module';
-import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
+import { redisStore } from 'cache-manager-redis-store';
 import { ConfigModule } from './config/config.module';
+import { ConfigService } from '@nestjs/config';
+import { Configuration } from './config/configuration';
+import { TypeOrmSlowQueryLogger } from './database/typeorm-slow-query.logger';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AnalyticsModule } from './modules/analytics/analytics.module';
-import { HealthModule } from './modules/health/health.module';
-import { RpcHealthModule } from './modules/rpc-health/rpc-health.module';
-import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
-import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
-import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
-import { StrategyOptimizerModule } from './modules/strategy-optimizer/strategy-optimizer.module';
-import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
-import { AdminModule } from './modules/admin/admin.module';
-import { AuthModule } from './modules/auth/auth.module';
-import { UsersModule } from './modules/users/users.module';
-import { SessionsModule } from './modules/sessions/sessions.module';
-import { TransactionsModule } from './modules/transactions/transactions.module';
-import { EnrichmentModule } from './modules/enrichment/enrichment.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
-import { NotificationsModule as WebSocketNotificationsModule } from './web-sockets/notifications.module';
-import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
-import { RetryModule } from './modules/retry/retry.module';
-import { ExperimentsModule } from './modules/experiments/experiments.module';
-import { FeesModule } from './modules/fee/fee.module';
-import { TransactionRiskModule } from './modules/transaction-risk/transaction-risk.module';
-import { WebhooksModule } from './modules/webhooks/webhooks.module';
-import { SecretsModule } from './modules/secrets/secrets.module';
-import { DataArchiveModule } from './modules/data-archive/data-archive.module';
+import { AuthModule } from './auth/auth.module';
+import { DocumentsModule } from './documents/documents.module';
+import { MailModule, MailQueueModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
-import { GoalsModule } from './goals/goal.module';
-import { AnnouncementsModule } from './announcement/announcement.module';
-import { ComplianceModule } from './compliance-evidence/compliance.module';
-import { LedgerModule } from './double-entry-ledger/ledger.module';
-import { VersioningModule } from './versioning/versioning.module';
-import { InsightsModule } from './exxagerated/exxagerated.module';
-import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
-import { ReferralsModule } from './modules/referrals/referrals.module';
-import { KycModule } from './modules/kyc/kyc.module';
-import { WalletsModule } from './modules/wallets/wallets.module';
-import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
-import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
-import { CardsModule } from './modules/cards/cards.module';
-import { FxModule } from './modules/fx/fx.module';
-import { BankingModule } from './banking/banking.module';
-import { LoyaltyModule } from './loyalty-point/loyalty.module';
-import { DisputesModule } from './modules/disputes/disputes.module';
-import { BlockchainModule } from './modules/blockchain/blockchain.module';
-import { CacheModule } from './modules/cache/cache.module';
-import { MailModule } from './modules/mail/mail.module';
-import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
+import { NotificationQueueModule } from './notification/notification.module';
+import { TransactionQueueModule } from './transaction/transaction.module';
+import { AccountClosureModule } from './users/account-closure.module';
+import { OtpModule } from './otp/otp.module';
+import { AmlModule } from './aml/aml.module';
+import { ArchivalModule } from './archival/archival.module';
+import { FxModule } from './fx/fx.module';
+import { PushModule } from './notifications/push/push.module';
+import { ReferralModule } from './referral/referral.module';
+import { UsersModule } from './users/users.module';
+import { TransactionsModule } from './transactions/transactions.module';
+import { AuditModule } from './audit/audit.module';
+import { KycModule } from './kyc/kyc.module';
+import { WalletsModule } from './wallet/wallets.module';
+import { TermsModule } from './terms/terms.module';
+import { StatementsModule } from './statements/statements.module';
+import { SupportTicketsModule } from './support/support-tickets.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { CurrenciesModule } from './currencies/currencies.module';
+import { AdminModule } from './admin/admin.module';
+import { SecurityModule } from './common/security.module';
+import { GeoRestrictionMiddleware } from './common/middleware/geo-restriction.middleware';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -61,7 +58,22 @@ const enableBull =
 @Module({
   imports: [
     ConfigModule,
-    ScheduleModule.forRoot(),
+    CacheModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService<Configuration>) => {
+        const redis = configService.get<Configuration['redis']>('redis')!;
+        const cache = configService.get<Configuration['cache']>('cache')!;
+        return {
+          store: await redisStore({
+            host: redis.host,
+            port: redis.port,
+            password: redis.password,
+            ttl: cache.defaultTtlSeconds,
+          }),
+        };
+      },
+    }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: () => ({
@@ -71,78 +83,128 @@ const enableBull =
         username: process.env.DB_USER || 'postgres',
         password: process.env.DB_PASSWORD || 'postgres',
         database: process.env.DB_NAME || 'nexafx_dev',
-        synchronize: process.env.NODE_ENV !== 'production',
+        synchronize: false,
         logging: process.env.NODE_ENV === 'development',
         autoLoadEntities: true,
+        // Retry settings to handle DB startup race conditions (Docker Compose)
+        retryAttempts: 10,
+        retryDelay: 3000,
+      }),
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService<Configuration>) => {
+        const database =
+          configService.get<Configuration['database']>('database')!;
+        const slowQueryThresholdMs =
+          configService.get<number>('slowQueryThresholdMs') ?? 1000;
+        return {
+          type: 'postgres' as const,
+          host: database.host,
+          port: database.port,
+          username: database.username,
+          password: database.password,
+          database: database.database,
+          synchronize: process.env.NODE_ENV !== 'production',
+          logging: process.env.NODE_ENV === 'development',
+          autoLoadEntities: true,
+          retryAttempts: 10,
+          retryDelay: 3000,
+          maxQueryExecutionTime: slowQueryThresholdMs,
+          logger: new TypeOrmSlowQueryLogger(slowQueryThresholdMs),
+        };
+      },
+    }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: config.get<number>('rateLimit.windowMs')!,
+            limit: config.get<number>('rateLimit.maxRequests')!,
+          },
+        ],
       }),
     }),
+    ScheduleModule.forRoot(),
     ...(enableBull
       ? [
-          BullModule.forRoot({
-            redis: {
-              host: process.env.REDIS_HOST || 'localhost',
-              port: parseInt(process.env.REDIS_PORT || '6379', 10),
-              enableReadyCheck: false,
-              lazyConnect: true,
-            },
-            defaultJobOptions: {
-              removeOnComplete: true,
-              removeOnFail: true,
+          BullModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService<Configuration>) => {
+              const redis = configService.get<Configuration['redis']>('redis')!;
+              return {
+                redis: {
+                  host: redis.host,
+                  port: redis.port,
+                  enableReadyCheck: false,
+                  lazyConnect: true,
+                },
+                defaultJobOptions: {
+                  removeOnComplete: true,
+                  removeOnFail: true,
+                },
+              };
             },
           }),
+          BullModule.registerQueue({ name: 'default' }),
+          MailQueueModule,
+          NotificationQueueModule,
+          TransactionQueueModule,
         ]
       : []),
-    AnalyticsModule,
-    HealthModule,
-    RpcHealthModule,
-    FeatureFlagsModule,
-    RateLimitModule,
-    AdminAuditModule,
-    StrategyOptimizerModule,
-    RiskEngineModule,
-    AdminModule,
-    AuthModule,
-    UsersModule,
-    SessionsModule,
-    TransactionsModule,
-    EnrichmentModule,
-    NotificationsModule,
-    WebSocketNotificationsModule,
-    ReconciliationModule,
-    RetryModule,
-    ExperimentsModule,
-    FeesModule,
-    TransactionRiskModule,
-    WebhooksModule,
-    SecretsModule,
-    DataArchiveModule,
     IdempotencyModule,
-    GoalsModule,
-    AnnouncementsModule,
-    ComplianceModule,
-    LedgerModule,
-    VersioningModule,
-    InsightsModule,
-    InsightsForecastModule,
-    ReferralsModule,
-    KycModule,
-    WalletsModule,
-    ScheduledTransactionsModule,
-    EscrowModule,
-    SplitPaymentsModule,
-    SubscriptionsModule,
-    CardsModule,
+    AuthModule,
+  ],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
+    AccountClosureModule,
+    AuthModule,
+    EventEmitterModule.forRoot({ global: true }),
+    OtpModule,
+    AmlModule,
+    ArchivalModule,
     FxModule,
-    BankingModule,
-    LoyaltyModule,
-    DisputesModule,
-    BlockchainModule,
-    CacheModule,
+    PushModule,
+    ReferralModule,
+    WalletsModule,
+    UsersModule,
+    TransactionsModule,
+    AuditModule,
+    KycModule,
     MailModule,
     TransactionApprovalModule,
   EventEmitterModule.forRoot(),
+    DocumentsModule,
+    TermsModule,
+    StatementsModule,
+    SupportTicketsModule,
+    WebhooksModule,
+    CurrenciesModule,
+    AdminModule,
+    SecurityModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
+  providers: [AppService, GeoRestrictionMiddleware],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(GeoRestrictionMiddleware)
+      .forRoutes(
+        { path: 'api/v1/auth/login', method: RequestMethod.POST },
+        { path: 'api/v1/auth/register', method: RequestMethod.POST },
+      );
+  }
+}

@@ -1,12 +1,12 @@
-import { Module } from "@nestjs/common";
-import { ConfigModule as NestConfigModule } from "@nestjs/config";
-import { validateEnv } from "./env.validation";
-import configuration from "./configuration";
+import { Module } from '@nestjs/common';
+import { ConfigModule as NestConfigModule } from '@nestjs/config';
+import { validateEnv } from './env.validation';
+import configuration from './configuration';
 
 /**
  * Global configuration module that provides validated environment variables
  * throughout the application.
- * 
+ *
  * Features:
  * - Strict validation at startup (fail-fast)
  * - Type-safe configuration access
