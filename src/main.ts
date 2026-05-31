@@ -1,93 +1,92 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApiUsageInterceptor } from './common/interceptors/api-usage.interceptor';
-import { Logger } from '@nestjs/common';
-import * as express from 'express';
+import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import * as express from 'express';
 
 async function bootstrap() {
-  const logger = new Logger('Bootstrap');
+  const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
 
-  try {
-    const app = await NestFactory.create(AppModule);
-    const configService = app.get(ConfigService);
+  const jsonLimit = configService.get<number>('limits.json');
+  const urlencodedLimit = configService.get<number>('limits.urlencoded');
 
-    // Apply request body size limits globally
-    const jsonLimit = configService.get('limits.json');
-    const urlEncodedLimit = configService.get('limits.urlencoded');
-    
-    app.use(express.json({ limit: jsonLimit }));
-    app.use(express.urlencoded({ limit: urlEncodedLimit, extended: true }));
+  app.use(express.json({ limit: jsonLimit }));
+  app.use(express.urlencoded({ limit: urlencodedLimit, extended: true }));
+import helmet from 'helmet';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
-    // Register global API usage interceptor
-    const apiUsageService = app.get('ApiUsageService');
-    if (apiUsageService) {
-      app.useGlobalInterceptors(new ApiUsageInterceptor(apiUsageService));
-    }
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
 
-    // Log non-sensitive configuration
-    logger.log('Application configuration loaded successfully');
-    logger.log(`Environment: ${configService.get('app.nodeEnv')}`);
-    logger.log(`Port: ${configService.get('app.port')}`);
-    logger.log(`Database Host: ${configService.get('database.host')}`);
-    logger.log(`Database Port: ${configService.get('database.port')}`);
-    logger.log(`Database Name: ${configService.get('database.database')}`);
-    logger.log(`Mail Host: ${configService.get('mail.host')}`);
-    logger.log(`Redis Host: ${configService.get('redis.host')}`);
-    logger.log(`Rate Limit Window: ${configService.get('rateLimit.windowMs')}ms`);
-    logger.log(`Rate Limit Max Requests: ${configService.get('rateLimit.maxRequests')}`);
+  const configService = app.get(ConfigService);
 
-    // Mask sensitive values in logs
-    logger.log(`JWT Secret: ${maskSensitive(configService.get('jwt.secret') || '')}`);
-    logger.log(`Refresh Token Secret: ${maskSensitive(configService.get('refreshToken.secret') || '')}`);
-    logger.log(`OTP Secret: ${maskSensitive(configService.get('otp.secret') || '')}`);
-    logger.log(`DB Password: ${maskSensitive(configService.get('database.password') || '')}`);
-    logger.log(`Wallet Key: ${maskSensitive(configService.get('wallet.encryptionKey') || '')}`);
-    logger.log(`External API Key: ${maskSensitive(configService.get('externalApi.key') || '')}`);
-    logger.log(`Mail Password: ${maskSensitive(configService.get('mail.password') || '')}`);
-    logger.log(`Redis Password: ${maskSensitive(configService.get('redis.password') || '')}`);
+  const allowedOrigins =
+    configService.get<string>('ALLOWED_ORIGINS')?.split(',') || [];
 
-    // Configure Swagger/OpenAPI
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('NexaFx API')
-      .setDescription('NexaFx financial platform REST API')
-      .setVersion('1.0')
-      .addBearerAuth(
-        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-        'access-token',
-      )
-      .addServer(`/api/v1`, 'API v1')
-      .build();
+  // ✅ CORS Configuration
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+  });
 
-    const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('api/docs', app, document, {
-      swaggerOptions: { persistAuthorization: true },
-    });
+  app.setGlobalPrefix('api/v1');
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+   app.useGlobalPipes(
+     new ValidationPipe({
+       whitelist: true,
+       forbidNonWhitelisted: true,
+       transform: true,
+     }),
+   );
+   app.useGlobalFilters(new GlobalExceptionFilter());
+  app.enableShutdownHooks();
 
-    app.setGlobalPrefix('api/v1');
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
+      },
+    }),
+  );
 
-    const port = configService.get('app.port');
-    await app.listen(port);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
-    logger.log(`Application is running on: http://localhost:${port}`);
-    logger.log(`Swagger UI available at: http://localhost:${port}/api/docs`);
-  } catch (error) {
-    logger.error('Failed to start application', error.stack);
-    process.exit(1);
-  }
+  app.useGlobalFilters(new GlobalExceptionFilter());
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('NexaFx API')
+    .setDescription('NexaFx financial platform REST API')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+  });
+
+  await app.listen(process.env.PORT ?? 3000);
 }
 
-/**
- * Masks sensitive values for logging
- * Shows first 4 and last 4 characters
- */
-function maskSensitive(value: string): string {
-  if (!value || value.length <= 8) {
-    return '****';
-  }
-  return `${value.substring(0, 4)}${'*'.repeat(value.length - 8)}${value.substring(value.length - 4)}`;
-}
-
-
-bootstrap();
+void bootstrap();

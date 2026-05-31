@@ -1,14 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import { IdempotencyService } from './idempotency.service';
 
 @Injectable()
 export class IdempotencyCleanupJob {
   private readonly logger = new Logger(IdempotencyCleanupJob.name);
 
-  constructor(private readonly idempotencyService: IdempotencyService) {}
+  constructor(
+    private readonly idempotencyService: IdempotencyService,
+    private readonly configService: ConfigService,
+  ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(process.env.IDEMPOTENCY_CLEANUP_CRON || '0 0 * * *')
   async cleanupExpiredKeys(): Promise<void> {
     this.logger.log('Running idempotency key cleanup...');
     const deleted = await this.idempotencyService.cleanup();

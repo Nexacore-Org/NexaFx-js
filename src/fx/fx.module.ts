@@ -1,33 +1,16 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HttpModule } from '@nestjs/axios';
+import { FxTrade } from './fx-trade.entity';
+import { FxService } from './fx.service';
+import { FxController } from './fx.controller';
+import { ExchangeRateService } from './exchange-rate.service';
+import { WalletsModule } from '../wallet/wallets.module';
 
-import { FxQuote } from './entities/fx-quote.entity';
-import { FxConversion } from './entities/fx-conversion.entity';
-
-import { FxConversionService } from './services/fx-conversion.service';
-import { FeeCalculatorService } from './services/fee-calculator.service';
-import { RegulatoryDisclosureService } from './services/regulatory-disclosure.service';
-
-import { FxConversionController } from './controllers/fx-conversion.controller';
-
-/**
- * FxModule requires:
- *  - RedisModule / IoRedisModule registered in AppModule (provides @InjectRedis())
- *  - LoyaltyModule exported so FeeCalculatorService can reference LoyaltyTier
- *
- * AppModule example:
- *   RedisModule.forRoot({ config: { host: process.env.REDIS_HOST, port: 6379 } })
- */
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([FxQuote, FxConversion]),
-  ],
-  controllers: [FxConversionController],
-  providers: [
-    FxConversionService,
-    FeeCalculatorService,
-    RegulatoryDisclosureService,
-  ],
-  exports: [FxConversionService, FeeCalculatorService],
+  imports: [TypeOrmModule.forFeature([FxTrade]), HttpModule, WalletsModule],
+  controllers: [FxController],
+  providers: [FxService, ExchangeRateService],
+  exports: [FxService, ExchangeRateService],
 })
 export class FxModule {}
