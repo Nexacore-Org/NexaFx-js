@@ -7,6 +7,7 @@ import { Reflector } from '@nestjs/core';
 import { IdempotencyGuard } from './idempotency.guard';
 import { IdempotencyService } from './idempotency.service';
 import { IDEMPOTENCY_KEY } from './idempotency.decorator';
+import { MAX_KEY_LENGTH } from './constants';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -91,6 +92,45 @@ describe('IdempotencyGuard', () => {
       await expect(guard.canActivate(ctx)).rejects.toThrow(BadRequestException);
       await expect(guard.canActivate(ctx)).rejects.toThrow(
         'at least 16 characters',
+      );
+    });
+
+    it('accepts a key of exactly 255 characters', async () => {
+      const longKey = 'a'.repeat(MAX_KEY_LENGTH);
+      const service = makeService(null);
+      const guard = new IdempotencyGuard(makeReflector(true), service);
+      const ctx = makeContext({
+        headers: { 'idempotency-key': longKey },
+      }) as ExecutionContext & { _request: Record<string, unknown> };
+
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      expect(service.findByKey).toHaveBeenCalledWith(longKey);
+      expect(ctx._request.idempotencyKey).toBe(longKey);
+    });
+
+    it('throws BadRequestException when key is longer than 255 characters', async () => {
+      const longKey = 'a'.repeat(MAX_KEY_LENGTH + 1);
+      const guard = new IdempotencyGuard(makeReflector(true), makeService());
+      const ctx = makeContext({
+        headers: { 'idempotency-key': longKey },
+      });
+
+      await expect(guard.canActivate(ctx)).rejects.toThrow(BadRequestException);
+      await expect(guard.canActivate(ctx)).rejects.toThrow(
+        `Idempotency-Key must not exceed ${MAX_KEY_LENGTH} characters`,
+      );
+    });
+
+    it('throws BadRequestException when key is extremely large', async () => {
+      const longKey = 'a'.repeat(1024 * 1024);
+      const guard = new IdempotencyGuard(makeReflector(true), makeService());
+      const ctx = makeContext({
+        headers: { 'idempotency-key': longKey },
+      });
+
+      await expect(guard.canActivate(ctx)).rejects.toThrow(BadRequestException);
+      await expect(guard.canActivate(ctx)).rejects.toThrow(
+        `Idempotency-Key must not exceed ${MAX_KEY_LENGTH} characters`,
       );
     });
 
