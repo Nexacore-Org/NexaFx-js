@@ -14,6 +14,9 @@ export enum TransactionStatus {
 }
 
 @Entity('transactions')
+@Index(['senderId', 'createdAt'])
+@Index(['status', 'createdAt'])
+@Index(['currency', 'createdAt'])
 @Index(['senderId'])
 @Index(['receiverId'])
 @Index(['createdAt'])
@@ -54,17 +57,17 @@ export class Transaction {
   createdAt: Date;
 
   @Column({ type: 'timestamp', nullable: true })
-  completedAt: Date;
+  completedAt: Date | null;
 
   @Column({ type: 'timestamp', nullable: true })
-  reversedAt: Date;
+  reversedAt: Date | null;
 
   @Column({ type: 'uuid', nullable: true })
-  reversedBy: string;
+  reversedBy: string | null;
 
   @Column({ type: 'text', nullable: true })
-  reversalReason: string;
+  reversalReason: string | null;
 
   @Column({ type: 'uuid', nullable: true })
-  reversalTransactionId: string;
+  reversalTransactionId: string | null;
 }
