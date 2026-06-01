@@ -7,14 +7,14 @@ const supportedCurrenciesTtlSeconds = parseInt(
   10,
 );
 
-@Controller('api/v1/currencies')
+@Controller('currencies')
 export class CurrenciesController {
   constructor(private readonly currenciesService: CurrenciesService) {}
 
   @UseInterceptors(CacheInterceptor)
   @CacheKey('supported-currencies')
   @CacheTTL(supportedCurrenciesTtlSeconds)
-  @Get('supported')
+  @Get()
   getSupportedCurrencies() {
     return this.currenciesService.listSupportedCurrencies();
   }

@@ -1,4 +1,5 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { AdjustBalanceDto } from './dto/adjust-balance.dto';
 import { WalletsService } from './wallets.service';
 
 @Controller('wallets')
@@ -8,5 +9,14 @@ export class WalletsController {
   @Get(':accountId')
   getBalances(@Param('accountId') accountId: string) {
     return this.walletsService.getBalancesForAccount(accountId);
+  }
+
+  @Post('adjust-balance')
+  adjustBalance(@Body() dto: AdjustBalanceDto) {
+    return this.walletsService.adjustBalance(
+      dto.accountId,
+      dto.currency,
+      dto.delta,
+    );
   }
 }

@@ -1,8 +1,12 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { WalletBalance } from './wallets.types';
+import {
+  isSupportedCurrency,
+  normalizeCurrencyCode,
+} from '../currencies/supported-currencies';
 import { WalletBalanceEntity } from './wallet-balance.entity';
+import { WalletBalance } from './wallets.types';
 
 @Injectable()
 export class WalletsService {
@@ -16,22 +20,25 @@ export class WalletsService {
     currency: string,
     delta: number,
   ): Promise<WalletBalance> {
+    const normalizedCurrency = this.validateCurrency(currency);
+
     if (delta === 0) {
-      return this.getBalance(accountId, currency);
+      return this.getBalance(accountId, normalizedCurrency);
     }
 
-    const upperCurrency = currency.toUpperCase();
-
-    return await this.walletRepository.manager.transaction(async (manager) => {
+    return this.walletRepository.manager.transaction(async (manager) => {
+      const driverType = manager.connection?.options.type ?? 'postgres';
       let wallet = await manager.findOne(WalletBalanceEntity, {
-        where: { accountId, currency: upperCurrency },
-        lock: { mode: 'pessimistic_write' },
+        where: { accountId, currency: normalizedCurrency },
+        ...(driverType === 'postgres'
+          ? { lock: { mode: 'pessimistic_write' as const } }
+          : {}),
       });
 
       if (!wallet) {
         wallet = manager.create(WalletBalanceEntity, {
           accountId,
-          currency: upperCurrency,
+          currency: normalizedCurrency,
           balance: 0,
         });
       }
@@ -55,20 +62,17 @@ export class WalletsService {
     });
   }
 
-  async getBalance(
-    accountId: string,
-    currency: string,
-  ): Promise<WalletBalance> {
-    const upperCurrency = currency.toUpperCase();
+  async getBalance(accountId: string, currency: string): Promise<WalletBalance> {
+    const normalizedCurrency = this.validateCurrency(currency);
 
     const wallet = await this.walletRepository.findOne({
-      where: { accountId, currency: upperCurrency },
+      where: { accountId, currency: normalizedCurrency },
     });
 
     if (!wallet) {
       return {
         accountId,
-        currency: upperCurrency,
+        currency: normalizedCurrency,
         balance: 0,
       };
     }
@@ -88,13 +92,23 @@ export class WalletsService {
       where: { accountId },
     });
 
-    return wallets.map((w) => ({
-      id: w.id,
-      accountId: w.accountId,
-      currency: w.currency,
-      balance: w.balance,
-      createdAt: w.createdAt,
-      updatedAt: w.updatedAt,
+    return wallets.map((wallet) => ({
+      id: wallet.id,
+      accountId: wallet.accountId,
+      currency: wallet.currency,
+      balance: wallet.balance,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
     }));
+  }
+
+  private validateCurrency(currency: string): string {
+    const normalizedCurrency = normalizeCurrencyCode(currency);
+
+    if (!isSupportedCurrency(normalizedCurrency)) {
+      throw new BadRequestException(`Unsupported currency: ${currency}`);
+    }
+
+    return normalizedCurrency;
   }
 }

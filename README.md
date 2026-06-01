@@ -81,6 +81,10 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Data retention
+
+Financial records now use soft deletes instead of hard deletes for the primary transaction, FX trade, and referral entities. Deletions should update the `deletedAt` timestamp so the data remains available for audit, reconciliation, and retention workflows.
+
 ## Operational logging
 
 Slow database queries are emitted as JSON log entries with the event name `typeorm.slow_query`.

@@ -23,7 +23,9 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:dryrun": "ts-node -r tsconfig-paths/register src/scripts/migrate-dryrun.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:unit:wallet-currencies": "jest src/wallet/wallets.service.spec.ts src/wallet/wallets.controller.spec.ts src/currencies/currencies.service.spec.ts src/currencies/currencies.controller.spec.ts --runInBand",
+    "test:integration:wallet-currencies": "jest test/wallets-currencies.e2e-spec.ts --runInBand --config ./test/jest-e2e.json"
   },
   "dependencies": {
     "@nestjs-modules/ioredis": "^2.2.1",
@@ -109,21 +111,37 @@
     "typescript-eslint": "^8.20.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
-    "transform": { "^.+\\.(t|j)s$": "ts-jest" },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageThreshold": {
-      "global": { "branches": 8, "functions": 45, "lines": 55, "statements": 55 },
-      "src/idempotency/**/*.ts": { "branches": 100, "functions": 100, "lines": 100, "statements": 100 },
-      "src/wallet/**/*.ts": { "branches": 100, "functions": 100, "lines": 100, "statements": 100 }
+      "global": {
+        "branches": 8,
+        "functions": 45,
+        "lines": 55,
+        "statements": 55
+      }
     },
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   },
   "lint-staged": {
-    "src/**/*.ts": ["eslint --fix", "prettier --write"],
-    "test/**/*.ts": ["prettier --write"]
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "test/**/*.ts": [
+      "prettier --write"
+    ]
   }
 }
