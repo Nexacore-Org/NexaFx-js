@@ -3,9 +3,10 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  Logger,
 } from '@nestjs/common';
-import { Observable, of } from 'rxjs';
-import { mergeMap } from 'rxjs/operators';
+import { Observable, of, from } from 'rxjs';
+import { switchMap, mapTo, catchError } from 'rxjs/operators';
 import { IdempotencyService } from './idempotency.service';
 
 interface IdempotencyResponsePayload {
@@ -26,6 +27,8 @@ interface IdempotencyHttpResponse {
 
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(IdempotencyInterceptor.name);
+
   constructor(private idempotencyService: IdempotencyService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -40,18 +43,31 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
 
     return next.handle().pipe(
-      mergeMap(async (data: unknown): Promise<unknown> => {
+      switchMap((data: unknown) => {
         const requestHash = request.requestHash;
 
-        if (request.idempotencyKey && requestHash) {
-          await this.idempotencyService.store(
-            request.idempotencyKey,
-            requestHash,
-            data,
-            response.statusCode,
-          );
+        if (!request.idempotencyKey || !requestHash) {
+          return of(data);
         }
-        return data;
+
+        return from(
+          this.idempotencyService
+            .store(
+              request.idempotencyKey,
+              requestHash,
+              data,
+              response.statusCode,
+            )
+            .then(() => data),
+        ).pipe(
+          catchError((error: unknown) => {
+            this.logger.error(
+              'Failed to persist idempotency response',
+              error as Error,
+            );
+            return of(data);
+          }),
+        );
       }),
     );
   }
