@@ -1,4 +1,6 @@
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
@@ -7,7 +9,51 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   app.useLogger(app.get(Logger));
+import { ConfigService } from '@nestjs/config';
+import * as express from 'express';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+
+  const jsonLimit = configService.get<number>('limits.json');
+  const urlencodedLimit = configService.get<number>('limits.urlencoded');
+
+  app.use(express.json({ limit: jsonLimit }));
+  app.use(express.urlencoded({ limit: urlencodedLimit, extended: true }));
+import helmet from 'helmet';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  const configService = app.get(ConfigService);
+
+  const allowedOrigins =
+    configService.get<string>('ALLOWED_ORIGINS')?.split(',') || [];
+
+  // ✅ CORS Configuration
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+  });
+
   app.setGlobalPrefix('api/v1');
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+   app.useGlobalPipes(
+     new ValidationPipe({
+       whitelist: true,
+       forbidNonWhitelisted: true,
+       transform: true,
+     }),
+   );
+   app.useGlobalFilters(new GlobalExceptionFilter());
   app.enableShutdownHooks();
 
   const nodeEnv = process.env.NODE_ENV || 'development';
@@ -26,8 +72,43 @@ async function bootstrap() {
       swaggerOptions: { persistAuthorization: true },
     });
   }
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
+      },
+    }),
+  );
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+
+  app.useGlobalFilters(new GlobalExceptionFilter());
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('NexaFx API')
+    .setDescription('NexaFx financial platform REST API')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+  });
 
   await app.listen(process.env.PORT ?? 3000);
 }
 
-bootstrap();
+void bootstrap();

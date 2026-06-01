@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -28,7 +32,8 @@ export class ExchangeRateService {
     private readonly config: ConfigService,
     private readonly http: HttpService,
   ) {
-    this.ttlMs = 60_000;
+    this.ttlMs =
+      (this.config.get<number>('cache.exchangeRateTtlSeconds') ?? 60) * 1000;
   }
 
   async getRate(base: string, target: string): Promise<RateResult> {
@@ -90,7 +95,9 @@ export class ExchangeRateService {
   ): Promise<CacheEntry> {
     const apiKey = this.config.get<string>('fx.openExchangeRatesApiKey');
     const url = `https://openexchangerates.org/api/latest.json?app_id=${apiKey}&base=${base}&symbols=${target}`;
-    const res = await firstValueFrom(this.http.get<{ rates: Record<string, number> }>(url));
+    const res = await firstValueFrom(
+      this.http.get<{ rates: Record<string, number> }>(url),
+    );
     const rate = res.data.rates[target.toUpperCase()];
     if (!rate) throw new Error(`Rate not found for ${target}`);
     return { rate, provider: 'openexchangerates', fetchedAt: new Date() };
@@ -102,7 +109,9 @@ export class ExchangeRateService {
   ): Promise<CacheEntry> {
     const apiKey = this.config.get<string>('fx.exchangeRateHostApiKey');
     const url = `https://api.exchangerate.host/live?access_key=${apiKey}&source=${base}&currencies=${target}`;
-    const res = await firstValueFrom(this.http.get<{ quotes: Record<string, number> }>(url));
+    const res = await firstValueFrom(
+      this.http.get<{ quotes: Record<string, number> }>(url),
+    );
     const rateKey = `${base.toUpperCase()}${target.toUpperCase()}`;
     const rate = res.data.quotes?.[rateKey];
     if (!rate) throw new Error(`Rate not found for ${target}`);

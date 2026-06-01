@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as nodemailer from 'nodemailer';
 import { compile, TemplateDelegate } from 'handlebars';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -9,6 +10,38 @@ interface MailTemplateContext {
   title: string;
   year: number;
   body: string;
+}
+
+export interface StatementReadyEmail {
+  to: string;
+  fullName: string;
+  currency: string;
+  from: string;
+  toDate: string;
+  openingBalance: number;
+  closingBalance: number;
+}
+
+export interface TransactionReversalEmail {
+  to: string;
+  transactionId: string;
+  reversedBy: string;
+  reason: string;
+}
+
+export interface SupportTicketCreatedEmail {
+  to: string;
+  fullName: string;
+  ticketId: string;
+  subject: string;
+  category: string;
+}
+
+export interface SupportTicketStatusUpdateEmail {
+  to: string;
+  fullName: string;
+  ticketId: string;
+  status: string;
 }
 
 type TemplateName =
@@ -58,6 +91,31 @@ class WelcomeTemplateDto {
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
+  private transporter: nodemailer.Transporter;
+
+  constructor() {
+    this.transporter = nodemailer.createTransport({
+      host: process.env.MAIL_HOST,
+      port: parseInt(process.env.MAIL_PORT || '587', 10),
+      secure: process.env.MAIL_SECURE === 'true',
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASSWORD,
+      },
+    });
+  }
+
+  async sendVerificationOtp(email: string, otp: string): Promise<void> {
+    try {
+      await this.transporter.sendMail({
+        from: process.env.MAIL_FROM,
+        to: email,
+        subject: 'Verify your NexaFx email',
+        html: `<p>Your verification code is: <strong>${otp}</strong></p><p>This code expires in 5 minutes.</p>`,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send verification email to ${email}`, err);
+    }
   private readonly cache = new Map<string, TemplateDelegate>();
 
   renderEmailVerification(payload: EmailVerificationTemplateDto): string {
@@ -83,10 +141,16 @@ export class MailService {
     });
   }
 
-  renderTransactionConfirmation(payload: TransactionConfirmationTemplateDto): string {
-    const context = plainToInstance(TransactionConfirmationTemplateDto, payload, {
-      enableImplicitConversion: true,
-    });
+  renderTransactionConfirmation(
+    payload: TransactionConfirmationTemplateDto,
+  ): string {
+    const context = plainToInstance(
+      TransactionConfirmationTemplateDto,
+      payload,
+      {
+        enableImplicitConversion: true,
+      },
+    );
     return this.render('transaction-confirmation', {
       title: 'Transaction confirmed',
       fullName: context.fullName,
@@ -108,12 +172,43 @@ export class MailService {
     });
   }
 
-  private render(templateName: Exclude<TemplateName, 'base'>, context: Record<string, unknown>): string {
+  sendStatementReadyEmail(payload: StatementReadyEmail): void {
+    this.logger.log(
+      `Statement ready email queued for ${payload.to} (${payload.currency} ${payload.from} - ${payload.toDate})`,
+    );
+  }
+
+  sendTransactionReversalNotice(payload: TransactionReversalEmail): void {
+    this.logger.log(
+      `Reversal notice queued for ${payload.to} on transaction ${payload.transactionId}`,
+    );
+  }
+
+  sendSupportTicketCreatedEmail(payload: SupportTicketCreatedEmail): void {
+    this.logger.log(
+      `Support ticket ${payload.ticketId} created for ${payload.to} (${payload.category})`,
+    );
+  }
+
+  sendSupportTicketStatusUpdateEmail(
+    payload: SupportTicketStatusUpdateEmail,
+  ): void {
+    this.logger.log(
+      `Support ticket ${payload.ticketId} updated to ${payload.status} for ${payload.to}`,
+    );
+  }
+
+  private render(
+    templateName: Exclude<TemplateName, 'base'>,
+    context: Record<string, unknown>,
+  ): string {
     const bodyTemplate = this.getTemplate(templateName);
     const baseTemplate = this.getTemplate('base');
     const body = bodyTemplate(context);
+    const title =
+      'title' in context ? String(context.title) : 'NexaFx Notification';
     return baseTemplate({
-      title: String(context.title ?? 'NexaFx Notification'),
+      title,
       year: new Date().getFullYear(),
       body,
     } as MailTemplateContext);
