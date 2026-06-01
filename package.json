@@ -47,8 +47,8 @@
     "@nestjs/websockets": "^11.1.17",
     "@types/nodemailer": "^7.0.11",
     "@types/socket.io-client": "^1.4.36",
+    "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
-    "axios": "^1.16.1",
     "bull": "^4.12.0",
     "cache-manager": "^7.2.8",
     "cache-manager-redis-store": "^3.0.1",
@@ -58,16 +58,20 @@
     "helmet": "^8.2.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
+    "nestjs-pino": "^4.4.0",
     "nodemailer": "^8.0.4",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pdf-lib": "^1.17.1",
     "pg": "^8.11.3",
+    "pino-http": "^10.4.0",
+    "pino-pretty": "^13.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "typeorm": "^0.3.28",
+    "uuid": "^9.0.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -86,6 +90,7 @@
     "@types/passport": "^1.0.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
+    "@types/uuid": "^9.0.8",
     "better-sqlite3": "^12.6.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -104,49 +109,21 @@
     "typescript-eslint": "^8.20.0"
   },
   "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
+    "moduleFileExtensions": ["js", "json", "ts"],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
+    "transform": { "^.+\\.(t|j)s$": "ts-jest" },
+    "collectCoverageFrom": ["**/*.(t|j)s"],
     "coverageThreshold": {
-      "global": {
-        "branches": 8,
-        "functions": 45,
-        "lines": 55,
-        "statements": 55
-      },
-      "src/idempotency/**/*.ts": {
-        "branches": 100,
-        "functions": 100,
-        "lines": 100,
-        "statements": 100
-      },
-      "src/wallet/**/*.ts": {
-        "branches": 100,
-        "functions": 100,
-        "lines": 100,
-        "statements": 100
-      }
+      "global": { "branches": 8, "functions": 45, "lines": 55, "statements": 55 },
+      "src/idempotency/**/*.ts": { "branches": 100, "functions": 100, "lines": 100, "statements": 100 },
+      "src/wallet/**/*.ts": { "branches": 100, "functions": 100, "lines": 100, "statements": 100 }
     },
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   },
   "lint-staged": {
-    "src/**/*.ts": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "test/**/*.ts": [
-      "prettier --write"
-    ]
+    "src/**/*.ts": ["eslint --fix", "prettier --write"],
+    "test/**/*.ts": ["prettier --write"]
   }
 }
