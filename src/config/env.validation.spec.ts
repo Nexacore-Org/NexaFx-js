@@ -30,6 +30,8 @@ const VALID_ENV: Record<string, string> = {
   // OTP
   OTP_SECRET: 'c'.repeat(32),
   OTP_EXPIRY: '300',
+  // Wallet Encryption Key
+  WALLET_ENCRYPTION_KEY: VALID_KEY_64,
   // Mail
   MAIL_HOST: 'smtp.example.com',
   MAIL_PORT: '587',
@@ -241,12 +243,13 @@ describe('validateEnv', () => {
     });
   });
 
-  // ── WALLET_ENCRYPTION_KEY (optional with refine) ──────────────────────────
+  // ── WALLET_ENCRYPTION_KEY (required 64-char hex string) ────────────────
 
   describe('WALLET_ENCRYPTION_KEY', () => {
-    it('passes when absent (field is optional)', () => {
-      const result = validateEnv(env({ WALLET_ENCRYPTION_KEY: undefined }));
-      expect(result.WALLET_ENCRYPTION_KEY).toBeUndefined();
+    it('fails when WALLET_ENCRYPTION_KEY is missing', () => {
+      expect(() => validateEnv(env({ WALLET_ENCRYPTION_KEY: undefined }))).toThrow(
+        'WALLET_ENCRYPTION_KEY is required',
+      );
     });
 
     it('accepts a valid 64-character lowercase hex string', () => {
@@ -263,26 +266,26 @@ describe('validateEnv', () => {
     it('fails when key is 63 characters (too short)', () => {
       expect(() =>
         validateEnv(env({ WALLET_ENCRYPTION_KEY: 'a'.repeat(63) })),
-      ).toThrow('WALLET_ENCRYPTION_KEY must be a 64-character hex string');
+      ).toThrow('WALLET_ENCRYPTION_KEY must be exactly 64 hex characters');
     });
 
     it('fails when key is 65 characters (too long)', () => {
       expect(() =>
         validateEnv(env({ WALLET_ENCRYPTION_KEY: 'a'.repeat(65) })),
-      ).toThrow('WALLET_ENCRYPTION_KEY must be a 64-character hex string');
+      ).toThrow('WALLET_ENCRYPTION_KEY must be exactly 64 hex characters');
     });
 
     it('fails when key contains non-hex characters', () => {
       const invalidKey = 'z'.repeat(64); // 'z' is not a hex char
       expect(() =>
         validateEnv(env({ WALLET_ENCRYPTION_KEY: invalidKey })),
-      ).toThrow('WALLET_ENCRYPTION_KEY must be a 64-character hex string');
+      ).toThrow('WALLET_ENCRYPTION_KEY must be a valid hex string');
     });
 
     it('fails when key is an empty string', () => {
       expect(() =>
         validateEnv(env({ WALLET_ENCRYPTION_KEY: '' })),
-      ).toThrow('WALLET_ENCRYPTION_KEY must be a 64-character hex string');
+      ).toThrow('WALLET_ENCRYPTION_KEY must be exactly 64 hex characters');
     });
   });
 
