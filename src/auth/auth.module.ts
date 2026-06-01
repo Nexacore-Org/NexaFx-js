@@ -1,48 +1,22 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { PasswordResetToken } from './password-reset.entity';
-import { PasswordResetService } from './password-reset.service';
-import { AuthController } from './auth.controller';
-
-@Module({
-  imports: [TypeOrmModule.forFeature([PasswordResetToken])],
-  controllers: [AuthController],
-  providers: [PasswordResetService],
-  exports: [PasswordResetService],
+import { Module, forwardRef } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { JwtStrategy } from './strategies/jwt.strategy';
-import { User } from '../users/user.entity';
-import { MailModule } from '../mail/mail.module';
-
-@Module({
-  imports: [
-    PassportModule,
-    JwtModule.register({}),
-    TypeOrmModule.forFeature([User]),
-    MailModule,
-  ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
-import { Module, forwardRef } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { UsersModule } from '../users/users.module';
-import { TermsModule } from '../terms/terms.module';
 import { AuditModule } from '../audit/audit.module';
+import { TermsModule } from '../terms/terms.module';
+import { UsersModule } from '../users/users.module';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtAuthGuard as PassportJwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [
     UsersModule,
     forwardRef(() => TermsModule),
     AuditModule,
+    PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -54,7 +28,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard],
-  exports: [AuthService, JwtAuthGuard],
+  providers: [AuthService, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
+  exports: [AuthService, JwtAuthGuard, PassportJwtAuthGuard, JwtModule],
 })
 export class AuthModule {}
