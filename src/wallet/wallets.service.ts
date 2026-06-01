@@ -1,10 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import {
-  isSupportedCurrency,
-  normalizeCurrencyCode,
-} from '../currencies/supported-currencies';
+import { DataSource, Repository } from 'typeorm';
+import { withTransaction } from '../common/helpers/with-transaction.helper';
 import { WalletBalanceEntity } from './wallet-balance.entity';
 import { WalletBalance } from './wallets.types';
 
@@ -13,6 +10,7 @@ export class WalletsService {
   constructor(
     @InjectRepository(WalletBalanceEntity)
     private readonly walletRepository: Repository<WalletBalanceEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async adjustBalance(
@@ -26,8 +24,9 @@ export class WalletsService {
       return this.getBalance(accountId, normalizedCurrency);
     }
 
-    return this.walletRepository.manager.transaction(async (manager) => {
-      const driverType = manager.connection?.options.type ?? 'postgres';
+    const upperCurrency = currency.toUpperCase();
+
+    return withTransaction(this.dataSource, async (manager) => {
       let wallet = await manager.findOne(WalletBalanceEntity, {
         where: { accountId, currency: normalizedCurrency },
         ...(driverType === 'postgres'
@@ -63,7 +62,7 @@ export class WalletsService {
   }
 
   async getBalance(accountId: string, currency: string): Promise<WalletBalance> {
-    const normalizedCurrency = this.validateCurrency(currency);
+    const upperCurrency = currency.toUpperCase();
 
     const wallet = await this.walletRepository.findOne({
       where: { accountId, currency: normalizedCurrency },

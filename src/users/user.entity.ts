@@ -1,16 +1,10 @@
 import {
+  Column,
+  CreateDateColumn,
   Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-} from 'typeorm';
-import { Role } from '../auth/enums/role.enum';
-  Column,
-  PrimaryGeneratedColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
   Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
 export enum UserRole {
@@ -28,62 +22,40 @@ export enum KycStatus {
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Index({ unique: true })
   @Column({ unique: true })
-  email: string;
+  email!: string;
 
   @Column()
-  password: string;
+  passwordHash!: string;
 
-  @Column({ type: 'enum', enum: Role, default: Role.USER })
-  role: Role;
+  @Column()
+  firstName!: string;
+
+  @Column()
+  lastName!: string;
+
+  @Column({ type: 'simple-enum', enum: UserRole, default: UserRole.USER })
+  role!: UserRole;
 
   @Column({ default: false })
-  isEmailVerified: boolean;
-
-  @Column({ nullable: true, type: 'varchar' })
-  emailVerificationOtp: string | null;
-
-  @Column({ nullable: true, type: 'timestamptz' })
-  emailVerificationOtpExpiry: Date | null;
-
-  @Column({ default: 0 })
-  resendCount: number;
-
-  @Column({ nullable: true, type: 'timestamptz' })
-  resendWindowStart: Date | null;
-
-  @Column({ nullable: true, type: 'varchar' })
-  refreshToken: string | null;
-  passwordHash: string;
-
-  @Column()
-  firstName: string;
-
-  @Column()
-  lastName: string;
-
-  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
-  role: UserRole;
-
-  @Column({ default: false })
-  isEmailVerified: boolean;
+  isEmailVerified!: boolean;
 
   @Column({
-    type: 'enum',
+    type: 'simple-enum',
     enum: KycStatus,
     default: KycStatus.PENDING,
   })
-  kycStatus: KycStatus;
+  kycStatus!: KycStatus;
 
   @Column({ default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 }

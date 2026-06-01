@@ -10,6 +10,7 @@ describe('AuthService', () => {
     findByEmail: jest.fn(),
   } as unknown as UsersService;
   const termsService = {
+    accept: jest.fn(),
     ensureAccepted: jest.fn(),
   } as unknown as TermsAcceptanceService;
   const jwtService = {

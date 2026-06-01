@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { WalletBalanceEntity } from './wallet-balance.entity';
 import { WalletsService } from './wallets.service';
 
@@ -13,7 +14,18 @@ describe('WalletsService', () => {
   let mockRepository: {
     findOne: jest.Mock;
     find: jest.Mock;
-    manager: { transaction: jest.Mock };
+  };
+  let mockQueryRunner: {
+    manager: typeof mockManager;
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+    isTransactionActive: boolean;
+  };
+  let mockDataSource: {
+    createQueryRunner: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -26,12 +38,20 @@ describe('WalletsService', () => {
     mockRepository = {
       findOne: jest.fn(),
       find: jest.fn(),
-      manager: {
-        transaction: jest.fn(
-          (cb: (manager: typeof mockManager) => PromiseLike<unknown>) =>
-            cb(mockManager),
-        ),
-      },
+    };
+
+    mockQueryRunner = {
+      manager: mockManager,
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      isTransactionActive: true,
+    };
+
+    mockDataSource = {
+      createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -40,6 +60,10 @@ describe('WalletsService', () => {
         {
           provide: getRepositoryToken(WalletBalanceEntity),
           useValue: mockRepository,
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
         },
       ],
     }).compile();
@@ -67,6 +91,7 @@ describe('WalletsService', () => {
       expect(result.balance).toBe(100);
       expect(result.accountId).toBe('account-1');
       expect(result.currency).toBe('USD');
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalledTimes(1);
     });
 
     it('updates an existing wallet balance', async () => {
@@ -102,6 +127,8 @@ describe('WalletsService', () => {
       await expect(
         service.adjustBalance('account-1', 'USD', -50),
       ).rejects.toThrow('Insufficient balance');
+
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -166,6 +193,14 @@ describe('WalletsService', () => {
       expect(result).toHaveLength(2);
       expect(result[0]!.currency).toBe('USD');
       expect(result[1]!.currency).toBe('EUR');
+    });
+
+    it('should return empty array for account with no balances', async () => {
+      mockRepository.find.mockResolvedValue([]);
+
+      const result = await service.getBalancesForAccount('account-new');
+
+      expect(result).toHaveLength(0);
     });
   });
 });

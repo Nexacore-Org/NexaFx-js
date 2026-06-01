@@ -3,12 +3,12 @@ import { IsString, IsNotEmpty } from 'class-validator';
 export class CreateCatDto {
   @IsString()
   @IsNotEmpty()
-  readonly name: string;
+  readonly name!: string;
 
   @IsString()
   @IsNotEmpty()
-  readonly breed: string;
+  readonly breed!: string;
 
   @IsNotEmpty()
-  readonly age: number;
+  readonly age!: number;
 }
