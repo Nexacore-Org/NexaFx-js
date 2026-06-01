@@ -21,6 +21,13 @@ export const envSchema = z.object({
     .transform(Number)
     .pipe(z.number().min(1).max(65535))
     .default(() => 3000),
+  LOG_LEVEL: z
+    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
+    .default('info'),
+  SWAGGER_ENABLED: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
 
   // ============================================
   // Request Body Size Limits (environment-configurable)

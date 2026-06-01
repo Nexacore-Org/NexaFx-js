@@ -3,6 +3,12 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  app.useLogger(app.get(Logger));
 import { ConfigService } from '@nestjs/config';
 import * as express from 'express';
 
@@ -50,6 +56,22 @@ async function bootstrap() {
    app.useGlobalFilters(new GlobalExceptionFilter());
   app.enableShutdownHooks();
 
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true';
+
+  if (nodeEnv !== 'production' || swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('NexaFx API')
+      .setDescription('NexaFx financial platform REST API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
   app.use(
     helmet({
       contentSecurityPolicy: {

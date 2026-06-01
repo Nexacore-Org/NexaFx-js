@@ -9,6 +9,7 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
+import { LoggerModule } from 'nestjs-pino';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
@@ -27,6 +28,9 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MailModule, MailQueueModule } from './mail/mail.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
+import { HealthModule } from './health/health.module';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { getCorrelationId } from './common/middleware/correlation-id.storage';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
@@ -59,6 +63,17 @@ const enableBull =
 @Module({
   imports: [
     ConfigModule,
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.LOG_LEVEL || 'info',
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? { target: 'pino-pretty', options: { singleLine: true } }
+            : undefined,
+        genReqId: () => getCorrelationId() ?? '',
+        customProps: () => ({
+          context: 'HTTP',
+        }),
     CacheModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -155,6 +170,7 @@ const enableBull =
         ]
       : []),
     IdempotencyModule,
+    HealthModule,
     AuthModule,
   ],
   controllers: [AppController],
@@ -205,6 +221,8 @@ const enableBull =
   providers: [AppService, GeoRestrictionMiddleware],
 })
 export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
   configure(consumer: MiddlewareConsumer): void {
     consumer
       .apply(RequestLoggingMiddleware)
