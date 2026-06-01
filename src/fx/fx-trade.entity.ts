@@ -1,9 +1,10 @@
 import {
-  Entity,
   Column,
-  PrimaryGeneratedColumn,
   CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
   Index,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
 
 @Entity('fx_trades')
@@ -36,4 +37,7 @@ export class FxTrade {
 
   @Column({ type: 'timestamp', nullable: true })
   reversedAt: Date;
+
+  @DeleteDateColumn({ type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
 }

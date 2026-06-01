@@ -77,7 +77,7 @@ describe('WalletsService', () => {
   });
 
   describe('adjustBalance', () => {
-    it('should create new wallet if not exists and return updated balance', async () => {
+    it('creates a new wallet if it does not exist and returns the updated balance', async () => {
       mockManager.findOne.mockResolvedValue(null);
       mockManager.create.mockImplementation(
         (_entity: unknown, data: Record<string, unknown>) => data,
@@ -87,7 +87,7 @@ describe('WalletsService', () => {
         id: 'new-id',
       }));
 
-      const result = await service.adjustBalance('account-1', 'USD', 100);
+      const result = await service.adjustBalance('account-1', 'usd', 100);
 
       expect(result.balance).toBe(100);
       expect(result.accountId).toBe('account-1');
@@ -95,7 +95,7 @@ describe('WalletsService', () => {
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalledTimes(1);
     });
 
-    it('should update existing wallet balance', async () => {
+    it('updates an existing wallet balance', async () => {
       const existingWallet = {
         accountId: 'account-1',
         currency: 'USD',
@@ -112,7 +112,13 @@ describe('WalletsService', () => {
       expect(result.balance).toBe(100);
     });
 
-    it('should throw error for insufficient balance', async () => {
+    it('rejects unsupported currencies', async () => {
+      await expect(
+        service.adjustBalance('account-1', 'btc', 50),
+      ).rejects.toThrow('Unsupported currency');
+    });
+
+    it('throws an error for insufficient balance', async () => {
       mockManager.findOne.mockResolvedValue({
         accountId: 'account-1',
         currency: 'USD',
@@ -128,7 +134,7 @@ describe('WalletsService', () => {
   });
 
   describe('getBalance', () => {
-    it('should return existing wallet balance', async () => {
+    it('returns an existing wallet balance', async () => {
       mockRepository.findOne.mockResolvedValue({
         id: 'id-1',
         accountId: 'account-1',
@@ -138,13 +144,20 @@ describe('WalletsService', () => {
         updatedAt: new Date(),
       });
 
-      const result = await service.getBalance('account-1', 'USD');
+      const result = await service.getBalance('account-1', 'usd');
 
       expect(result.balance).toBe(250.5);
       expect(result.accountId).toBe('account-1');
+      expect(result.currency).toBe('USD');
     });
 
-    it('should return zero balance for non-existent wallet', async () => {
+    it('rejects unsupported currencies when fetching a balance', async () => {
+      await expect(service.getBalance('account-1', 'aud')).rejects.toThrow(
+        'Unsupported currency',
+      );
+    });
+
+    it('returns a zero balance for a missing wallet', async () => {
       mockRepository.findOne.mockResolvedValue(null);
 
       const result = await service.getBalance('account-1', 'EUR');
@@ -156,7 +169,7 @@ describe('WalletsService', () => {
   });
 
   describe('getBalancesForAccount', () => {
-    it('should return all balances for an account', async () => {
+    it('returns all balances for an account', async () => {
       mockRepository.find.mockResolvedValue([
         {
           id: '1',

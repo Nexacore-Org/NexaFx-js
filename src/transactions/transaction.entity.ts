@@ -1,9 +1,10 @@
 import {
-  Entity,
   Column,
-  PrimaryGeneratedColumn,
   CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
   Index,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
 
 export enum TransactionStatus {
@@ -70,4 +71,7 @@ export class Transaction {
 
   @Column({ type: 'uuid', nullable: true })
   reversalTransactionId: string | null;
+
+  @DeleteDateColumn({ type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
 }

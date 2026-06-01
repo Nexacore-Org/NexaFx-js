@@ -14,4 +14,13 @@ export class WalletsController {
   getBalances(@Param('accountId') accountId: string) {
     return this.walletsService.getBalancesForAccount(accountId);
   }
+
+  @Post('adjust-balance')
+  adjustBalance(@Body() dto: AdjustBalanceDto) {
+    return this.walletsService.adjustBalance(
+      dto.accountId,
+      dto.currency,
+      dto.delta,
+    );
+  }
 }

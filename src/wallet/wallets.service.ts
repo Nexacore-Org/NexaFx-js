@@ -18,22 +18,26 @@ export class WalletsService {
     currency: string,
     delta: number,
   ): Promise<WalletBalance> {
+    const normalizedCurrency = this.validateCurrency(currency);
+
     if (delta === 0) {
-      return this.getBalance(accountId, currency);
+      return this.getBalance(accountId, normalizedCurrency);
     }
 
     const upperCurrency = currency.toUpperCase();
 
     return withTransaction(this.dataSource, async (manager) => {
       let wallet = await manager.findOne(WalletBalanceEntity, {
-        where: { accountId, currency: upperCurrency },
-        lock: { mode: 'pessimistic_write' },
+        where: { accountId, currency: normalizedCurrency },
+        ...(driverType === 'postgres'
+          ? { lock: { mode: 'pessimistic_write' as const } }
+          : {}),
       });
 
       if (!wallet) {
         wallet = manager.create(WalletBalanceEntity, {
           accountId,
-          currency: upperCurrency,
+          currency: normalizedCurrency,
           balance: 0,
         });
       }
@@ -61,13 +65,13 @@ export class WalletsService {
     const upperCurrency = currency.toUpperCase();
 
     const wallet = await this.walletRepository.findOne({
-      where: { accountId, currency: upperCurrency },
+      where: { accountId, currency: normalizedCurrency },
     });
 
     if (!wallet) {
       return {
         accountId,
-        currency: upperCurrency,
+        currency: normalizedCurrency,
         balance: 0,
       };
     }
@@ -95,5 +99,15 @@ export class WalletsService {
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
     }));
+  }
+
+  private validateCurrency(currency: string): string {
+    const normalizedCurrency = normalizeCurrencyCode(currency);
+
+    if (!isSupportedCurrency(normalizedCurrency)) {
+      throw new BadRequestException(`Unsupported currency: ${currency}`);
+    }
+
+    return normalizedCurrency;
   }
 }

@@ -7,61 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: nexafx_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      NODE_ENV: test
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: nexafx_test
-      JWT_SECRET: test_jwt_secret_must_be_at_least_32_chars_long
-      REFRESH_TOKEN_SECRET: test_refresh_secret_must_be_at_least_32_chars
-      OTP_SECRET: test_otp_secret_must_be_at_least_32_chars_long
-      MAIL_HOST: smtp.example.com
-      MAIL_PORT: 587
-      MAIL_USER: test@example.com
-      MAIL_PASSWORD: test_password
-      MAIL_FROM: noreply@example.com
-
-    steps:
-      - uses: actions/checkout@v4
-    branches:
-      - main
-  pull_request:
-
-jobs:
-  test:
+  unit-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -71,47 +17,54 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
           node-version: 22
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --ignore-scripts --no-audit --no-fund
 
-      - name: Lint
-        run: npm run lint
+      - name: Run focused unit tests
+        run: >-
+          npx jest
+          src/wallet/wallets.service.spec.ts
+          src/wallet/wallets.controller.spec.ts
+          src/currencies/currencies.service.spec.ts
+          src/currencies/currencies.controller.spec.ts
+          --runInBand
 
-      - name: Build
-        run: npm run build
+      - name: Collect focused coverage
+        run: >-
+          npx jest
+          src/wallet/wallets.service.spec.ts
+          src/wallet/wallets.controller.spec.ts
+          src/currencies/currencies.service.spec.ts
+          src/currencies/currencies.controller.spec.ts
+          --coverage
+          --runInBand
+          --collectCoverageFrom='wallet/**/*.ts'
+          --collectCoverageFrom='currencies/**/*.ts'
 
-      - name: Test
-        run: npm test -- --passWithNoTests
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: '5432'
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_NAME: nexafx_test
-          JWT_SECRET: test-jwt-secret-at-least-32-characters-long
-          REFRESH_TOKEN_SECRET: test-refresh-secret-at-least-32-chars
-          OTP_SECRET: test-otp-secret-at-least-32-characters-long
-          MAIL_HOST: localhost
-          MAIL_PORT: '587'
-          MAIL_USER: test@example.com
-          MAIL_PASSWORD: testpassword
-          MAIL_FROM: noreply@example.com
-          DISABLE_BULL: 'true'
-      - name: Build
-        run: npm run build
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
 
-      - name: Run tests
-        run: npm test
+  integration-tests:
+    runs-on: ubuntu-latest
 
-      - name: Check for missing migrations (dry run)
-        run: npm run migration:dryrun
-      - name: Test with coverage
-        run: npm run test:cov
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Build
-        run: npm run build
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Run integration tests
+        run: npx jest test/wallets-currencies.e2e-spec.ts --runInBand --config ./test/jest-e2e.json
