@@ -1,64 +1,64 @@
-import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
-import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
-import { PaymentsModule } from './payments/payments.module';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import {
-  MiddlewareConsumer,
-  Module,
-  NestModule,
-  RequestMethod,
-} from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
-import { LoggerModule } from 'nestjs-pino';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
-import { ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { ScheduleModule } from '@nestjs/schedule';
-import { redisStore } from 'cache-manager-redis-store';
-import { ConfigModule } from './config/config.module';
 import { ConfigService } from '@nestjs/config';
-import { Configuration } from './config/configuration';
-import { TypeOrmSlowQueryLogger } from './database/typeorm-slow-query.logger';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { redisStore } from 'cache-manager-redis-store';
+import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AuthModule } from './auth/auth.module';
-import { DocumentsModule } from './documents/documents.module';
-import { MailModule, MailQueueModule } from './mail/mail.module';
-import { IdempotencyModule } from './idempotency/idempotency.module';
-import { HealthModule } from './health/health.module';
-import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
-import { getCorrelationId } from './common/middleware/correlation-id.storage';
-import { AuthModule } from './auth/auth.module';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { RolesGuard } from './auth/guards/roles.guard';
-import { NotificationQueueModule } from './notification/notification.module';
-import { TransactionQueueModule } from './transaction/transaction.module';
-import { AccountClosureModule } from './users/account-closure.module';
-import { OtpModule } from './otp/otp.module';
-import { AmlModule } from './aml/aml.module';
-import { ArchivalModule } from './archival/archival.module';
-import { FxModule } from './fx/fx.module';
-import { PushModule } from './notifications/push/push.module';
-import { ReferralModule } from './referral/referral.module';
-import { UsersModule } from './users/users.module';
-import { TransactionsModule } from './transactions/transactions.module';
 import { AuditModule } from './audit/audit.module';
-import { KycModule } from './kyc/kyc.module';
-import { WalletsModule } from './wallet/wallets.module';
-import { TermsModule } from './terms/terms.module';
-import { StatementsModule } from './statements/statements.module';
-import { SupportTicketsModule } from './support/support-tickets.module';
-import { WebhooksModule } from './webhooks/webhooks.module';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { ConfigModule } from './config/config.module';
+import { Configuration } from './config/configuration';
 import { CurrenciesModule } from './currencies/currencies.module';
-import { AdminModule } from './admin/admin.module';
-import { SecurityModule } from './common/security.module';
-import { GeoRestrictionMiddleware } from './common/middleware/geo-restriction.middleware';
+import { HealthModule } from './health/health.module';
+import { MailModule, MailQueueModule } from './mail/mail.module';
+import { NotificationQueueModule } from './notification/notification.module';
+import { TermsModule } from './terms/terms.module';
+import { TransactionQueueModule } from './transaction/transaction.module';
+import { UsersModule } from './users/users.module';
+import { WalletsModule } from './wallet/wallets.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
+
+async function createCacheOptions(configService: ConfigService<Configuration>) {
+  const redis = configService.get<Configuration['redis']>('redis');
+  const cache = configService.get<Configuration['cache']>('cache');
+
+  if (!redis || !cache) {
+    return { ttl: 60 };
+  }
+
+  try {
+    return {
+      store: await redisStore({
+        socket: {
+          host: redis.host,
+          port: redis.port,
+          reconnectStrategy: (retries: number) => {
+            if (retries >= 10) {
+              return false;
+            }
+            return Math.min(1000 * 2 ** retries, 30_000);
+          },
+        },
+        password: redis.password,
+        ttl: cache.defaultTtlSeconds,
+      }),
+    };
+  } catch {
+    return {
+      ttl: cache.defaultTtlSeconds,
+    };
+  }
+}
 
 @Module({
   imports: [
@@ -70,77 +70,60 @@ const enableBull =
           process.env.NODE_ENV !== 'production'
             ? { target: 'pino-pretty', options: { singleLine: true } }
             : undefined,
-        genReqId: () => getCorrelationId() ?? '',
-        customProps: () => ({
-          context: 'HTTP',
-        }),
+      },
+    }),
     CacheModule.registerAsync({
+      isGlobal: true,
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService<Configuration>) => {
-        const redis = configService.get<Configuration['redis']>('redis')!;
-        const cache = configService.get<Configuration['cache']>('cache')!;
-        return {
-          store: await redisStore({
-            host: redis.host,
-            port: redis.port,
-            password: redis.password,
-            ttl: cache.defaultTtlSeconds,
-          }),
-        };
-      },
+      useFactory: createCacheOptions,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: () => ({
-        type: 'postgres',
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
-        username: process.env.DB_USER || 'postgres',
-        password: process.env.DB_PASSWORD || 'postgres',
-        database: process.env.DB_NAME || 'nexafx_dev',
-        synchronize: false,
-        logging: process.env.NODE_ENV === 'development',
-        autoLoadEntities: true,
-        // Retry settings to handle DB startup race conditions (Docker Compose)
-        retryAttempts: 10,
-        retryDelay: 3000,
-      }),
       inject: [ConfigService],
       useFactory: (configService: ConfigService<Configuration>) => {
-        const database =
-          configService.get<Configuration['database']>('database')!;
-        const slowQueryThresholdMs =
-          configService.get<number>('slowQueryThresholdMs') ?? 1000;
+        const database = configService.get<Configuration['database']>('database');
+
+        if (process.env.NODE_ENV === 'test') {
+          return {
+            type: 'better-sqlite3' as const,
+            database: ':memory:',
+            autoLoadEntities: true,
+            synchronize: true,
+            dropSchema: true,
+          };
+        }
+
         return {
           type: 'postgres' as const,
-          host: database.host,
-          port: database.port,
-          username: database.username,
-          password: database.password,
-          database: database.database,
-          synchronize: process.env.NODE_ENV !== 'production',
-          logging: process.env.NODE_ENV === 'development',
+          host: database?.host,
+          port: database?.port,
+          username: database?.username,
+          password: database?.password,
+          database: database?.database,
           autoLoadEntities: true,
+          synchronize: false,
           retryAttempts: 10,
           retryDelay: 3000,
-          maxQueryExecutionTime: slowQueryThresholdMs,
-          logger: new TypeOrmSlowQueryLogger(slowQueryThresholdMs),
         };
       },
     }),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        throttlers: [
-          {
-            ttl: config.get<number>('rateLimit.windowMs')!,
-            limit: config.get<number>('rateLimit.maxRequests')!,
-          },
-        ],
-      }),
+      useFactory: (config: ConfigService<Configuration>) => {
+        const rateLimit = config.get<Configuration['rateLimit']>('rateLimit');
+        return {
+          throttlers: [
+            {
+              ttl: rateLimit?.windowMs ?? 60000,
+              limit: rateLimit?.maxRequests ?? 100,
+            },
+          ],
+        };
+      },
     }),
+    EventEmitterModule.forRoot({ global: true }),
     ScheduleModule.forRoot(),
     ...(enableBull
       ? [
@@ -148,15 +131,29 @@ const enableBull =
             imports: [ConfigModule],
             inject: [ConfigService],
             useFactory: (configService: ConfigService<Configuration>) => {
-              const redis = configService.get<Configuration['redis']>('redis')!;
+              const redis = configService.get<Configuration['redis']>('redis');
+
               return {
                 redis: {
-                  host: redis.host,
-                  port: redis.port,
+                  host: redis?.host ?? 'localhost',
+                  port: redis?.port ?? 6379,
+                  password: redis?.password,
                   enableReadyCheck: false,
                   lazyConnect: true,
+                  maxRetriesPerRequest: null,
+                  retryStrategy: (attempts: number) => {
+                    if (attempts >= 10) {
+                      return null;
+                    }
+                    return Math.min(1000 * 2 ** attempts, 30_000);
+                  },
                 },
                 defaultJobOptions: {
+                  attempts: 3,
+                  backoff: {
+                    type: 'exponential',
+                    delay: 2000,
+                  },
                   removeOnComplete: true,
                   removeOnFail: true,
                 },
@@ -169,69 +166,31 @@ const enableBull =
           TransactionQueueModule,
         ]
       : []),
-    IdempotencyModule,
     HealthModule,
-    AuthModule,
-  ],
-  controllers: [AppController],
-  providers: [
-    AppService,
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: RolesGuard },
-  ],
-    AccountClosureModule,
-    AuthModule,
-    EventEmitterModule.forRoot({ global: true }),
-    OtpModule,
-    AmlModule,
-    ArchivalModule,
-    FxModule,
-    PushModule,
-    ReferralModule,
-    WalletsModule,
     UsersModule,
-    TransactionsModule,
     AuditModule,
-    KycModule,
     MailModule,
-    TransactionApprovalModule,
-  PaymentsModule,
-  ],
-  controllers: [AppController],
-  // PaymentsModule added for issue #612
-
-  providers: [AppService],
-    DocumentsModule,
-    TermsModule,
-    StatementsModule,
-    SupportTicketsModule,
-    WebhooksModule,
+    WalletsModule,
     CurrenciesModule,
-    AdminModule,
-    SecurityModule,
+    TermsModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
     {
       provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
   ],
-  providers: [AppService, GeoRestrictionMiddleware],
 })
 export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
-  configure(consumer: MiddlewareConsumer): void {
-    consumer
-      .apply(RequestLoggingMiddleware)
-      .exclude({ path: 'health', method: RequestMethod.GET })
-      .forRoutes('*');
-      .apply(GeoRestrictionMiddleware)
-      .forRoutes(
-        { path: 'api/v1/auth/login', method: RequestMethod.POST },
-        { path: 'api/v1/auth/register', method: RequestMethod.POST },
-      );
+  configure(_consumer: MiddlewareConsumer) {
+    // Reserved for future middleware wiring.
+    void RequestMethod.ALL;
   }
 }

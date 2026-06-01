@@ -10,20 +10,20 @@ import {
 @Index(['userId', 'version'], { unique: true })
 export class TermsAcceptance {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'uuid' })
-  userId: string;
+  userId!: string;
 
   @Column()
-  version: string;
+  version!: string;
 
   @CreateDateColumn()
-  acceptedAt: Date;
+  acceptedAt!: Date;
 
-  @Column({ nullable: true })
-  ipAddress: string | null;
+  @Column({ type: 'varchar', nullable: true })
+  ipAddress!: string | null;
 
-  @Column({ nullable: true })
-  userAgent: string | null;
+  @Column({ type: 'varchar', nullable: true })
+  userAgent!: string | null;
 }

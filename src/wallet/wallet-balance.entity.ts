@@ -12,23 +12,23 @@ import {
 @Index(['accountId', 'currency'], { unique: true })
 export class WalletBalanceEntity {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'varchar', length: 36 })
-  accountId: string;
+  accountId!: string;
 
   @Column({ type: 'varchar', length: 3 })
-  currency: string;
+  currency!: string;
 
   @Column({ type: 'decimal', precision: 20, scale: 2, default: 0 })
-  balance: number;
+  balance!: number;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @VersionColumn()
-  version: number;
+  version!: number;
 }

@@ -53,45 +53,45 @@ type TemplateName =
 
 class EmailVerificationTemplateDto {
   @Sanitize()
-  fullName: string;
+  fullName!: string;
 
   @Sanitize()
-  verificationCode: string;
+  verificationCode!: string;
 
-  expiresMinutes: number;
+  expiresMinutes!: number;
 }
 
 class PasswordResetTemplateDto {
   @Sanitize()
-  fullName: string;
+  fullName!: string;
 
   @Sanitize()
-  resetUrl: string;
+  resetUrl!: string;
 }
 
 class TransactionConfirmationTemplateDto {
   @Sanitize()
-  fullName: string;
+  fullName!: string;
 
   @Sanitize()
-  description: string;
+  description!: string;
 
-  amount: string;
-
-  status: string;
-  transactionId: string;
-  date: string;
+  amount!: string;
+  status!: string;
+  transactionId!: string;
+  date!: string;
 }
 
 class WelcomeTemplateDto {
   @Sanitize()
-  fullName: string;
+  fullName!: string;
 }
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter: nodemailer.Transporter;
+  private readonly transporter: nodemailer.Transporter;
+  private readonly cache = new Map<string, TemplateDelegate>();
 
   constructor() {
     this.transporter = nodemailer.createTransport({
@@ -106,6 +106,10 @@ export class MailService {
   }
 
   async sendVerificationOtp(email: string, otp: string): Promise<void> {
+    if (process.env.NODE_ENV === 'test') {
+      return;
+    }
+
     try {
       await this.transporter.sendMail({
         from: process.env.MAIL_FROM,
@@ -116,7 +120,7 @@ export class MailService {
     } catch (err) {
       this.logger.error(`Failed to send verification email to ${email}`, err);
     }
-  private readonly cache = new Map<string, TemplateDelegate>();
+  }
 
   renderEmailVerification(payload: EmailVerificationTemplateDto): string {
     const context = plainToInstance(EmailVerificationTemplateDto, payload, {

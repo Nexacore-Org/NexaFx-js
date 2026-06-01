@@ -12,32 +12,32 @@ import {
 @Index(['createdAt'])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'uuid', nullable: true })
-  userId: string;
+  userId!: string;
 
   @Column()
-  action: string;
+  action!: string;
 
   @Column()
-  entityType: string;
+  entityType!: string;
 
   @Column({ nullable: true })
-  entityId: string;
+  entityId!: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  before: Record<string, unknown>;
+  @Column({ type: 'simple-json', nullable: true })
+  before!: Record<string, unknown>;
 
-  @Column({ type: 'jsonb', nullable: true })
-  after: Record<string, unknown>;
-
-  @Column({ nullable: true })
-  ipAddress: string;
+  @Column({ type: 'simple-json', nullable: true })
+  after!: Record<string, unknown>;
 
   @Column({ nullable: true })
-  userAgent: string;
+  ipAddress!: string;
+
+  @Column({ nullable: true })
+  userAgent!: string;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 }

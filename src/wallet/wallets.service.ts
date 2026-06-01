@@ -1,14 +1,16 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { WalletBalance } from './wallets.types';
+import { DataSource, Repository } from 'typeorm';
+import { withTransaction } from '../common/helpers/with-transaction.helper';
 import { WalletBalanceEntity } from './wallet-balance.entity';
+import { WalletBalance } from './wallets.types';
 
 @Injectable()
 export class WalletsService {
   constructor(
     @InjectRepository(WalletBalanceEntity)
     private readonly walletRepository: Repository<WalletBalanceEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async adjustBalance(
@@ -22,7 +24,7 @@ export class WalletsService {
 
     const upperCurrency = currency.toUpperCase();
 
-    return await this.walletRepository.manager.transaction(async (manager) => {
+    return withTransaction(this.dataSource, async (manager) => {
       let wallet = await manager.findOne(WalletBalanceEntity, {
         where: { accountId, currency: upperCurrency },
         lock: { mode: 'pessimistic_write' },
@@ -55,10 +57,7 @@ export class WalletsService {
     });
   }
 
-  async getBalance(
-    accountId: string,
-    currency: string,
-  ): Promise<WalletBalance> {
+  async getBalance(accountId: string, currency: string): Promise<WalletBalance> {
     const upperCurrency = currency.toUpperCase();
 
     const wallet = await this.walletRepository.findOne({
@@ -88,13 +87,13 @@ export class WalletsService {
       where: { accountId },
     });
 
-    return wallets.map((w) => ({
-      id: w.id,
-      accountId: w.accountId,
-      currency: w.currency,
-      balance: w.balance,
-      createdAt: w.createdAt,
-      updatedAt: w.updatedAt,
+    return wallets.map((wallet) => ({
+      id: wallet.id,
+      accountId: wallet.accountId,
+      currency: wallet.currency,
+      balance: wallet.balance,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
     }));
   }
 }
