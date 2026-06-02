@@ -107,9 +107,6 @@ export const envSchema = z.object({
   // ============================================
   // Wallet Encryption Configuration
   // ============================================
-  // WALLET_ENCRYPTION_KEY: z
-  //   .string()
-  //   .length(64, "WALLET_ENCRYPTION_KEY must be exactly 64 characters (hex)"),
 
   // ============================================
   // External Service Credentials
@@ -327,11 +324,14 @@ export const envSchema = z.object({
   EXCHANGE_RATE_HOST_API_KEY: z.string().optional(),
 
   // ============================================
-  // Wallet Encryption Key (64-char hex)
+  // Wallet Encryption Key (64-char hex, required)
   // ============================================
   WALLET_ENCRYPTION_KEY: z
     .string()
     .min(1, 'WALLET_ENCRYPTION_KEY is required')
+    .refine((val) => hexStringRegex.test(val) && val.length === 64, {
+      message: 'WALLET_ENCRYPTION_KEY must be a 64-character hex string',
+    }),
     .length(64, 'WALLET_ENCRYPTION_KEY must be exactly 64 hex characters')
     .regex(/^[0-9a-fA-F]{64}$/, 'WALLET_ENCRYPTION_KEY must be a valid hex string'),
 });
