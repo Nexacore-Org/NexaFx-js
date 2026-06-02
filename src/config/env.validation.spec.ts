@@ -39,6 +39,8 @@ const VALID_ENV: Record<string, string> = {
   MAIL_SECURE: 'false',
   // Observability
   SLOW_QUERY_THRESHOLD_MS: '1000',
+  // Wallet encryption (required, 64-char hex)
+  WALLET_ENCRYPTION_KEY: VALID_KEY_64,
 };
 
 /** Return a copy of VALID_ENV with the given overrides applied. */
@@ -241,12 +243,13 @@ describe('validateEnv', () => {
     });
   });
 
-  // ── WALLET_ENCRYPTION_KEY (optional with refine) ──────────────────────────
+  // ── WALLET_ENCRYPTION_KEY (required, 64-char hex) ────────────────────────
 
   describe('WALLET_ENCRYPTION_KEY', () => {
-    it('passes when absent (field is optional)', () => {
-      const result = validateEnv(env({ WALLET_ENCRYPTION_KEY: undefined }));
-      expect(result.WALLET_ENCRYPTION_KEY).toBeUndefined();
+    it('fails when absent (field is required)', () => {
+      expect(() =>
+        validateEnv(env({ WALLET_ENCRYPTION_KEY: undefined })),
+      ).toThrow('Environment validation failed');
     });
 
     it('accepts a valid 64-character lowercase hex string', () => {

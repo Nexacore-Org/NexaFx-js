@@ -1,5 +1,3 @@
-import { validateWalletEncryptionKey } from './env.validation';
-
 /**
  * Configuration factory that structures validated env vars
  * into logical groups for easy access throughout the app
@@ -18,16 +16,12 @@ import { validateWalletEncryptionKey } from './env.validation';
  * - rateLimit: Rate limiting settings
  */
 export default () => {
-  // Additional runtime validation for wallet encryption key format
-  const walletKey = process.env.WALLET_ENCRYPTION_KEY || '';
-  if (walletKey && !validateWalletEncryptionKey(walletKey)) {
-    throw new Error(
-      'WALLET_ENCRYPTION_KEY must be a valid 64-character hexadecimal string',
-    );
-  }
+  // WALLET_ENCRYPTION_KEY is required and validated by Zod in env.validation.ts
+  const walletKey = process.env.WALLET_ENCRYPTION_KEY!;
 
   const nodeEnv = process.env.NODE_ENV || 'development';
   const port = parseInt(process.env.PORT || '3000', 10);
+  const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true';
   const bodyLimitJson = parseInt(process.env.BODY_LIMIT_JSON || '10', 10);
   const bodyLimitUrlencoded = parseInt(
     process.env.BODY_LIMIT_URLENCODED || '10',
@@ -114,6 +108,7 @@ export default () => {
     app: {
       nodeEnv,
       port,
+      swaggerEnabled,
       isProduction: nodeEnv === 'production',
       isDevelopment: nodeEnv === 'development',
       isTest: nodeEnv === 'test',

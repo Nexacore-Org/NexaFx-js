@@ -4,7 +4,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IdempotencyGuard } from './idempotency.guard';
+import { IdempotencyGuard, MIN_KEY_LENGTH, MAX_KEY_LENGTH } from './idempotency.guard';
 import { IdempotencyService } from './idempotency.service';
 import { IDEMPOTENCY_KEY } from './idempotency.decorator';
 
@@ -12,7 +12,7 @@ import { IDEMPOTENCY_KEY } from './idempotency.decorator';
 // Helpers
 // ---------------------------------------------------------------------------
 
-const VALID_KEY = 'a'.repeat(16); // exactly MIN_KEY_LENGTH
+const VALID_KEY = 'a'.repeat(MIN_KEY_LENGTH); // exactly MIN_KEY_LENGTH
 const HASH = 'abc123hash';
 
 function makeContext(overrides: {
@@ -92,6 +92,37 @@ describe('IdempotencyGuard', () => {
       await expect(guard.canActivate(ctx)).rejects.toThrow(
         'at least 16 characters',
       );
+    });
+
+    it('accepts a key of exactly 255 characters', async () => {
+      const service = makeService(null);
+      const guard = new IdempotencyGuard(makeReflector(true), service);
+      const ctx = makeContext({
+        headers: { 'idempotency-key': 'a'.repeat(MAX_KEY_LENGTH) },
+      });
+
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    });
+
+    it('throws BadRequestException when key is 256 characters (exceeds MAX_KEY_LENGTH)', async () => {
+      const guard = new IdempotencyGuard(makeReflector(true), makeService());
+      const ctx = makeContext({
+        headers: { 'idempotency-key': 'a'.repeat(MAX_KEY_LENGTH + 1) },
+      });
+
+      await expect(guard.canActivate(ctx)).rejects.toThrow(BadRequestException);
+      await expect(guard.canActivate(ctx)).rejects.toThrow(
+        `must not exceed ${MAX_KEY_LENGTH} characters`,
+      );
+    });
+
+    it('throws BadRequestException when key is 1 MB (far exceeds MAX_KEY_LENGTH)', async () => {
+      const guard = new IdempotencyGuard(makeReflector(true), makeService());
+      const ctx = makeContext({
+        headers: { 'idempotency-key': 'a'.repeat(1024 * 1024) },
+      });
+
+      await expect(guard.canActivate(ctx)).rejects.toThrow(BadRequestException);
     });
 
     it('returns true and attaches key/hash to request on first (fresh) request', async () => {

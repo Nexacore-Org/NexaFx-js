@@ -51,8 +51,8 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.enableShutdownHooks();
 
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true';
+  const nodeEnv = configService.get<string>('app.nodeEnv');
+  const swaggerEnabled = configService.get<boolean>('app.swaggerEnabled');
   if (nodeEnv !== 'production' || swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('NexaFx API')
@@ -67,7 +67,8 @@ async function bootstrap() {
     });
   }
 
-  await app.listen(process.env.PORT ?? 3000);
+  const port = configService.get<number>('app.port');
+  await app.listen(port);
 }
 
 void bootstrap();

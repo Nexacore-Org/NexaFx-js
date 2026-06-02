@@ -2,7 +2,6 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  ConflictException,
   BadRequestException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -10,7 +9,8 @@ import { Reflector } from '@nestjs/core';
 import { IdempotencyService } from './idempotency.service';
 import { IDEMPOTENCY_KEY } from './idempotency.decorator';
 
-const MIN_KEY_LENGTH = 16;
+export const MIN_KEY_LENGTH = 16;
+export const MAX_KEY_LENGTH = 255;
 
 @Injectable()
 export class IdempotencyGuard implements CanActivate {
@@ -39,6 +39,11 @@ export class IdempotencyGuard implements CanActivate {
     if (idempotencyKey.length < MIN_KEY_LENGTH) {
       throw new BadRequestException(
         `Idempotency-Key must be at least ${MIN_KEY_LENGTH} characters`,
+      );
+    }
+    if (idempotencyKey.length > MAX_KEY_LENGTH) {
+      throw new BadRequestException(
+        `Idempotency-Key must not exceed ${MAX_KEY_LENGTH} characters`,
       );
     }
 

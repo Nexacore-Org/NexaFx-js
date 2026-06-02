@@ -25,7 +25,9 @@
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
     "prepare": "husky",
     "test:unit:wallet-currencies": "jest src/wallet/wallets.service.spec.ts src/wallet/wallets.controller.spec.ts src/currencies/currencies.service.spec.ts src/currencies/currencies.controller.spec.ts --runInBand",
-    "test:integration:wallet-currencies": "jest test/wallets-currencies.e2e-spec.ts --runInBand --config ./test/jest-e2e.json"
+    "test:integration:wallet-currencies": "jest test/wallets-currencies.e2e-spec.ts --runInBand --config ./test/jest-e2e.json",
+    "test:integration": "jest --config ./jest.integration.json --runInBand",
+    "check:no-wildcard-deps": "node -e \"const pkg=require('./package.json');const w=Object.entries({...pkg.dependencies,...pkg.devDependencies}).filter(([,v])=>v==='*');if(w.length){console.error('Wildcard dependencies found:',w);process.exit(1);}\""
   },
   "dependencies": {
     "@nestjs-modules/ioredis": "^2.2.1",
@@ -37,7 +39,7 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/event-emitter": "^3.0.1",
     "@nestjs/jwt": "^11.0.2",
-    "@nestjs/mapped-types": "*",
+    "@nestjs/mapped-types": "^2.1.1",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.1.17",
