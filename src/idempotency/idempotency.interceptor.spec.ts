@@ -83,4 +83,66 @@ describe('IdempotencyInterceptor', () => {
       204,
     );
   });
+
+  it('awaits idempotency storage before emitting the response', async () => {
+    let resolveStore: () => void;
+    const storePromise = new Promise<void>((resolve) => {
+      resolveStore = resolve;
+    });
+
+    storeMock.mockReturnValue(storePromise);
+    const response = {
+      statusCode: 201,
+    };
+    const request = {
+      idempotencyKey: '1234567890abcdef',
+      requestHash: 'hash',
+    };
+    const handleMock = jest.fn(() => of({ ok: true }));
+    const next: Pick<CallHandler, 'handle'> = {
+      handle: handleMock,
+    };
+
+    const resultPromise = lastValueFrom(
+      interceptor.intercept(createContext(request, response), next),
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(storeMock).toHaveBeenCalled();
+    const raceResult = await Promise.race([resultPromise, Promise.resolve('pending')]);
+    expect(raceResult).toBe('pending');
+
+    resolveStore!();
+    await expect(resultPromise).resolves.toEqual({ ok: true });
+  });
+
+  it('returns the response even when storage fails', async () => {
+    const error = new Error('storage failed');
+    storeMock.mockRejectedValue(error);
+    const logSpy = jest.spyOn(interceptor['logger'], 'error');
+
+    const response = {
+      statusCode: 200,
+    };
+    const request = {
+      idempotencyKey: '1234567890abcdef',
+      requestHash: 'hash',
+    };
+    const handleMock = jest.fn(() => of({ ok: true }));
+    const next: Pick<CallHandler, 'handle'> = {
+      handle: handleMock,
+    };
+
+    await expect(
+      lastValueFrom(
+        interceptor.intercept(createContext(request, response), next),
+      ),
+    ).resolves.toEqual({ ok: true });
+
+    expect(storeMock).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(
+      'Failed to persist idempotency response',
+      error,
+    );
+  });
 });

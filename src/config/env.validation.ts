@@ -331,10 +331,9 @@ export const envSchema = z.object({
   // ============================================
   WALLET_ENCRYPTION_KEY: z
     .string()
-    .optional()
-    .refine((val) => !val || (hexStringRegex.test(val) && val.length === 64), {
-      message: 'WALLET_ENCRYPTION_KEY must be a 64-character hex string',
-    }),
+    .min(1, 'WALLET_ENCRYPTION_KEY is required')
+    .length(64, 'WALLET_ENCRYPTION_KEY must be exactly 64 hex characters')
+    .regex(/^[0-9a-fA-F]{64}$/, 'WALLET_ENCRYPTION_KEY must be a valid hex string'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
