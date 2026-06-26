@@ -42,6 +42,7 @@ describe('GlobalExceptionFilter', () => {
     expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.FORBIDDEN);
     expect(mockResponse.json).toHaveBeenCalledWith({
       statusCode: HttpStatus.FORBIDDEN,
+      code: 'FORBIDDEN',
       message: 'Forbidden access',
       timestamp: expect.any(String),
       path: '/test',
@@ -58,6 +59,7 @@ describe('GlobalExceptionFilter', () => {
     expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(mockResponse.json).toHaveBeenCalledWith({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      code: 'INTERNAL_ERROR',
       message: 'Internal server error',
       timestamp: expect.any(String),
       path: '/test',
