@@ -129,6 +129,8 @@ export default () => {
       database: process.env.DB_NAME!,
       ssl: process.env.DB_SSL === 'true',
       url: `postgresql://${process.env.DB_USER!}:${process.env.DB_PASSWORD!}@${process.env.DB_HOST!}:${dbPort}/${process.env.DB_NAME!}`,
+      replicaHost: process.env.DB_REPLICA_HOST || process.env.DB_HOST,
+      replicaPort: parseInt(process.env.DB_REPLICA_PORT || process.env.DB_PORT || '5432', 10),
     },
 
     // JWT configuration

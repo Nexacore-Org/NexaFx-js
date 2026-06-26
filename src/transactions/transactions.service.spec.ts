@@ -1,7 +1,9 @@
 import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource, Repository } from 'typeorm';
 import { BadRequestException } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
+import { TransactionLimitService } from './transaction-limit.service';
 import { Transaction, TransactionStatus } from './transaction.entity';
 import { WalletsService } from '../wallet/wallets.service';
 import { AuditService } from '../audit/audit.service';
@@ -57,6 +59,7 @@ describe('TransactionsService', () => {
   let mailService: jest.Mocked<Pick<MailService, 'sendTransactionReversalNotice'>>;
   let usersService: jest.Mocked<Pick<UsersService, 'findById'>>;
   let events: jest.Mocked<Pick<EventEmitter2, 'emit'>>;
+  let configService: jest.Mocked<Pick<ConfigService, 'get'>>;
 
   beforeEach(() => {
     txRepo = { findOne: jest.fn(), createQueryBuilder: jest.fn() } as any;
@@ -66,6 +69,7 @@ describe('TransactionsService', () => {
     mailService = { sendTransactionReversalNotice: jest.fn() } as any;
     usersService = { findById: jest.fn() } as any;
     events = { emit: jest.fn() } as any;
+    configService = { get: jest.fn() } as any;
 
     service = new TransactionsService(
       txRepo as any,
@@ -75,6 +79,8 @@ describe('TransactionsService', () => {
       mailService as any,
       usersService as any,
       events as any,
+      {} as any,
+      configService as any,
     );
   });
 
@@ -181,6 +187,7 @@ describe('TransactionsService', () => {
     mailService = { sendTransactionReversalNotice: jest.fn() };
     usersService = { findById: jest.fn() };
     events = { emit: jest.fn() };
+    configService = { get: jest.fn() };
 
     service = new TransactionsService(
       txRepo as unknown as Repository<Transaction>,
@@ -190,6 +197,8 @@ describe('TransactionsService', () => {
       mailService as unknown as MailService,
       usersService as unknown as UsersService,
       events as unknown as EventEmitter2,
+      {} as unknown as TransactionLimitService,
+      configService as unknown as ConfigService,
     );
   });
 
@@ -394,6 +403,47 @@ describe('TransactionsService', () => {
           accountId === 'u1' && currency === 'USD' && delta > 0,
       );
       expect(refundCall).toBeDefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // #867: balance operations use WalletsService (no direct JSONB column access)
+  // ---------------------------------------------------------------------------
+
+  describe('#867 balance operations use WalletsService', () => {
+    it('getBalance is called when reading sender balance in transfer', async () => {
+      walletsService.getBalance.mockResolvedValue({ balance: 100 } as any);
+      walletsService.adjustBalance.mockResolvedValue(undefined as any);
+      const manager = makeMockManager();
+      dataSource.transaction.mockImplementation((cb: any) => cb(manager));
+
+      await service.transfer({ senderId: 'u1', receiverId: 'u2', amount: 50, currency: 'USD', reference: 'ref-867' });
+
+      expect(walletsService.getBalance).toHaveBeenCalledWith('u1', 'USD');
+    });
+
+    it('adjustBalance is called for both sender and receiver in transfer', async () => {
+      walletsService.getBalance.mockResolvedValue({ balance: 100 } as any);
+      walletsService.adjustBalance.mockResolvedValue(undefined as any);
+      const manager = makeMockManager();
+      dataSource.transaction.mockImplementation((cb: any) => cb(manager));
+
+      await service.transfer({ senderId: 'u1', receiverId: 'u2', amount: 50, currency: 'USD', reference: 'ref-867b' });
+
+      expect(walletsService.adjustBalance).toHaveBeenCalledWith('u1', 'USD', -50);
+      expect(walletsService.adjustBalance).toHaveBeenCalledWith('u2', 'USD', 50);
+    });
+
+    it('getBalance is called for withdrawal balance check', async () => {
+      const tx = makeSavedTx({ status: TransactionStatus.PENDING });
+      txRepo.create.mockReturnValue(tx);
+      txRepo.save.mockResolvedValue(tx);
+      walletsService.getBalance.mockResolvedValue({ accountId: 'u1', currency: 'USD', balance: 200 } as any);
+      walletsService.adjustBalance.mockResolvedValue({ accountId: 'u1', currency: 'USD', balance: 100 } as any);
+
+      await service.createWithdrawal({ userId: 'u1', amount: 50, currency: 'USD', reference: 'wd-867' });
+
+      expect(walletsService.getBalance).toHaveBeenCalledWith('u1', 'USD');
     });
   });
 

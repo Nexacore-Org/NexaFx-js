@@ -376,7 +376,7 @@ export const envSchema = z.object({
   // ============================================
   // Stellar Hot Wallet (optional — required only when Stellar is enabled)
   // ============================================
-  STELLAR_HOT_WALLET_SECRET: z.string().optional(),
+  STELLAR_HOT_WALLET_SECRET: z.string().min(1, 'STELLAR_HOT_WALLET_SECRET is required'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

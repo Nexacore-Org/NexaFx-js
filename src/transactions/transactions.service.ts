@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -86,7 +87,23 @@ export class TransactionsService {
     private readonly usersService: UsersService,
     private readonly events: EventEmitter2,
     private readonly limitService: TransactionLimitService,
+    private readonly configService: ConfigService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const secret = this.configService.get<string>('STELLAR_HOT_WALLET_SECRET');
+    if (!secret) {
+      throw new Error('STELLAR_HOT_WALLET_SECRET is required but was not provided');
+    }
+  }
+
+  private getStellarSecretKey(): string {
+    const secret = this.configService.get<string>('STELLAR_HOT_WALLET_SECRET');
+    if (!secret) {
+      throw new Error('Secret key required for this operation');
+    }
+    return secret;
+  }
 
   async transfer(dto: TransferDto): Promise<Transaction> {
     if (dto.amount <= 0) {
