@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ConfigService } from '@nestjs/config';
 import { KycService } from './kyc.service';
 import { KycDocument, KycDocumentStatus } from './kyc-document.entity';
 
@@ -8,6 +9,7 @@ describe('KycService', () => {
   let service: KycService;
   let kycRepo: jest.Mocked<Pick<Repository<KycDocument>, 'create' | 'findOne' | 'save'>>;
   let events: jest.Mocked<Pick<EventEmitter2, 'emit'>>;
+  let config: jest.Mocked<Pick<ConfigService, 'get'>>;
 
   const pendingDoc: KycDocument = {
     id: 'doc-1',
@@ -24,7 +26,8 @@ describe('KycService', () => {
   beforeEach(() => {
     kycRepo = { create: jest.fn(), findOne: jest.fn(), save: jest.fn() } as any;
     events = { emit: jest.fn() } as any;
-    service = new KycService(kycRepo as any, events as any);
+    config = { get: jest.fn().mockReturnValue('') } as any;
+    service = new KycService(kycRepo as any, events as any, config as any);
   });
 
   describe('review()', () => {

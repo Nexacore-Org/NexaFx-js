@@ -52,11 +52,19 @@ export class KycService {
   }
 
   async submit(dto: SubmitKycDto): Promise<KycDocument> {
-    if (this.storageHost) {
-      validateDocumentUrl(dto.documentUrl, this.storageHost);
+    const documentUrl = dto.documentUrl.trim();
+    if (!documentUrl) {
+      throw new BadRequestException('documentUrl is required');
     }
 
-    const doc = this.kycRepo.create(dto);
+    if (this.storageHost) {
+      validateDocumentUrl(documentUrl, this.storageHost);
+    }
+
+    const doc = this.kycRepo.create({
+      ...dto,
+      documentUrl,
+    });
     return this.kycRepo.save(doc);
   }
 

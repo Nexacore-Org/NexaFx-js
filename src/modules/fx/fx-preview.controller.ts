@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 export interface FxPreviewResponse {
@@ -27,8 +27,14 @@ export class FxPreviewController {
     @Query('to') to: string,
     @Query('amount') amount: string,
   ): FxPreviewResponse {
+    const fromCurrency = (from ?? '').trim().toUpperCase();
+    const toCurrency = (to ?? '').trim().toUpperCase();
+    if (fromCurrency && toCurrency && fromCurrency === toCurrency) {
+      throw new BadRequestException('from and to currencies must be different');
+    }
+
     const fromAmount = parseFloat(amount ?? '0');
-    const rate = from === to ? 1.0 : parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
+    const rate = fromCurrency === toCurrency ? 1.0 : parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
     const fee = parseFloat((fromAmount * 0.005).toFixed(8));
     const toAmount = parseFloat(((fromAmount - fee) * rate).toFixed(8));
     const quoteId = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -37,8 +43,8 @@ export class FxPreviewController {
     this.quoteCache.set(quoteId, { rate, expiresAt });
 
     return {
-      fromCurrency: from ?? '',
-      toCurrency: to ?? '',
+      fromCurrency,
+      toCurrency,
       fromAmount,
       toAmount,
       rate,
