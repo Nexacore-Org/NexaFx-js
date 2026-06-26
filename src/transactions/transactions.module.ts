@@ -12,6 +12,7 @@ import { AuthModule } from '../auth/auth.module';
 import { SecurityModule } from '../common/security.module';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
 import { FxModule } from '../fx/fx.module';
+import { FeesModule } from '../fees/fees.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { FxModule } from '../fx/fx.module';
     SecurityModule,
     IdempotencyModule,
     FxModule,
+    FeesModule,
   ],
   controllers: [TransactionsController],
   providers: [TransactionsService, TransactionLimitService],

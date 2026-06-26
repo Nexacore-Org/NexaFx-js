@@ -7,6 +7,8 @@ import { AuditService } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { TransactionLimitService } from './transaction-limit.service';
+import { FeesService } from '../fees/fees.service';
 
 type TransactionManager = {
   create: <T extends Record<string, unknown>>(entity: new () => T, value: T) => T;
@@ -43,6 +45,8 @@ describe('TransactionsService', () => {
   let mailService: jest.Mocked<Pick<MailService, 'sendTransactionReversalNotice'>>;
   let usersService: jest.Mocked<Pick<UsersService, 'findById'>>;
   let events: jest.Mocked<Pick<EventEmitter2, 'emit'>>;
+  let limitService: jest.Mocked<Pick<TransactionLimitService, 'check'>>;
+  let feesService: jest.Mocked<Pick<FeesService, 'calculateFee' | 'recordFee'>>;
   let service: TransactionsService;
 
   beforeEach(() => {
@@ -58,6 +62,11 @@ describe('TransactionsService', () => {
     mailService = { sendTransactionReversalNotice: jest.fn() };
     usersService = { findById: jest.fn() };
     events = { emit: jest.fn() };
+    limitService = { check: jest.fn().mockResolvedValue(undefined) };
+    feesService = {
+      calculateFee: jest.fn().mockReturnValue({ feeAmount: 0, reason: null }),
+      recordFee: jest.fn().mockResolvedValue({}),
+    };
 
     service = new TransactionsService(
       txRepo as unknown as Repository<Transaction>,
@@ -67,6 +76,8 @@ describe('TransactionsService', () => {
       mailService as unknown as MailService,
       usersService as unknown as UsersService,
       events as unknown as EventEmitter2,
+      limitService as unknown as TransactionLimitService,
+      feesService as unknown as FeesService,
     );
   });
 
@@ -92,6 +103,7 @@ describe('TransactionsService', () => {
     });
 
     it('#742: blocks when amount + fee exceeds daily limit', async () => {
+      limitService.check.mockRejectedValueOnce(new BadRequestException('Daily limit exceeded'));
       await expect(
         service.createDeposit({ ...dto, amount: 50_000 }),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -134,6 +146,7 @@ describe('TransactionsService', () => {
     });
 
     it('#742: blocks when amount + fee exceeds daily limit', async () => {
+      limitService.check.mockRejectedValueOnce(new BadRequestException('Daily limit exceeded'));
       await expect(
         service.createWithdrawal({ ...dto, amount: 50_000 }),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -141,7 +154,9 @@ describe('TransactionsService', () => {
 
     it('throws when balance is insufficient (including fee)', async () => {
       walletsService.getBalance.mockResolvedValue({ accountId: 'u1', currency: 'USD', balance: 100 } as any);
-      // 100 amount + 0.1 fee > 100 balance
+      // fee is mocked to 0, so 100 amount + 0 fee == balance (exactly), which passes
+      // set fee to make total > balance
+      feesService.calculateFee.mockReturnValueOnce({ feeAmount: 1, reason: null });
       await expect(service.createWithdrawal(dto)).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -207,6 +222,7 @@ describe('TransactionsService', () => {
     });
 
     it('#742: blocks when fromAmount + fee exceeds daily limit', async () => {
+      limitService.check.mockRejectedValueOnce(new BadRequestException('Daily limit exceeded'));
       await expect(
         service.createSwap({ ...dto, fromAmount: 50_000 }),
       ).rejects.toBeInstanceOf(BadRequestException);

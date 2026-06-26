@@ -15,6 +15,7 @@ import { AuditService } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
 import { TransactionLimitService } from './transaction-limit.service';
+import { FeesService } from '../fees/fees.service';
 
 export interface TransferDto {
   senderId: string;
@@ -64,12 +65,6 @@ export interface SwapDto {
   metadata?: Record<string, unknown>;
 }
 
-/** Minimal fee result — replace with a real FeeService injection as needed. */
-export interface FeeResult {
-  feeAmount: number;
-}
-
-const FEE_RATE = 0.001; // 0.1% flat fee — replace with injected FeeService
 const MAX_RETRIES = 3;
 
 @Injectable()
@@ -86,6 +81,7 @@ export class TransactionsService {
     private readonly usersService: UsersService,
     private readonly events: EventEmitter2,
     private readonly limitService: TransactionLimitService,
+    private readonly feesService: FeesService,
   ) {}
 
   async transfer(dto: TransferDto): Promise<Transaction> {
@@ -183,10 +179,6 @@ export class TransactionsService {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  private calculateFee(amount: number): FeeResult {
-    return { feeAmount: Number((amount * FEE_RATE).toFixed(8)) };
-  }
-
   private checkDailyLimit(_amount: number): void {
     // Superseded by TransactionLimitService.check() — kept as no-op for backward compat
   }
@@ -212,7 +204,7 @@ export class TransactionsService {
   // ---------------------------------------------------------------------------
 
   async createDeposit(dto: DepositDto): Promise<Transaction> {
-    const fee = this.calculateFee(dto.amount);
+    const fee = this.feesService.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.currency);
 
@@ -235,6 +227,15 @@ export class TransactionsService {
       tx.status = TransactionStatus.COMPLETED;
       tx.completedAt = new Date();
       await this.txRepo.save(tx);
+      await this.feesService.recordFee({
+        transactionId: tx.id,
+        userId: dto.userId,
+        transactionType: 'deposit',
+        amount: dto.amount,
+        feeAmount: fee.feeAmount,
+        currency: dto.currency,
+        reason: fee.reason,
+      });
       this.events.emit('transactions.deposit.completed', { transactionId: tx.id, userId: dto.userId });
       return tx;
     } catch (err) {
@@ -257,7 +258,7 @@ export class TransactionsService {
   // ---------------------------------------------------------------------------
 
   async createWithdrawal(dto: WithdrawalDto): Promise<Transaction> {
-    const fee = this.calculateFee(dto.amount);
+    const fee = this.feesService.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.currency);
 
@@ -286,6 +287,15 @@ export class TransactionsService {
       tx.status = TransactionStatus.COMPLETED;
       tx.completedAt = new Date();
       await this.txRepo.save(tx);
+      await this.feesService.recordFee({
+        transactionId: tx.id,
+        userId: dto.userId,
+        transactionType: 'withdrawal',
+        amount: dto.amount,
+        feeAmount: fee.feeAmount,
+        currency: dto.currency,
+        reason: fee.reason,
+      });
       this.events.emit('transactions.withdrawal.completed', { transactionId: tx.id, userId: dto.userId });
       return tx;
     } catch (err) {
@@ -310,7 +320,7 @@ export class TransactionsService {
   // ---------------------------------------------------------------------------
 
   async createSwap(dto: SwapDto): Promise<Transaction> {
-    const fee = this.calculateFee(dto.fromAmount);
+    const fee = this.feesService.calculateFee(dto.fromAmount);
     const totalChecked = dto.fromAmount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.fromCurrency);
 
@@ -344,6 +354,15 @@ export class TransactionsService {
         tx.completedAt = new Date();
         tx.retryCount = attempt;
         await this.txRepo.save(tx);
+        await this.feesService.recordFee({
+          transactionId: tx.id,
+          userId: dto.userId,
+          transactionType: 'swap',
+          amount: dto.fromAmount,
+          feeAmount: fee.feeAmount,
+          currency: dto.fromCurrency,
+          reason: fee.reason,
+        });
         this.events.emit('transactions.swap.completed', { transactionId: tx.id, userId: dto.userId });
         return tx;
       } catch (err) {
