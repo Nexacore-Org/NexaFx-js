@@ -384,6 +384,13 @@ export const envSchema = z.object({
   STELLAR_HOT_WALLET_SECRET: z.string().optional(),
 
   // ============================================
+  // Stellar Fee Configuration
+  // ============================================
+  STELLAR_BASE_FEE: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().min(1).max(10000000))
+    .default(() => 100),
   // Rate Replay Window
   // ============================================
   RATE_REPLAY_WINDOW_MS: z

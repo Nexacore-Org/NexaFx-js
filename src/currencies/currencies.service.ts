@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   normalizeCurrencyCode,
+  isSupportedCurrency,
   SUPPORTED_CURRENCY_CODES,
 } from './supported-currencies';
 
@@ -59,6 +60,13 @@ const CURRENCY_METADATA: Record<string, SupportedCurrency> = {
 @Injectable()
 export class CurrenciesService {
   constructor(private readonly config: ConfigService) {}
+
+  validateCurrencyActive(code: string): void {
+    const normalized = normalizeCurrencyCode(code);
+    if (!isSupportedCurrency(normalized)) {
+      throw new BadRequestException(`Currency ${code} is not supported`);
+    }
+  }
 
   listSupportedCurrencies(): SupportedCurrency[] {
     const supported =
