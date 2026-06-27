@@ -5,6 +5,7 @@ import { HttpModule } from '@nestjs/axios';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AdminCacheInvalidationService } from './admin-cache-invalidation.service';
+import { AdminAlertService } from './admin-alert.service';
 import { KeyRotationService } from './key-rotation.service';
 import { AdminExportsController } from './exports/admin-exports.controller';
 import { AdminExportsProcessor } from './exports/admin-exports.processor';
@@ -46,6 +47,7 @@ import { SharedJwtModule } from '../common/jwt/jwt.module';
   providers: [
     AdminService,
     AdminCacheInvalidationService,
+    AdminAlertService,
     KeyRotationService,
     AdminExportsProcessor,
     ExportStorageService,

@@ -229,7 +229,7 @@ export class TransactionsService {
       currency: dto.currency,
       fee: fee.feeAmount,
       reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'deposit' },
+      metadata: { ...dto.metadata, type: 'deposit', memo: this.generateStellarMemo(tx.id).value, fullTransactionId: tx.id },
       status: TransactionStatus.PENDING,
     });
     await this.txRepo.save(tx);

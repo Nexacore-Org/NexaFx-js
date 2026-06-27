@@ -269,6 +269,17 @@ export const envSchema = z.object({
     .default(() => true),
 
   // ============================================
+  // Admin Alert Configuration
+  // ============================================
+  ADMIN_ALERT_EMAIL: z.string().email('ADMIN_ALERT_EMAIL must be a valid email').optional(),
+  ADMIN_ALERT_SLACK_WEBHOOK_URL: z.string().url('ADMIN_ALERT_SLACK_WEBHOOK_URL must be a valid URL').optional(),
+  ADMIN_ALERT_RATE_LIMIT_MINUTES: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 15),
+
+  // ============================================
   // AML Monitoring Tuning
   // ============================================
   AML_STRUCTURING_THRESHOLD: z

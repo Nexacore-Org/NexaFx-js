@@ -9,10 +9,6 @@ import {
 } from '../currencies/supported-currencies';
 import { WalletBalanceEntity } from './wallet-balance.entity';
 import { WalletBalance } from './wallets.types';
-import {
-  normalizeCurrencyCode,
-  isSupportedCurrency,
-} from '../currencies/supported-currencies';
 
 @Injectable()
 export class WalletsService {
@@ -33,9 +29,6 @@ export class WalletsService {
       return this.getBalance(accountId, normalizedCurrency);
     }
 
-    const driverType = this.dataSource.options?.type;
-    const driverType = this.dataSource.options.type;
-
     return withTransaction(this.dataSource, async (manager) => {
       let wallet = await manager.findOne(WalletBalanceEntity, {
         where: { accountId, currency: normalizedCurrency },
@@ -51,10 +44,6 @@ export class WalletsService {
       }
 
       const newBalance = Number(new Big(wallet.balance).plus(new Big(delta)).toFixed(2));
-      const newBalance = Number(
-        new Big(wallet.balance).plus(new Big(delta)).toFixed(8),
-        new Big(wallet.balance).plus(new Big(delta)).toFixed(2),
-      );
       if (newBalance < 0) {
         throw new BadRequestException('Insufficient balance');
       }
@@ -74,10 +63,6 @@ export class WalletsService {
   }
 
   async getBalance(accountId: string, currency: string): Promise<WalletBalance> {
-  async getBalance(
-    accountId: string,
-    currency: string,
-  ): Promise<WalletBalance> {
     const normalizedCurrency = this.validateCurrency(currency);
 
     const wallet = await this.walletRepository.findOne({

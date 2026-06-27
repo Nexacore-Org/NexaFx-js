@@ -22,6 +22,19 @@ export class StellarService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.network === 'PUBLIC' && this.config.get<string>('NODE_ENV') !== 'production') {
+      this.logger.error(
+        '[STARTUP BLOCKED] STELLAR_NETWORK=PUBLIC is forbidden when NODE_ENV is not "production"',
+      );
+      throw new Error(
+        '[STARTUP BLOCKED] STELLAR_NETWORK=PUBLIC is only allowed in production environments.',
+      );
+    }
+
+    this.logger.log(
+      `[CRITICAL] Stellar network: ${this.network}${this.network === 'PUBLIC' ? ' — REAL MONEY TRANSACTIONS ENABLED' : ''}`,
+    );
+
     await this.checkHorizonHealth();
   }
 
