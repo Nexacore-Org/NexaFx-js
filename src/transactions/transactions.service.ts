@@ -4,13 +4,16 @@ import {
   Logger,
   NotFoundException,
   UnprocessableEntityException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Repository, DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import Big from 'big.js';
 import { Transaction, TransactionStatus } from './transaction.entity';
 import { WalletsService } from '../wallet/wallets.service';
+import { StellarService } from '../stellar/stellar.service';
 import { AuditService } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
@@ -52,6 +55,7 @@ export interface WithdrawalDto {
   amount: number;
   currency: string;
   reference: string;
+  destinationAddress: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -74,7 +78,7 @@ const FEE_RATE = 0.001; // 0.1% flat fee — replace with injected FeeService
 const MAX_RETRIES = 3;
 
 @Injectable()
-export class TransactionsService {
+export class TransactionsService implements OnModuleInit {
   private readonly logger = new Logger(TransactionsService.name);
 
   constructor(
@@ -82,6 +86,8 @@ export class TransactionsService {
     private readonly txRepo: Repository<Transaction>,
     private readonly dataSource: DataSource,
     private readonly walletsService: WalletsService,
+    private readonly stellarService: StellarService,
+    private readonly configService: ConfigService,
     private readonly auditService: AuditService,
     private readonly mailService: MailService,
     private readonly usersService: UsersService,
@@ -89,6 +95,24 @@ export class TransactionsService {
     private readonly limitService: TransactionLimitService,
     private readonly termsService: TermsAcceptanceService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const secret = this.configService.get<string>('STELLAR_HOT_WALLET_SECRET');
+    if (!secret) {
+      throw new Error(
+        '[STARTUP BLOCKED] STELLAR_HOT_WALLET_SECRET is not configured. ' +
+          'Set it in your environment variables before starting the server.',
+      );
+    }
+  }
+
+  private getStellarSecretKey(): string {
+    const secret = this.configService.get<string>('STELLAR_HOT_WALLET_SECRET');
+    if (!secret) {
+      throw new BadRequestException('Stellar secret key is not configured');
+    }
+    return secret;
+  }
 
   async transfer(dto: TransferDto): Promise<Transaction> {
     await this.termsService.ensureAccepted(dto.senderId);
@@ -241,6 +265,7 @@ export class TransactionsService {
       tx.status = TransactionStatus.COMPLETED;
       tx.completedAt = new Date();
       await this.txRepo.save(tx);
+      await this.usersService.invalidateWalletBalanceCache(dto.userId);
       this.events.emit('transactions.deposit.completed', { transactionId: tx.id, userId: dto.userId });
       return tx;
     } catch (err) {
@@ -264,6 +289,16 @@ export class TransactionsService {
 
   async createWithdrawal(dto: WithdrawalDto): Promise<Transaction> {
     await this.termsService.ensureAccepted(dto.userId);
+
+    // #789: Check destination account exists before proceeding
+    const destinationExists = await this.stellarService.accountExists(dto.destinationAddress);
+    if (!destinationExists) {
+      throw new BadRequestException(
+        `Destination Stellar account (${dto.destinationAddress}) is not funded. ` +
+          'The recipient account must have a minimum balance of 1 XLM.',
+      );
+    }
+
     const fee = this.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.currency);
@@ -280,7 +315,7 @@ export class TransactionsService {
       currency: dto.currency,
       fee: fee.feeAmount,
       reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'withdrawal' },
+      metadata: { ...dto.metadata, type: 'withdrawal', destinationAddress: dto.destinationAddress },
       status: TransactionStatus.PENDING,
     });
     await this.txRepo.save(tx);
@@ -293,6 +328,7 @@ export class TransactionsService {
       tx.status = TransactionStatus.COMPLETED;
       tx.completedAt = new Date();
       await this.txRepo.save(tx);
+      await this.usersService.invalidateWalletBalanceCache(dto.userId);
       this.events.emit('transactions.withdrawal.completed', { transactionId: tx.id, userId: dto.userId });
       return tx;
     } catch (err) {

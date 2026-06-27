@@ -374,9 +374,14 @@ export const envSchema = z.object({
     .default(() => 5),
 
   // ============================================
-  // Stellar Hot Wallet (optional — required only when Stellar is enabled)
+  // Stellar Hot Wallet (required — fail-fast on startup)
   // ============================================
-  STELLAR_HOT_WALLET_SECRET: z.string().optional(),
+  STELLAR_HOT_WALLET_SECRET: z.string().min(1, 'STELLAR_HOT_WALLET_SECRET is required'),
+  WALLET_BALANCE_CACHE_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 30),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

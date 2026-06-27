@@ -1,9 +1,13 @@
 import {
+  Inject,
   Injectable,
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { User, UserRole, KycStatus } from './user.entity';
 
@@ -28,7 +32,24 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly configService: ConfigService,
   ) {}
+
+  private get walletBalanceCacheTtl(): number {
+    return this.configService.get<number>('WALLET_BALANCE_CACHE_TTL_SECONDS', 30);
+  }
+
+  async getCachedWalletBalance(userId: string, currency: string): Promise<number | null> {
+    const cacheKey = `wallet-balances:${userId}`;
+    const cached = await this.cacheManager.get<Record<string, number>>(cacheKey);
+    if (cached && cached[currency] !== undefined) return cached[currency];
+    return null;
+  }
+
+  async invalidateWalletBalanceCache(userId: string): Promise<void> {
+    await this.cacheManager.del(`wallet-balances:${userId}`);
+  }
 
   async create(dto: CreateUserDto): Promise<User> {
     const existing = await this.usersRepository.findOne({

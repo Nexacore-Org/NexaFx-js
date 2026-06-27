@@ -1,5 +1,7 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import axios from 'axios';
 
 @Injectable()
@@ -9,7 +11,10 @@ export class StellarService implements OnModuleInit {
   private readonly network: string;
   private readonly timeoutMs = 5000;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+  ) {
     this.horizonUrl = this.config.get<string>(
       'STELLAR_HORIZON_URL',
       'https://horizon-testnet.stellar.org',
@@ -35,6 +40,23 @@ export class StellarService implements OnModuleInit {
         throw new Error(`[STARTUP BLOCKED] ${message}`);
       }
       this.logger.warn(`[TESTNET] ${message} — startup continues`);
+    }
+  }
+
+  async accountExists(address: string): Promise<boolean> {
+    const cacheKey = `stellar:account-exists:${address}`;
+    const cached = await this.cacheManager.get<boolean>(cacheKey);
+    if (cached !== undefined) return cached;
+
+    try {
+      await axios.get(`${this.horizonUrl}/accounts/${address}`, {
+        timeout: this.timeoutMs,
+      });
+      await this.cacheManager.set(cacheKey, true, 60_000);
+      return true;
+    } catch {
+      await this.cacheManager.set(cacheKey, false, 60_000);
+      return false;
     }
   }
 }
