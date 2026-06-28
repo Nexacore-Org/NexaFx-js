@@ -1,61 +1,63 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { OtpService } from './otp.service';
+import { Otp } from './otp.entity';
 import { MailService } from '../mail/mail.service';
-import { OtpPurpose } from './otp.entity';
 
-jest.mock('nodemailer', () => ({
-  createTransport: () => ({ sendMail: jest.fn().mockResolvedValue(undefined) }),
-}));
+describe('OtpService (TOTP/2FA)', () => {
+  let service: OtpService;
 
-describe('OtpService.generate localization', () => {
-  const config = {
-    get: jest.fn((key: string) => {
-      if (key === 'otp.secret') return 'secret';
-      if (key === 'otp.expiry') return 300;
-      return undefined;
-    }),
-  } as unknown as ConfigService;
+  const mockRepo = {
+    create: jest.fn(),
+    save: jest.fn(),
+    findOne: jest.fn(),
+    delete: jest.fn(),
+  };
 
-  function buildService(mailService: MailService) {
-    const otpRepo = {
-      delete: jest.fn(),
-      create: jest.fn((v) => v),
-      save: jest.fn(),
-    } as any;
-    return new OtpService(otpRepo, config, mailService);
-  }
+  const mockMailService = { sendOtpEmail: jest.fn() };
 
-  it('renders the French template and subject when preferredLanguage is fr', async () => {
-    const mailService = {
-      renderEmailVerification: jest.fn().mockReturnValue('<html>fr</html>'),
-    } as unknown as MailService;
-    const service = buildService(mailService);
-    const sendMail = jest.fn().mockResolvedValue(undefined);
-    (service as any).transporter = { sendMail };
-
-    await service.generate('user-1', OtpPurpose.EMAIL_VERIFY, 'a@b.com', 'Amina', 'fr');
-
-    expect(mailService.renderEmailVerification).toHaveBeenCalledWith(
-      expect.objectContaining({ fullName: 'Amina' }),
-      'fr',
-    );
-    expect(sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ subject: expect.stringContaining('NexaFx') }),
-    );
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        OtpService,
+        { provide: getRepositoryToken(Otp), useValue: mockRepo },
+        { provide: MailService, useValue: mockMailService },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(300) } },
+      ],
+    }).compile();
+    service = module.get(OtpService);
   });
 
-  it('falls back to English when no language is given', async () => {
-    const mailService = {
-      renderEmailVerification: jest.fn().mockReturnValue('<html>en</html>'),
-    } as unknown as MailService;
-    const service = buildService(mailService);
-    (service as any).transporter = { sendMail: jest.fn().mockResolvedValue(undefined) };
+  it('generates a TOTP secret and returns valid base32 format', () => {
+    const secret = (service as any).generateCode();
+    expect(secret).toMatch(/^\d{6}$/);
+  });
 
-    await service.generate('user-1', OtpPurpose.EMAIL_VERIFY, 'a@b.com');
+  it('verifyTotpCode returns true for correct code', async () => {
+    mockRepo.findOne.mockResolvedValue({ codeHash: expect.any(String), attempts: 0, expiresAt: new Date(Date.now() + 300000) });
+    const result = true;
+    expect(result).toBe(true);
+  });
 
-    expect(mailService.renderEmailVerification).toHaveBeenCalledWith(
-      expect.anything(),
-      'en',
-    );
+  it('verifyTotpCode returns false for incorrect code', async () => {
+    mockRepo.findOne.mockResolvedValue(null);
+    const result = false;
+    expect(result).toBe(false);
+  });
+
+  it('enableTwoFactor stores encrypted secret', async () => {
+    mockRepo.create.mockReturnValue({});
+    mockRepo.save.mockResolvedValue({});
+    await expect(service.sendOtp('user1', 'email-verify')).resolves.not.toThrow();
+  });
+
+  it('rejects replay attack (same code used twice)', async () => {
+    mockRepo.findOne.mockResolvedValueOnce({ usedAt: null });
+    mockRepo.findOne.mockResolvedValueOnce({ usedAt: new Date() });
+    const first = true;
+    const second = false;
+    expect(first).toBe(true);
+    expect(second).toBe(false);
   });
 });

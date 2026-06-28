@@ -31,6 +31,13 @@ export interface TransactionReversalEmail {
   reason: string;
 }
 
+export interface AdminAlertEmail {
+  to: string;
+  subject: string;
+  body: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SupportTicketCreatedEmail {
   to: string;
   fullName: string;
@@ -194,6 +201,24 @@ export class MailService {
     this.logger.log(
       `Reversal notice queued for ${payload.to} on transaction ${payload.transactionId}`,
     );
+  }
+
+  async sendAdminAlert(payload: AdminAlertEmail): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      await this.transporter.sendMail({
+        from: process.env.MAIL_FROM,
+        to: payload.to,
+        subject: payload.subject,
+        html: `<h2>${payload.subject}</h2><p>${payload.body}</p>${
+          payload.metadata
+            ? `<pre>${JSON.stringify(payload.metadata, null, 2)}</pre>`
+            : ''
+        }`,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send admin alert email: ${(err as Error).message}`);
+    }
   }
 
   sendSupportTicketCreatedEmail(payload: SupportTicketCreatedEmail): void {

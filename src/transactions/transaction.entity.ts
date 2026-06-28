@@ -5,7 +5,10 @@ import {
   Entity,
   Index,
   PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { User } from '../users/user.entity';
 
 export enum TransactionStatus {
   PENDING = 'pending',
@@ -26,6 +29,14 @@ export enum TransactionStatus {
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'senderId' })
+  sender?: User;
+
+  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'receiverId' })
+  receiver?: User;
 
   @Column({ type: 'uuid' })
   senderId!: string;

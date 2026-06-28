@@ -207,6 +207,11 @@ export const envSchema = z.object({
     .transform(Number)
     .pipe(z.number().int().positive())
     .default(() => 60),
+  WALLET_BALANCE_CACHE_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().min(1).max(3600))
+    .default(() => 30),
   ADMIN_ALLOWED_IPS: z.string().optional().default(''),
   WEBHOOK_MAX_ATTEMPTS: z
     .string()
@@ -262,6 +267,17 @@ export const envSchema = z.object({
     .string()
     .transform((val) => val === 'true')
     .default(() => true),
+
+  // ============================================
+  // Admin Alert Configuration
+  // ============================================
+  ADMIN_ALERT_EMAIL: z.string().email('ADMIN_ALERT_EMAIL must be a valid email').optional(),
+  ADMIN_ALERT_SLACK_WEBHOOK_URL: z.string().url('ADMIN_ALERT_SLACK_WEBHOOK_URL must be a valid URL').optional(),
+  ADMIN_ALERT_RATE_LIMIT_MINUTES: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 15),
 
   // ============================================
   // AML Monitoring Tuning
