@@ -390,25 +390,14 @@ export const envSchema = z.object({
     .default(() => 5),
 
   // ============================================
-  // Stellar Hot Wallet (optional — required only when Stellar is enabled)
+  // Stellar Hot Wallet (required — fail-fast on startup)
   // ============================================
-  STELLAR_HOT_WALLET_SECRET: z.string().optional(),
-
-  // ============================================
-  // Stellar Fee Configuration
-  // ============================================
-  STELLAR_BASE_FEE: z
+  STELLAR_HOT_WALLET_SECRET: z.string().min(1, 'STELLAR_HOT_WALLET_SECRET is required'),
+  WALLET_BALANCE_CACHE_TTL_SECONDS: z
     .string()
     .transform(Number)
-    .pipe(z.number().min(1).max(10000000))
-    .default(() => 100),
-  // Rate Replay Window
-  // ============================================
-  RATE_REPLAY_WINDOW_MS: z
-    .string()
-    .transform(Number)
-    .pipe(z.number().min(1000).max(3600000))
-    .default(() => 300000),
+    .pipe(z.number().int().positive())
+    .default(() => 30),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

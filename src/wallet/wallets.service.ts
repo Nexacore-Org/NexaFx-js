@@ -62,7 +62,10 @@ export class WalletsService {
     });
   }
 
-  async getBalance(accountId: string, currency: string): Promise<WalletBalance> {
+  async getBalance(
+    accountId: string,
+    currency: string,
+  ): Promise<WalletBalance> {
     const normalizedCurrency = this.validateCurrency(currency);
 
     const wallet = await this.walletRepository.findOne({

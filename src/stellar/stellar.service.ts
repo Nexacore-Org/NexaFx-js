@@ -1,5 +1,7 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import axios from 'axios';
 
 @Injectable()
@@ -11,7 +13,10 @@ export class StellarService implements OnModuleInit {
   private feeCache: { p70Fee: number; cachedAt: number } | null = null;
   private readonly feeCacheTtlMs = 10_000;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+  ) {
     this.horizonUrl = this.config.get<string>(
       'STELLAR_HORIZON_URL',
       'https://horizon-testnet.stellar.org',
@@ -53,25 +58,20 @@ export class StellarService implements OnModuleInit {
     }
   }
 
-  async getEstimatedFee(): Promise<number> {
-    if (this.feeCache && Date.now() - this.feeCache.cachedAt < this.feeCacheTtlMs) {
-      return this.feeCache.p70Fee;
-    }
+  async accountExists(address: string): Promise<boolean> {
+    const cacheKey = `stellar:account-exists:${address}`;
+    const cached = await this.cacheManager.get<boolean>(cacheKey);
+    if (cached !== undefined) return cached;
 
     try {
-      const response = await axios.get(`${this.horizonUrl}/fee_stats`, { timeout: this.timeoutMs });
-      const stats = response.data;
-      const p70Fee = parseInt(stats?.fee_charged?.p70 ?? stats?.max_fee?.p70 ?? '0', 10);
-
-      if (p70Fee > 0) {
-        this.feeCache = { p70Fee, cachedAt: Date.now() };
-        return p70Fee;
-      }
-    } catch (err) {
-      this.logger.warn(`Failed to fetch fee stats: ${(err as Error).message}`);
+      await axios.get(`${this.horizonUrl}/accounts/${address}`, {
+        timeout: this.timeoutMs,
+      });
+      await this.cacheManager.set(cacheKey, true, 60_000);
+      return true;
+    } catch {
+      await this.cacheManager.set(cacheKey, false, 60_000);
+      return false;
     }
-
-    const baseFee = this.config.get<number>('STELLAR_BASE_FEE', 100);
-    return baseFee * 10;
   }
 }
