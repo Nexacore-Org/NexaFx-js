@@ -1,18 +1,10 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import {
-  Inject,
-  Injectable,
-  NotFoundException,
-  ConflictException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
-import type { Cache } from 'cache-manager';
 import { User, UserRole, KycStatus } from './user.entity';
-import { ConfigService } from '@nestjs/config';
 
 export interface CreateUserDto {
   email: string;
@@ -30,8 +22,12 @@ export interface UpdateUserDto {
   isActive?: boolean;
 }
 
+type WalletBalanceLoader = (userId: string) => Promise<Record<string, number>>;
+
 @Injectable()
 export class UsersService {
+  private pendingFetches = new Map<string, Promise<Record<string, number>>>();
+
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
@@ -43,29 +39,41 @@ export class UsersService {
     return this.configService.get<number>('WALLET_BALANCE_CACHE_TTL_SECONDS', 30);
   }
 
-  async getCachedWalletBalance(userId: string, currency: string): Promise<number | null> {
-    const cacheKey = `wallet-balances:${userId}`;
+  private getCacheKey(userId: string): string {
+    return `wallet-balances:${userId}`;
+  }
+
+  async getWalletBalances(userId: string, loader: WalletBalanceLoader): Promise<Record<string, number>> {
+    const cacheKey = this.getCacheKey(userId);
     const cached = await this.cacheManager.get<Record<string, number>>(cacheKey);
-    if (cached && cached[currency] !== undefined) return cached[currency];
-    return null;
+    if (cached) return cached;
+
+    const pending = this.pendingFetches.get(userId);
+    if (pending) return pending;
+
+    const fetch = (async () => {
+      try {
+        const balances = await loader(userId);
+        await this.cacheManager.set(cacheKey, balances, this.walletBalanceCacheTtl);
+        return balances;
+      } finally {
+        this.pendingFetches.delete(userId);
+      }
+    })();
+
+    this.pendingFetches.set(userId, fetch);
+    return fetch;
   }
 
   async invalidateWalletBalanceCache(userId: string): Promise<void> {
-    await this.cacheManager.del(`wallet-balances:${userId}`);
+    await this.cacheManager.del(this.getCacheKey(userId));
   }
 
   async create(dto: CreateUserDto): Promise<User> {
-    const existing = await this.usersRepository.findOne({
-      where: { email: dto.email },
-    });
-    if (existing) {
-      throw new ConflictException('Email already in use');
-    }
+    const existing = await this.usersRepository.findOne({ where: { email: dto.email } });
+    if (existing) throw new ConflictException('Email already in use');
 
-    const user = this.usersRepository.create({
-      ...dto,
-      role: dto.role ?? UserRole.USER,
-    });
+    const user = this.usersRepository.create({ ...dto, role: dto.role ?? UserRole.USER });
     return this.usersRepository.save(user);
   }
 
@@ -97,22 +105,6 @@ export class UsersService {
     return safe;
   }
 
-  private get walletCacheTtl(): number {
-    return this.configService.get<number>('WALLET_BALANCE_CACHE_TTL_SECONDS') ?? 30;
-  }
-
-  async getCachedWalletBalance(userId: string): Promise<number | null> {
-    const cached = await this.cacheManager.get<number>(`wallet_balance:${userId}`);
-    return cached ?? null;
-  }
-
-  async setCachedWalletBalance(userId: string, balance: number): Promise<void> {
-    await this.cacheManager.set(`wallet_balance:${userId}`, balance, this.walletCacheTtl);
-  }
-
-  async invalidateWalletBalanceCache(userId: string): Promise<void> {
-    await this.cacheManager.del(`wallet_balance:${userId}`);
-  }
   async deleteUser(id: string): Promise<void> {
     const user = await this.findById(id);
     const uuid = crypto.randomUUID();
