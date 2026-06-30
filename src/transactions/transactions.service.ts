@@ -69,12 +69,6 @@ export interface SwapDto {
   metadata?: Record<string, unknown>;
 }
 
-/** Minimal fee result — replace with a real FeeService injection as needed. */
-export interface FeeResult {
-  feeAmount: number;
-}
-
-const FEE_RATE = 0.001; // 0.1% flat fee — replace with injected FeeService
 const MAX_RETRIES = 3;
 
 @Injectable()
@@ -93,7 +87,7 @@ export class TransactionsService implements OnModuleInit {
     private readonly usersService: UsersService,
     private readonly events: EventEmitter2,
     private readonly limitService: TransactionLimitService,
-    private readonly termsService: TermsAcceptanceService,
+    private readonly feesService: FeesService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -212,10 +206,6 @@ export class TransactionsService implements OnModuleInit {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  private calculateFee(amount: number): FeeResult {
-    return { feeAmount: Number((amount * FEE_RATE).toFixed(8)) };
-  }
-
   private checkDailyLimit(_amount: number): void {
     // Superseded by TransactionLimitService.check() — kept as no-op for backward compat
   }
@@ -288,6 +278,7 @@ export class TransactionsService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async createWithdrawal(dto: WithdrawalDto): Promise<Transaction> {
+    const fee = this.feesService.calculateFee(dto.amount);
     await this.termsService.ensureAccepted(dto.userId);
 
     // #789: Check destination account exists before proceeding
@@ -388,6 +379,15 @@ export class TransactionsService implements OnModuleInit {
         tx.completedAt = new Date();
         tx.retryCount = attempt;
         await this.txRepo.save(tx);
+        await this.feesService.recordFee({
+          transactionId: tx.id,
+          userId: dto.userId,
+          transactionType: 'swap',
+          amount: dto.fromAmount,
+          feeAmount: fee.feeAmount,
+          currency: dto.fromCurrency,
+          reason: fee.reason,
+        });
         this.events.emit('transactions.swap.completed', { transactionId: tx.id, userId: dto.userId });
         return tx;
       } catch (err) {
