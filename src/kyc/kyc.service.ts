@@ -3,12 +3,16 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { KycDocument, KycDocumentStatus } from './kyc-document.entity';
+import { withTransaction } from '../common/helpers/with-transaction.helper';
+
+const POSTGRES_UNIQUE_VIOLATION = '23505';
 
 export interface SubmitKycDto {
   userId: string;
@@ -45,6 +49,7 @@ export class KycService {
     private readonly kycRepo: Repository<KycDocument>,
     private readonly events: EventEmitter2,
     private readonly config: ConfigService,
+    private readonly dataSource: DataSource,
   ) {
     this.storageHost =
       this.config.get<string>('kyc.storageHost') ??
@@ -56,8 +61,32 @@ export class KycService {
       validateDocumentUrl(dto.documentUrl, this.storageHost);
     }
 
-    const doc = this.kycRepo.create(dto);
-    return this.kycRepo.save(doc);
+    try {
+      return await withTransaction(this.dataSource, async (manager) => {
+        const existing = await manager.findOne(KycDocument, {
+          where: { userId: dto.userId, status: KycDocumentStatus.PENDING },
+        });
+        if (existing) {
+          throw new ConflictException({
+            message: 'An active KYC submission already exists for this user',
+            submissionId: existing.id,
+          });
+        }
+        const doc = manager.create(KycDocument, dto);
+        return manager.save(KycDocument, doc);
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION) {
+        const existing = await this.kycRepo.findOne({
+          where: { userId: dto.userId, status: KycDocumentStatus.PENDING },
+        });
+        throw new ConflictException({
+          message: 'An active KYC submission already exists for this user',
+          submissionId: existing?.id,
+        });
+      }
+      throw err;
+    }
   }
 
   async review(id: string, dto: ReviewKycDto): Promise<KycDocument> {

@@ -9,8 +9,14 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as nodemailer from 'nodemailer';
 import { Otp, OtpPurpose } from './otp.entity';
+import { MailService } from '../mail/mail.service';
 
 const MAX_ATTEMPTS = 5;
+
+const OTP_SUBJECTS: Record<string, string> = {
+  en: 'Your NexaFx verification code',
+  fr: 'Votre code de vérification NexaFx',
+};
 
 @Injectable()
 export class OtpService {
@@ -20,6 +26,7 @@ export class OtpService {
     @InjectRepository(Otp)
     private readonly otpRepo: Repository<Otp>,
     private readonly config: ConfigService,
+    private readonly mailService: MailService,
   ) {
     this.transporter = nodemailer.createTransport({
       host: this.config.get<string>('mail.host'),
@@ -32,7 +39,13 @@ export class OtpService {
     });
   }
 
-  async generate(userId: string, purpose: OtpPurpose, email: string): Promise<void> {
+  async generate(
+    userId: string,
+    purpose: OtpPurpose,
+    email: string,
+    fullName: string = '',
+    preferredLanguage: string = 'en',
+  ): Promise<void> {
     const code = this.randomSixDigit();
     const secret = this.config.get<string>('otp.secret') ?? '';
     const codeHash = this.hmac(code, secret);
@@ -44,11 +57,16 @@ export class OtpService {
     const otp = this.otpRepo.create({ userId, codeHash, purpose, expiresAt });
     await this.otpRepo.save(otp);
 
+    const html = this.mailService.renderEmailVerification(
+      { fullName, verificationCode: code, expiresMinutes: Math.round(expiry / 60) },
+      preferredLanguage,
+    );
+
     await this.transporter.sendMail({
       from: this.config.get<string>('mail.from'),
       to: email,
-      subject: `Your OTP code`,
-      text: `Your verification code is: ${code}. It expires in ${Math.round(expiry / 60)} minutes.`,
+      subject: OTP_SUBJECTS[preferredLanguage] ?? OTP_SUBJECTS.en,
+      html,
     });
   }
 

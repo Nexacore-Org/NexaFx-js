@@ -6,6 +6,8 @@ import Redis from 'ioredis';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
+import { Otp } from '../otp/otp.entity';
+import { PasswordResetToken } from '../auth/password-reset.entity';
 
 @Injectable()
 export class ScheduledJobsService {
@@ -17,6 +19,10 @@ export class ScheduledJobsService {
     @InjectRedis() private readonly redis: Redis,
     @InjectRepository(Transaction)
     private readonly txRepo: Repository<Transaction>,
+    @InjectRepository(Otp)
+    private readonly otpRepo: Repository<Otp>,
+    @InjectRepository(PasswordResetToken)
+    private readonly passwordResetRepo: Repository<PasswordResetToken>,
     private readonly config: ConfigService,
   ) {
     this.lockTtlMs = (this.config.get<number>('scheduledJobs.lockTtlMs') ?? 300_000);
@@ -68,6 +74,21 @@ export class ScheduledJobsService {
     } finally {
       await this.releaseJobLock('reconcile-pending-txs');
     }
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async purgeSensitiveAuthArtifacts(): Promise<void> {
+    const now = new Date();
+    const otpCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const passwordResetCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const expiredTokenCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    await this.otpRepo.delete({ expiresAt: LessThan(otpCutoff) });
+    await this.passwordResetRepo.delete({ createdAt: LessThan(passwordResetCutoff) });
+    await this.passwordResetRepo.delete({
+      used: true,
+      createdAt: LessThan(expiredTokenCutoff),
+    });
   }
 
   private async acquireJobLock(jobName: string): Promise<boolean> {

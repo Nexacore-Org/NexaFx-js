@@ -3,12 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import Big from 'big.js';
 import { withTransaction } from '../common/helpers/with-transaction.helper';
-import { WalletBalanceEntity } from './wallet-balance.entity';
-import { WalletBalance } from './wallets.types';
 import {
   normalizeCurrencyCode,
   isSupportedCurrency,
 } from '../currencies/supported-currencies';
+import { WalletBalanceEntity } from './wallet-balance.entity';
+import { WalletBalance } from './wallets.types';
 
 @Injectable()
 export class WalletsService {
@@ -43,10 +43,7 @@ export class WalletsService {
         });
       }
 
-      const newBalance = Number(
-        new Big(wallet.balance).plus(new Big(delta)).toFixed(8),
-        new Big(wallet.balance).plus(new Big(delta)).toFixed(2),
-      );
+      const newBalance = Number(new Big(wallet.balance).plus(new Big(delta)).toFixed(2));
       if (newBalance < 0) {
         throw new BadRequestException('Insufficient balance');
       }
@@ -65,7 +62,6 @@ export class WalletsService {
     });
   }
 
-  async getBalance(accountId: string, currency: string): Promise<WalletBalance> {
   async getBalance(
     accountId: string,
     currency: string,

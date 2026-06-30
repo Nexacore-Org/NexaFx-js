@@ -16,4 +16,9 @@ export class AdminCacheInvalidationService {
   async invalidateStats(): Promise<void> {
     await this.cache.del('admin-stats');
   }
+
+  @OnEvent('currency.updated')
+  async invalidateSupportedCurrencies(): Promise<void> {
+    await this.cache.del('supported-currencies');
+  }
 }

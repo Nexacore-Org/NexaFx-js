@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { TerminusModule } from '@nestjs/terminus';
+import { HttpModule } from '@nestjs/axios';
 import { HealthController } from './health.controller';
-import { BlockchainModule } from '../blockchain/blockchain.module';
+import { HealthService } from './health.service';
 
 @Module({
-  imports: [TerminusModule, BlockchainModule],
+  imports: [HttpModule],
   controllers: [HealthController],
+  providers: [HealthService],
 })
 export class HealthModule {}

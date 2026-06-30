@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { compile, TemplateDelegate } from 'handlebars';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { plainToInstance } from 'class-transformer';
 import { Sanitize } from '../common/decorators/sanitize.decorator';
+
+const DEFAULT_LANGUAGE = 'en';
 
 interface MailTemplateContext {
   title: string;
@@ -29,6 +31,13 @@ export interface TransactionReversalEmail {
   reason: string;
 }
 
+export interface AdminAlertEmail {
+  to: string;
+  subject: string;
+  body: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SupportTicketCreatedEmail {
   to: string;
   fullName: string;
@@ -46,7 +55,6 @@ export interface SupportTicketStatusUpdateEmail {
 
 type TemplateName =
   | 'base'
-  | 'email-verification'
   | 'password-reset'
   | 'transaction-confirmation'
   | 'welcome';
@@ -122,16 +130,23 @@ export class MailService {
     }
   }
 
-  renderEmailVerification(payload: EmailVerificationTemplateDto): string {
+  renderEmailVerification(
+    payload: EmailVerificationTemplateDto,
+    language: string = DEFAULT_LANGUAGE,
+  ): string {
     const context = plainToInstance(EmailVerificationTemplateDto, payload, {
       enableImplicitConversion: true,
     });
-    return this.render('email-verification', {
-      title: 'Verify your NexaFx account',
+    const body = this.getLocalizedTemplate('email-verification', language)({
       fullName: context.fullName,
       verificationCode: context.verificationCode,
       expiresMinutes: context.expiresMinutes ?? 10,
     });
+    return this.getTemplate('base')({
+      title: 'Verify your NexaFx account',
+      year: new Date().getFullYear(),
+      body,
+    } as MailTemplateContext);
   }
 
   renderPasswordReset(payload: PasswordResetTemplateDto): string {
@@ -188,9 +203,37 @@ export class MailService {
     );
   }
 
+  async sendAdminAlert(payload: AdminAlertEmail): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      await this.transporter.sendMail({
+        from: process.env.MAIL_FROM,
+        to: payload.to,
+        subject: payload.subject,
+        html: `<h2>${payload.subject}</h2><p>${payload.body}</p>${
+          payload.metadata
+            ? `<pre>${JSON.stringify(payload.metadata, null, 2)}</pre>`
+            : ''
+        }`,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send admin alert email: ${(err as Error).message}`);
+    }
+  }
+
   sendSupportTicketCreatedEmail(payload: SupportTicketCreatedEmail): void {
     this.logger.log(
       `Support ticket ${payload.ticketId} created for ${payload.to} (${payload.category})`,
+    );
+  }
+
+  notifyExportReady(payload: {
+    to: string;
+    downloadUrl: string;
+    rowCount: number;
+  }): void {
+    this.logger.log(
+      `Export ready notification queued for ${payload.to} (${payload.rowCount} rows): ${payload.downloadUrl}`,
     );
   }
 
@@ -233,5 +276,28 @@ export class MailService {
     const source = readFileSync(path, 'utf8');
     this.logger.log(`Compiling mail template ${name}`);
     return compile(source);
+  }
+
+  /** Resolves `${name}.${language}.hbs`, falling back to the English template. */
+  private getLocalizedTemplate(
+    name: string,
+    language: string,
+  ): TemplateDelegate {
+    const cacheKey = `${name}.${language}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
+
+    const localizedPath = join(
+      __dirname,
+      'templates',
+      `${name}.${language}.hbs`,
+    );
+    const path = existsSync(localizedPath)
+      ? localizedPath
+      : join(__dirname, 'templates', `${name}.${DEFAULT_LANGUAGE}.hbs`);
+
+    const template = compile(readFileSync(path, 'utf8'));
+    this.cache.set(cacheKey, template);
+    return template;
   }
 }

@@ -23,6 +23,8 @@ export class WalletBalanceEntity {
   @Column({ type: 'decimal', precision: 20, scale: 2, default: 0 })
   balance!: number;
 
+  @Column({ type: 'boolean', default: false })
+  isPrimary!: boolean;
   /** Key version used to encrypt sensitive fields for this wallet. */
   @Column({ type: 'int', default: 1 })
   keyVersion!: number;

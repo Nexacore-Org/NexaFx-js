@@ -53,6 +53,10 @@ export class User {
   @Column({ default: true })
   isActive!: boolean;
 
+  /** ISO 639-1 language code used to localize outbound emails, e.g. 'en', 'fr'. */
+  @Column({ type: 'varchar', length: 2, default: 'en' })
+  preferredLanguage!: string;
+
   @Column({ type: 'datetime', nullable: true, default: null })
   passwordChangedAt!: Date | null;
 

@@ -5,7 +5,10 @@ import {
   Entity,
   Index,
   PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { User } from '../users/user.entity';
 
 export enum TransactionStatus {
   PENDING = 'pending',
@@ -21,9 +24,19 @@ export enum TransactionStatus {
 @Index(['senderId'])
 @Index(['receiverId'])
 @Index(['createdAt'])
+@Index(['txHash'])
+@Index(['senderId', 'status'])
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'senderId' })
+  sender?: User;
+
+  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'receiverId' })
+  receiver?: User;
 
   @Column({ type: 'uuid' })
   senderId!: string;
@@ -70,7 +83,6 @@ export class Transaction {
 
   @Column({ type: 'timestamp', nullable: true })
   pendingTimeoutAt!: Date | null;
-  pendingTimeoutAt: Date | null;
 
   @Column({ type: 'uuid', nullable: true })
   reversedBy!: string | null;

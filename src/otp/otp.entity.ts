@@ -13,8 +13,8 @@ export enum OtpPurpose {
 }
 
 @Entity('otps')
-@Index(['userId', 'purpose'])
-@Index(['expiresAt'])
+@Index(['userId', 'purpose', 'expiresAt'])
+@Index(['userId', 'usedAt'])
 export class Otp {
   @PrimaryGeneratedColumn('uuid')
   id: string;
