@@ -48,6 +48,8 @@ export interface DepositDto {
   currency: string;
   reference: string;
   metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 export interface WithdrawalDto {
@@ -67,6 +69,8 @@ export interface SwapDto {
   toCurrency: string;
   reference: string;
   metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 const MAX_RETRIES = 3;
@@ -350,7 +354,7 @@ export class TransactionsService implements OnModuleInit {
     await this.limitService.check(dto.userId, totalChecked, dto.fromCurrency);
 
     const balance = await this.walletsService.getBalance(dto.userId, dto.fromCurrency);
-    if (balance.balance < totalChecked) {
+    if (new Big(String(balance.balance)).lt(totalChecked)) {
       throw new BadRequestException('Insufficient balance including fee');
     }
 
