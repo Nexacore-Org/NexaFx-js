@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
+import { KycDocumentStatus } from '../kyc/kyc-document.entity';
 import { SupportTicket } from '../support/support-ticket.entity';
 import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
@@ -13,6 +14,7 @@ export interface AdminStats {
   users: number;
   transactions: number;
   kycDocuments: number;
+  pendingKyc: number;
   supportTickets: number;
   webhookEndpoints: number;
   amlAlerts: number;
@@ -41,6 +43,7 @@ export class AdminService {
       users,
       transactions,
       kycDocuments,
+      pendingKyc,
       supportTickets,
       webhookEndpoints,
       amlAlerts,
@@ -48,6 +51,7 @@ export class AdminService {
       this.usersRepository.count(),
       this.transactionsRepository.count(),
       this.kycRepository.count(),
+      this.kycRepository.count({ where: { status: KycDocumentStatus.PENDING } }),
       this.supportTicketsRepository.count(),
       this.webhooksRepository.count(),
       this.alertsRepository.count(),
@@ -57,6 +61,7 @@ export class AdminService {
       users,
       transactions,
       kycDocuments,
+      pendingKyc,
       supportTickets,
       webhookEndpoints,
       amlAlerts,

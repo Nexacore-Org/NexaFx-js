@@ -19,6 +19,7 @@ import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
 import { TransactionLimitService } from './transaction-limit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
+import { FeesService } from '../fees/fees.service';
 
 export interface TransferDto {
   senderId: string;
@@ -88,6 +89,7 @@ export class TransactionsService implements OnModuleInit {
     private readonly events: EventEmitter2,
     private readonly limitService: TransactionLimitService,
     private readonly feesService: FeesService,
+    private readonly termsService: TermsAcceptanceService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -232,7 +234,7 @@ export class TransactionsService implements OnModuleInit {
 
   async createDeposit(dto: DepositDto): Promise<Transaction> {
     await this.termsService.ensureAccepted(dto.userId);
-    const fee = this.calculateFee(dto.amount);
+    const fee = this.feesService.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.currency);
 
@@ -243,7 +245,7 @@ export class TransactionsService implements OnModuleInit {
       currency: dto.currency,
       fee: fee.feeAmount,
       reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'deposit', memo: this.generateStellarMemo(tx.id).value, fullTransactionId: tx.id },
+      metadata: { ...dto.metadata, type: 'deposit', fullTransactionId: tx.id },
       status: TransactionStatus.PENDING,
     });
     await this.txRepo.save(tx);
@@ -290,7 +292,6 @@ export class TransactionsService implements OnModuleInit {
       );
     }
 
-    const fee = this.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.currency);
 
@@ -345,7 +346,7 @@ export class TransactionsService implements OnModuleInit {
 
   async createSwap(dto: SwapDto): Promise<Transaction> {
     await this.termsService.ensureAccepted(dto.userId);
-    const fee = this.calculateFee(dto.fromAmount);
+    const fee = this.feesService.calculateFee(dto.fromAmount);
     const totalChecked = dto.fromAmount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.fromCurrency);
 
