@@ -19,6 +19,7 @@ import {
   DepositDto,
   WithdrawalDto,
   SwapDto,
+  SwapPreviewDto,
 } from './transactions.service';
 import { TransactionStatus } from './transaction.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -72,12 +73,30 @@ export class TransactionsController {
     return this.txService.createSwap(dto);
   }
 
+  @Get('swap/preview')
+  swapPreview(
+    @Query('userId') userId: string,
+    @Query('fromAmount') fromAmount: string,
+    @Query('fromCurrency') fromCurrency: string,
+    @Query('toCurrency') toCurrency: string,
+  ) {
+    return this.txService.getSwapPreview({
+      userId,
+      fromAmount: parseFloat(fromAmount ?? '0'),
+      fromCurrency,
+      toCurrency,
+    });
+  }
+
   @Get()
   findAll(
     @Query('userId') userId?: string,
     @Query('status') status?: TransactionStatus,
     @Query('currency') currency?: string,
     @Query('receiptNumber') receiptNumber?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('type') type?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -86,6 +105,9 @@ export class TransactionsController {
       status,
       currency,
       receiptNumber,
+      startDate,
+      endDate,
+      type,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     };
@@ -95,6 +117,12 @@ export class TransactionsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.txService.findById(id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  cancel(@Param('id') id: string) {
+    return this.txService.cancelTransaction(id);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
