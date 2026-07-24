@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
@@ -61,6 +61,49 @@ export class AdminService {
       webhookEndpoints,
       amlAlerts,
     };
+  }
+
+  async findAllTransactions(filters: {
+    userId?: string;
+    status?: TransactionStatus;
+    currency?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ items: Transaction[]; total: number; page: number; limit: number }> {
+    const { userId, status, currency, startDate, endDate, page = 1, limit = 20 } = filters;
+
+    const qb = this.transactionsRepository
+      .createQueryBuilder('tx')
+      .leftJoinAndSelect('tx.sender', 'sender')
+      .leftJoinAndSelect('tx.receiver', 'receiver')
+      .orderBy('tx.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (userId) {
+      qb.andWhere('(tx.senderId = :uid OR tx.receiverId = :uid)', { uid: userId });
+    }
+    if (status) {
+      qb.andWhere('tx.status = :status', { status });
+    }
+    if (currency) {
+      qb.andWhere('tx.currency = :currency', { currency });
+    }
+    if (startDate && endDate) {
+      qb.andWhere('tx.createdAt BETWEEN :startDate AND :endDate', {
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+      });
+    } else if (startDate) {
+      qb.andWhere('tx.createdAt >= :startDate', { startDate: new Date(startDate) });
+    } else if (endDate) {
+      qb.andWhere('tx.createdAt <= :endDate', { endDate: new Date(endDate) });
+    }
+
+    const [items, total] = await qb.getManyAndCount();
+    return { items, total, page, limit };
   }
 
   async overrideTransactionStatus(
