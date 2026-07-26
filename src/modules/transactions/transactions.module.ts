@@ -4,6 +4,7 @@ import { SessionsModule } from '../sessions/sessions.module';
 import { AdminTransactionsController } from './contorllers/admin-transactions.controller';
 import { TransactionReplayService } from './services/transaction-replay.service';
 import { TransactionsService } from './services/transactions.service';
+import { TransactionRollbackService } from './services/transaction-rollback.service';
 import { WalletAliasService } from './services/wallet-alias.service';
 import { TransactionsController } from './contorllers/transactions.controller';
 import { WalletAliasController } from './controllers/wallet-alias.controller';
@@ -13,6 +14,7 @@ import { TransactionExecutionSnapshotEntity } from './entities/transaction-execu
 import { WalletAliasEntity } from './entities/wallet-alias.entity';
 import { TransactionCategoryEntity } from './entities/transaction-category.entity';
 import { TransactionRiskEntity } from './entities/transaction-risk.entity';
+import { TransactionRollbackEntity } from './entities/transaction-rollback.entity';
 import { CategoriesController } from './controllers/categories.controller';
 import { CategoriesService } from './services/categories.service';
 import { TransactionLifecycleService } from './services/transaction-lifecycle.service';
@@ -25,6 +27,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { RiskEngineModule } from '../risk-engine/risk-engine.module';
 import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-indicator.listener';
 import { AccountFreezeModule } from '../account-freeze/account-freeze.module';
+import { FeesModule } from '../fee/fee.module';
 
 @Module({
   imports: [
@@ -33,12 +36,14 @@ import { AccountFreezeModule } from '../account-freeze/account-freeze.module';
     EventEmitterModule.forRoot(),
     RiskEngineModule,
     AccountFreezeModule,
+    FeesModule,
     TypeOrmModule.forFeature([
       TransactionEntity,
       TransactionExecutionSnapshotEntity,
       WalletAliasEntity,
       TransactionCategoryEntity,
       TransactionRiskEntity,
+      TransactionRollbackEntity,
     ]),
   ],
   controllers: [
@@ -52,6 +57,7 @@ import { AccountFreezeModule } from '../account-freeze/account-freeze.module';
   providers: [
     TransactionReplayService,
     TransactionsService,
+    TransactionRollbackService,
     CategoriesService,
     WalletAliasService,
     TransactionLifecycleService,
@@ -63,6 +69,7 @@ import { AccountFreezeModule } from '../account-freeze/account-freeze.module';
   ],
   exports: [
     TransactionsService,
+    TransactionRollbackService,
     CategoriesService,
     WalletAliasService,
     TransactionLifecycleService,

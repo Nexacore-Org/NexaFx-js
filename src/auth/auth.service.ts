@@ -1,14 +1,20 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { createHash, timingSafeEqual } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UsersService } from '../users/users.service';
+import { MailService } from '../mail/mail.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
 const hashPassword = (password: string): string =>
   createHash('sha256').update(password).digest('hex');
+
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 30;
 
 @Injectable()
 export class AuthService {
@@ -17,6 +23,9 @@ export class AuthService {
     private readonly termsService: TermsAcceptanceService,
     private readonly jwtService: JwtService,
     private readonly auditService: AuditService,
+    private readonly mailService: MailService,
+    private readonly events: EventEmitter2,
+    private readonly configService: ConfigService,
   ) {}
 
   async register(
@@ -58,13 +67,71 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // #910: Check if 2FA enforcement is enabled for admin accounts
+    if (user.role === 'admin' && user.require2fa && !dto.totpCode) {
+      throw new ForbiddenException('2FA code required for admin accounts');
+    }
+
+    // #911: Check account lockout
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new ForbiddenException(
+        `Account is locked until ${user.lockedUntil.toISOString()}. Try again later.`,
+      );
+    }
+
     const expected = Buffer.from(user.passwordHash);
     const actual = Buffer.from(hashPassword(dto.password));
     if (
       expected.length !== actual.length ||
       !timingSafeEqual(expected, actual)
     ) {
+      // #911: Increment failed attempts and lock if threshold exceeded
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+        const lockoutUntil = new Date();
+        lockoutUntil.setMinutes(lockoutUntil.getMinutes() + LOCKOUT_MINUTES);
+        user.lockedUntil = lockoutUntil;
+
+        await this.usersService.update(user.id, {
+          failedLoginAttempts: user.failedLoginAttempts,
+          lockedUntil,
+        });
+
+        // Send lockout notification email
+        try {
+          await this.mailService.sendAdminAlert({
+            to: user.email,
+            subject: 'Account Locked — Too Many Failed Login Attempts',
+            body:
+              `Your account has been locked for ${LOCKOUT_MINUTES} minutes due to ${MAX_FAILED_ATTEMPTS} consecutive failed login attempts.` +
+              ` If this was not you, please reset your password immediately.`,
+          });
+        } catch (err) {
+          // Log but don't fail the login flow
+        }
+
+        this.events.emit('admin.alert.account-lockout', {
+          type: 'account-lockout',
+          severity: 'high',
+          title: 'Account Locked',
+          message: `Account ${user.email} locked after ${MAX_FAILED_ATTEMPTS} failed attempts`,
+          metadata: { userId: user.id, email: user.email },
+        });
+      } else {
+        await this.usersService.update(user.id, {
+          failedLoginAttempts: user.failedLoginAttempts,
+        });
+      }
+
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Successful login — reset failed attempts and lockout
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await this.usersService.update(user.id, {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      });
     }
 
     await this.termsService.ensureAccepted(user.id);
