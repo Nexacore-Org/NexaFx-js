@@ -15,6 +15,7 @@ export enum TransactionStatus {
   COMPLETED = 'completed',
   FAILED = 'failed',
   REVERSED = 'reversed',
+  CANCELLED = 'cancelled',
 }
 
 @Entity('transactions')

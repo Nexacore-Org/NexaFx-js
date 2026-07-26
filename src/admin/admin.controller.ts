@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   Patch,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -20,6 +21,8 @@ import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
 import { UpdateTransactionStatusDto } from './dto/update-transaction-status.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
+import { AdminTransactionsQueryDto } from './dto/admin-transactions-query.dto';
+import { TransactionStatus } from '../transactions/transaction.entity';
 
 const adminStatsTtlSeconds = parseInt(
   process.env.CACHE_ADMIN_STATS_TTL_SECONDS || '60',
@@ -40,7 +43,7 @@ interface AuthenticatedRequest extends Request {
 function assertSafePathSegment(segment: string, paramName: string): void {
   if (/[/\\]/.test(segment) || segment.includes('..')) {
     throw new BadRequestException(
-      `Invalid path segment in ${paramName} — traversal sequences are not permitted`,
+      `Invalid path segment in ${paramName} ï¿½ traversal sequences are not permitted`,
     );
   }
 }
@@ -56,6 +59,20 @@ export class AdminController {
   @Get('stats')
   getStats() {
     return this.adminService.getStats();
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Get('transactions')
+  findAllTransactions(@Query() query: AdminTransactionsQueryDto) {
+    return this.adminService.findAllTransactions({
+      userId: query.userId,
+      status: query.status as TransactionStatus | undefined,
+      currency: query.currency,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      page: query.page,
+      limit: query.limit,
+    });
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
