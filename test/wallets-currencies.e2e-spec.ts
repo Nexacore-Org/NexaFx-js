@@ -68,15 +68,29 @@ describe('Wallets and Currencies integration', () => {
     }
   });
 
-  it('lists supported currencies at GET /api/v1/currencies', async () => {
+  it('lists supported currencies at GET /api/v1/currencies with display fields', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/v1/currencies')
       .expect(200);
 
     expect(response.body).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: 'USD' }),
-        expect.objectContaining({ code: 'EUR' }),
+        expect.objectContaining({
+          code: 'USD',
+          symbol: '$',
+          displayName: 'US Dollar',
+          decimalPlaces: 2,
+          flagEmoji: '🇺🇸',
+          type: 'fiat',
+        }),
+        expect.objectContaining({
+          code: 'EUR',
+          symbol: '€',
+          displayName: 'Euro',
+          decimalPlaces: 2,
+          flagEmoji: '🇪🇺',
+          type: 'fiat',
+        }),
       ]),
     );
   });

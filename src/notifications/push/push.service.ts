@@ -12,6 +12,8 @@ export interface PushPayload {
   data?: Record<string, string>;
 }
 
+const MAX_TOKENS_PER_USER = 20;
+
 @Injectable()
 export class PushNotificationService {
   private readonly logger = new Logger(PushNotificationService.name);
@@ -34,6 +36,17 @@ export class PushNotificationService {
       existing.lastUsedAt = new Date();
       return this.tokenRepo.save(existing);
     }
+
+    const userTokens = await this.tokenRepo.find({
+      where: { userId },
+      order: { lastUsedAt: 'ASC' },
+    });
+
+    if (userTokens.length >= MAX_TOKENS_PER_USER) {
+      const oldest = userTokens[0]!;
+      await this.tokenRepo.delete({ id: oldest.id });
+    }
+
     const dt = this.tokenRepo.create({ userId, token, platform });
     return this.tokenRepo.save(dt);
   }
@@ -56,15 +69,19 @@ export class PushNotificationService {
       }
       dt.lastUsedAt = new Date();
       await this.tokenRepo.save(dt);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const anyErr = err as {
+        response?: { data?: { error?: string; results?: Array<{ error?: string }> } };
+        message?: string;
+      };
       if (
-        err?.response?.data?.error === 'NotRegistered' ||
-        err?.response?.data?.results?.[0]?.error === 'NotRegistered'
+        anyErr?.response?.data?.error === 'NotRegistered' ||
+        anyErr?.response?.data?.results?.[0]?.error === 'NotRegistered'
       ) {
         this.logger.warn(`Removing stale token: ${dt.token}`);
         await this.tokenRepo.delete({ token: dt.token });
       } else {
-        this.logger.error(`Push send failed: ${(err as Error).message}`);
+        this.logger.error(`Push send failed: ${anyErr?.message ?? 'unknown error'}`);
       }
     }
   }
@@ -86,6 +103,8 @@ export class PushNotificationService {
 
   private async sendApns(token: string, payload: PushPayload): Promise<void> {
     const bundleId = this.config.get<string>('push.apnsBundleId');
-    this.logger.log(`APNs send to ${token} for bundle ${bundleId}: ${payload.title}`);
+    this.logger.log(
+      `APNs send to ${token} for bundle ${bundleId}: ${payload.title}`,
+    );
   }
 }

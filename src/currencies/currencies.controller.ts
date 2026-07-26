@@ -1,4 +1,4 @@
-import { Controller, Get, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Header, UseInterceptors } from '@nestjs/common';
 import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 import { CurrenciesService } from './currencies.service';
 
@@ -14,6 +14,7 @@ export class CurrenciesController {
   @UseInterceptors(CacheInterceptor)
   @CacheKey('supported-currencies')
   @CacheTTL(supportedCurrenciesTtlSeconds)
+  @Header('Cache-Control', `public, max-age=${supportedCurrenciesTtlSeconds}`)
   @Get()
   getSupportedCurrencies() {
     return this.currenciesService.listSupportedCurrencies();

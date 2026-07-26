@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { IdempotencyCleanupJob } from './cleanup.job';
 import { IdempotencyService } from './idempotency.service';
 
@@ -7,7 +8,8 @@ describe('IdempotencyCleanupJob', () => {
   const idempotencyService = {
     cleanup: cleanupMock,
   } as unknown as IdempotencyService;
-  const job = new IdempotencyCleanupJob(idempotencyService);
+  const configService = {} as ConfigService;
+  const job = new IdempotencyCleanupJob(idempotencyService, configService);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -28,5 +30,11 @@ describe('IdempotencyCleanupJob', () => {
     );
 
     logSpy.mockRestore();
+  });
+
+  it('cleanup job fires exactly once per invocation', async () => {
+    cleanupMock.mockResolvedValue(0);
+    await job.cleanupExpiredKeys();
+    expect(cleanupMock).toHaveBeenCalledTimes(1);
   });
 });

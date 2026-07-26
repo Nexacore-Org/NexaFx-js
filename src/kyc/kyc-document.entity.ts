@@ -17,33 +17,33 @@ export enum KycDocumentStatus {
 @Index(['status'])
 export class KycDocument {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'uuid' })
-  userId: string;
+  userId!: string;
 
   @Column()
-  documentType: string;
+  documentType!: string;
 
   @Column()
-  documentNumber: string;
+  documentNumber!: string;
 
   @Column()
-  documentUrl: string;
+  documentUrl!: string;
 
   @Column({
     type: 'enum',
     enum: KycDocumentStatus,
     default: KycDocumentStatus.PENDING,
   })
-  status: KycDocumentStatus;
+  status!: KycDocumentStatus;
 
   @Column({ type: 'uuid', nullable: true })
-  reviewedBy: string;
+  reviewedBy!: string;
 
   @Column({ type: 'timestamp', nullable: true })
-  reviewedAt: Date;
+  reviewedAt!: Date;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 }

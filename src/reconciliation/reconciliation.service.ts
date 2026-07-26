@@ -2,10 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
+import Big from 'big.js';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { WalletBalanceEntity } from '../wallet/wallet-balance.entity';
 
-const TOLERANCE = 0.01;
+const TOLERANCE = new Big('0.01');
 
 @Injectable()
 export class ReconciliationService {
@@ -38,10 +39,10 @@ export class ReconciliationService {
       })
       .getRawOne<{ total: string }>();
 
-    const ledgerBalance = parseFloat(result?.total ?? '0');
-    const diff = Math.abs(ledgerBalance - Number(wallet.balance));
+    const ledgerBalance = new Big(result?.total ?? '0');
+    const diff = ledgerBalance.minus(new Big(String(wallet.balance))).abs();
 
-    if (diff > TOLERANCE) {
+    if (diff.gt(TOLERANCE)) {
       this.logger.warn(
         `Reconciliation alert: account=${accountId} currency=${currency} stored=${wallet.balance} ledger=${ledgerBalance} diff=${diff}`,
       );

@@ -17,6 +17,22 @@ const CURRENCIES = [
   { code: 'EUR', name: 'Euro', symbol: '€' },
   { code: 'GBP', name: 'British Pound', symbol: '£' },
   { code: 'NGN', name: 'Nigerian Naira', symbol: '₦' },
+  { code: 'XLM', name: 'Stellar Lumens', symbol: 'XLM' },
+  { code: 'USDC', name: 'USD Coin', symbol: 'USDC' },
+];
+
+// [fromCurrency, toCurrency, spreadPercent]
+const CURRENCY_PAIRS: Array<[string, string, number]> = [
+  ['XLM', 'USDC', 0.005],
+  ['XLM', 'USD', 0.005],
+  ['USD', 'NGN', 0.005],
+  ['USDC', 'NGN', 0.005],
+  ['EUR', 'USD', 0.003],
+  ['GBP', 'USD', 0.003],
+  ['USD', 'EUR', 0.003],
+  ['USD', 'GBP', 0.003],
+  ['USDC', 'USD', 0.002],
+  ['USD', 'USDC', 0.002],
 ];
 
 const ROLES = ['admin', 'user', 'compliance'];
@@ -84,6 +100,17 @@ async function seed(): Promise<void> {
          VALUES ($1, $2)
          ON CONFLICT (key) DO NOTHING`,
         [key, value],
+      );
+    }
+
+    // Currency pairs (idempotent upsert)
+    for (const [fromCurrency, toCurrency, spreadPercent] of CURRENCY_PAIRS) {
+      await queryRunner.query(
+        `INSERT INTO currency_pairs ("fromCurrency", "toCurrency", "spreadPercent", "isActive")
+         VALUES ($1, $2, $3, true)
+         ON CONFLICT ("fromCurrency", "toCurrency")
+         DO UPDATE SET "spreadPercent" = EXCLUDED."spreadPercent", "isActive" = true, "updatedAt" = NOW()`,
+        [fromCurrency, toCurrency, spreadPercent],
       );
     }
 

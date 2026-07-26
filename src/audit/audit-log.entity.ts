@@ -7,9 +7,9 @@ import {
 } from 'typeorm';
 
 @Entity('audit_logs')
-@Index(['userId'])
+@Index(['userId', 'createdAt'])
 @Index(['entityType', 'entityId'])
-@Index(['createdAt'])
+@Index(['action', 'createdAt'])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -26,11 +26,14 @@ export class AuditLog {
   @Column({ nullable: true })
   entityId!: string;
 
-  @Column({ type: 'simple-json', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   before!: Record<string, unknown>;
 
-  @Column({ type: 'simple-json', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   after!: Record<string, unknown>;
+
+  @Column({ nullable: true })
+  reason!: string;
 
   @Column({ nullable: true })
   ipAddress!: string;

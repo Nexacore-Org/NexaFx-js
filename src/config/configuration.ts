@@ -1,5 +1,3 @@
-import { validateWalletEncryptionKey } from './env.validation';
-
 /**
  * Configuration factory that structures validated env vars
  * into logical groups for easy access throughout the app
@@ -18,16 +16,12 @@ import { validateWalletEncryptionKey } from './env.validation';
  * - rateLimit: Rate limiting settings
  */
 export default () => {
-  // Additional runtime validation for wallet encryption key format
-  const walletKey = process.env.WALLET_ENCRYPTION_KEY || '';
-  if (walletKey && !validateWalletEncryptionKey(walletKey)) {
-    throw new Error(
-      'WALLET_ENCRYPTION_KEY must be a valid 64-character hexadecimal string',
-    );
-  }
+  // WALLET_ENCRYPTION_KEY is required and validated by Zod in env.validation.ts
+  const walletKey = process.env.WALLET_ENCRYPTION_KEY!;
 
   const nodeEnv = process.env.NODE_ENV || 'development';
   const port = parseInt(process.env.PORT || '3000', 10);
+  const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true';
   const bodyLimitJson = parseInt(process.env.BODY_LIMIT_JSON || '10', 10);
   const bodyLimitUrlencoded = parseInt(
     process.env.BODY_LIMIT_URLENCODED || '10',
@@ -114,6 +108,7 @@ export default () => {
     app: {
       nodeEnv,
       port,
+      swaggerEnabled,
       isProduction: nodeEnv === 'production',
       isDevelopment: nodeEnv === 'development',
       isTest: nodeEnv === 'test',
@@ -295,6 +290,33 @@ export default () => {
       ),
       openExchangeRatesApiKey: process.env.OPEN_EXCHANGE_RATES_API_KEY || '',
       exchangeRateHostApiKey: process.env.EXCHANGE_RATE_HOST_API_KEY || '',
+    },
+
+    // Swap / FX slippage — validated via Zod; never read process.env directly
+    swap: {
+      slippagePercent: parseFloat(
+        process.env.SWAP_SLIPPAGE_PERCENT || '0.005',
+      ),
+      previewCacheTtlSeconds: parseInt(
+        process.env.SWAP_PREVIEW_CACHE_TTL_SECONDS || '30',
+        10,
+      ),
+    },
+
+    // Scheduled-jobs configuration
+    scheduledJobs: {
+      pendingTxTimeoutMinutes: parseInt(
+        process.env.PENDING_TX_TIMEOUT_MINUTES || '30',
+        10,
+      ),
+    // Auth-specific throttle limit (validated via Zod — must be a positive integer)
+    throttleAuth: {
+      limit: parseInt(process.env.THROTTLE_AUTH_LIMIT || '5', 10),
+    },
+
+    // Stellar hot wallet (required only when Stellar payments are enabled)
+    stellar: {
+      hotWalletSecret: process.env.STELLAR_HOT_WALLET_SECRET ?? null,
     },
   };
 };

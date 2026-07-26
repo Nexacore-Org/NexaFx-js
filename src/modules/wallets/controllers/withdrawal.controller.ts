@@ -6,9 +6,13 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { IsNumber, IsString, IsUUID, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+
+const beneficiaryCooldowns = new Map<string, number>();
+const BENEFICIARY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export class WithdrawalDto {
   @IsNumber()
@@ -36,6 +40,20 @@ export class WithdrawalController {
     @Request() req: { user: { sub: string } },
   ) {
     const userId = req.user.sub;
+    const cooldownKey = `${userId}:${dto.beneficiaryId}`;
+    const firstSeenAt = beneficiaryCooldowns.get(cooldownKey);
+    const now = Date.now();
+    if (!firstSeenAt) {
+      beneficiaryCooldowns.set(cooldownKey, now);
+      throw new ForbiddenException(
+        'New beneficiary requires a 24-hour cooldown before first transfer use',
+      );
+    }
+    if (now - firstSeenAt < BENEFICIARY_COOLDOWN_MS) {
+      throw new ForbiddenException(
+        'New beneficiary requires a 24-hour cooldown before first transfer use',
+      );
+    }
     // Full implementation: call WalletBalanceService.deduct() + TransactionsService.create()
     return {
       success: true,

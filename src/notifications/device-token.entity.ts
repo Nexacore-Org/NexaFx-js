@@ -17,21 +17,21 @@ export enum DevicePlatform {
 @Index(['token'], { unique: true })
 export class DeviceToken {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'uuid' })
-  userId: string;
+  userId!: string;
 
   @Index({ unique: true })
   @Column({ unique: true })
-  token: string;
+  token!: string;
 
   @Column({ type: 'enum', enum: DevicePlatform })
-  platform: DevicePlatform;
+  platform!: DevicePlatform;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @Column({ type: 'timestamp', nullable: true })
-  lastUsedAt: Date;
+  lastUsedAt!: Date;
 }

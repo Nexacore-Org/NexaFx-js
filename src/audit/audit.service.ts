@@ -11,6 +11,7 @@ export interface AuditEvent {
   entityId?: string;
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
+  reason?: string;
   ipAddress?: string;
   userAgent?: string;
 }

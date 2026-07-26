@@ -107,9 +107,6 @@ export const envSchema = z.object({
   // ============================================
   // Wallet Encryption Configuration
   // ============================================
-  // WALLET_ENCRYPTION_KEY: z
-  //   .string()
-  //   .length(64, "WALLET_ENCRYPTION_KEY must be exactly 64 characters (hex)"),
 
   // ============================================
   // External Service Credentials
@@ -210,6 +207,11 @@ export const envSchema = z.object({
     .transform(Number)
     .pipe(z.number().int().positive())
     .default(() => 60),
+  WALLET_BALANCE_CACHE_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().min(1).max(3600))
+    .default(() => 30),
   ADMIN_ALLOWED_IPS: z.string().optional().default(''),
   WEBHOOK_MAX_ATTEMPTS: z
     .string()
@@ -265,6 +267,17 @@ export const envSchema = z.object({
     .string()
     .transform((val) => val === 'true')
     .default(() => true),
+
+  // ============================================
+  // Admin Alert Configuration
+  // ============================================
+  ADMIN_ALERT_EMAIL: z.string().email('ADMIN_ALERT_EMAIL must be a valid email').optional(),
+  ADMIN_ALERT_SLACK_WEBHOOK_URL: z.string().url('ADMIN_ALERT_SLACK_WEBHOOK_URL must be a valid URL').optional(),
+  ADMIN_ALERT_RATE_LIMIT_MINUTES: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 15),
 
   // ============================================
   // AML Monitoring Tuning
@@ -327,14 +340,64 @@ export const envSchema = z.object({
   EXCHANGE_RATE_HOST_API_KEY: z.string().optional(),
 
   // ============================================
-  // Wallet Encryption Key (64-char hex)
+  // Wallet Encryption Key (64-char hex, required)
   // ============================================
   WALLET_ENCRYPTION_KEY: z
     .string()
-    .optional()
-    .refine((val) => !val || (hexStringRegex.test(val) && val.length === 64), {
-      message: 'WALLET_ENCRYPTION_KEY must be a 64-character hex string',
-    }),
+    .length(64, 'WALLET_ENCRYPTION_KEY must be exactly 64 hex characters')
+    .regex(
+      /^[0-9a-fA-F]{64}$/,
+      'WALLET_ENCRYPTION_KEY must be a valid 64-character hex string',
+    ),
+
+  // ============================================
+  // Swap / FX configuration
+  // ============================================
+  SWAP_SLIPPAGE_PERCENT: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().positive().max(0.1))
+    .default(() => 0.005),
+
+  SWAP_PREVIEW_CACHE_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 30),
+
+  // ============================================
+  // Scheduled-jobs / distributed locking
+  // ============================================
+  PENDING_TX_TIMEOUT_MINUTES: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 30),
+  // KYC document storage
+  // ============================================
+  KYC_STORAGE_HOST: z.string().optional(),
+
+  // ============================================
+  // Stellar asset issuers (comma-separated CODE:GADDRESS pairs)
+  // ============================================
+  STELLAR_ASSET_ISSUERS: z.string().optional(),
+  // Auth Rate Limiting
+  // ============================================
+  THROTTLE_AUTH_LIMIT: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 5),
+
+  // ============================================
+  // Stellar Hot Wallet (required — fail-fast on startup)
+  // ============================================
+  STELLAR_HOT_WALLET_SECRET: z.string().min(1, 'STELLAR_HOT_WALLET_SECRET is required'),
+  WALLET_BALANCE_CACHE_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 30),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

@@ -1,9 +1,14 @@
+// Tracing must be initialised before any other imports so that auto-instrumentation
+// can patch modules (http, typeorm, etc.) before they are first required.
+import './tracing';
+
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import * as express from 'express';
+import * as compression from 'compression';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
@@ -14,6 +19,10 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
 
   const configService = app.get(ConfigService<Configuration>);
+  const port = configService.get<number>('app.port');
+  if (!port || isNaN(port)) {
+    throw new Error(`Invalid PORT: ${port}`);
+  }
   const jsonLimit = configService.get<number>('limits.json') ?? 10 * 1024 * 1024;
   const urlencodedLimit =
     configService.get<number>('limits.urlencoded') ?? 10 * 1024 * 1024;
@@ -22,6 +31,22 @@ async function bootstrap() {
 
   app.use(express.json({ limit: jsonLimit }));
   app.use(express.urlencoded({ limit: urlencodedLimit, extended: true }));
+
+  // Compress responses >1 KB; honours Accept-Encoding (gzip / deflate / br).
+  // Streaming responses (no Content-Length) are skipped automatically.
+  app.use(
+    compression({
+      threshold: 1024,
+      filter: (req, res) => {
+        // Skip server-sent event / chunked export streams
+        if (res.getHeader('Content-Type') === 'text/event-stream') {
+          return false;
+        }
+        return compression.filter(req, res);
+      },
+    }),
+  );
+
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -51,8 +76,8 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.enableShutdownHooks();
 
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true';
+  const nodeEnv = configService.get<string>('app.nodeEnv');
+  const swaggerEnabled = configService.get<boolean>('app.swaggerEnabled');
   if (nodeEnv !== 'production' || swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('NexaFx API')
@@ -67,7 +92,8 @@ async function bootstrap() {
     });
   }
 
-  await app.listen(process.env.PORT ?? 3000);
+  const port = configService.get<number>('app.port');
+  await app.listen(port);
 }
 
 void bootstrap();

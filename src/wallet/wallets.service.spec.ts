@@ -299,7 +299,7 @@ describe('WalletsService', () => {
       const result = await service.adjustBalance('acct-1', 'USD', 0);
 
       expect(result.balance).toBe(99);
-      expect(mockRepository.manager.transaction).not.toHaveBeenCalled();
+      expect(mockDataSource.createQueryRunner).not.toHaveBeenCalled();
     });
   });
 

@@ -11,6 +11,7 @@ import {
 @Index(['referrerId'])
 @Index(['refereeId'], { unique: true })
 @Index(['code'], { unique: true })
+@Index(['referrerId', 'rewardPaid'])
 export class Referral {
   @PrimaryGeneratedColumn('uuid')
   id: string;
