@@ -72,6 +72,12 @@ export class Transaction {
   @Column({ type: 'uuid', nullable: true })
   reversalTransactionId: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  tag: string | null;
+
+  @Column({ type: 'simple-array', nullable: true })
+  tags: string[] | null;
+
   @DeleteDateColumn({ type: 'timestamp', nullable: true })
   deletedAt: Date | null;
 }

@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   Query,
   Param,
@@ -59,6 +60,15 @@ export class TransactionsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.txService.findById(id);
+  }
+
+  @Patch(':id/tags')
+  updateTags(
+    @Param('id') id: string,
+    @Body() body: { tag?: string; tags?: string[] },
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.txService.updateTags(id, request.user?.sub ?? '', body.tag, body.tags);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)

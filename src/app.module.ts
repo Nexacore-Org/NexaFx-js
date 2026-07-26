@@ -22,6 +22,9 @@ import { MailModule, MailQueueModule } from './mail/mail.module';
 import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
+import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history.module';
+import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
+import { PortfolioModule } from './portfolio/portfolio.module';
 import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallet/wallets.module';
 
@@ -174,6 +177,9 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     CurrenciesModule,
     TermsModule,
     AuthModule,
+    RateAlertHistoryModule,
+    ScheduledReportsModule,
+    PortfolioModule,
   ],
   controllers: [AppController],
   providers: [
