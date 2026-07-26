@@ -35,6 +35,10 @@ import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
+import { ActivityFeedModule } from './activity-feed/activity-feed.module';
+import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
+import { ReferralModule } from './referral/referral.module';
+import { AmlModule } from './aml/aml.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -192,6 +196,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     MetricsModule,
     StellarModule,
     RatesModule,
+    ActivityFeedModule,
+    NotificationPreferencesModule,
+    ReferralModule,
+    AmlModule,
   ],
   controllers: [AppController],
   providers: [

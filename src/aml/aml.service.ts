@@ -1,4 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -15,6 +20,8 @@ export interface TransactionRecord {
 
 @Injectable()
 export class AmlService {
+  private readonly logger = new Logger(AmlService.name);
+
   constructor(
     @InjectRepository(AmlAlert)
     private readonly alertRepo: Repository<AmlAlert>,

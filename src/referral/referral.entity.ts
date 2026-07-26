@@ -7,32 +7,44 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+export enum ReferralStatus {
+  PENDING = 'pending',
+  QUALIFIED = 'qualified',
+  REWARDED = 'rewarded',
+}
+
 @Entity('referrals')
 @Index(['referrerId'])
-@Index(['refereeId'], { unique: true })
-@Index(['code'], { unique: true })
-@Index(['referrerId', 'rewardPaid'])
+@Index(['referredId'], { unique: true })
+@Index(['referralCode'], { unique: true })
+@Index(['referrerId', 'status'])
 export class Referral {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'uuid' })
-  referrerId: string;
+  referrerId!: string;
 
   @Index({ unique: true })
   @Column({ type: 'uuid', unique: true })
-  refereeId: string;
+  referredId!: string;
 
   @Index({ unique: true })
   @Column({ unique: true })
-  code: string;
+  referralCode!: string;
 
-  @Column({ default: false })
-  rewardPaid: boolean;
+  @Column({ type: 'simple-enum', enum: ReferralStatus, default: ReferralStatus.PENDING })
+  status!: ReferralStatus;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  qualifiedAt!: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rewardedAt!: Date | null;
 
   @DeleteDateColumn({ type: 'timestamp', nullable: true })
-  deletedAt: Date | null;
+  deletedAt!: Date | null;
 }
