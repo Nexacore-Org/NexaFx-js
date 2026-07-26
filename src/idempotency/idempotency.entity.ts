@@ -1,10 +1,16 @@
-import { Entity, Column, PrimaryColumn, CreateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryColumn,
+  CreateDateColumn,
+  Index,
+} from 'typeorm';
 
 @Entity('idempotency_keys')
 @Index(['createdAt'])
 @Index(['expiresAt'])
 export class IdempotencyKey {
-  @PrimaryColumn()
+  @PrimaryColumn({ length: 255 })
   key: string;
 
   @Column('text')

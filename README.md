@@ -25,6 +25,56 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Role-Based Access Control
+
+<!-- ROLES-START -->
+<!-- roles: ADMIN, USER, COMPLIANCE -->
+NexaFx enforces role-based access control on all protected endpoints. The `UserRole` enum (`src/users/user.entity.ts`) defines three roles:
+
+| Enum key | String value | Description |
+|----------|-------------|-------------|
+| `ADMIN` | `admin` | Full administrative access. Can view platform stats, override transaction status, manage user status and roles, and serve KYC documents. All admin routes are additionally restricted to IP-allowlisted origins. |
+| `USER` | `user` | Standard authenticated user. Default role assigned on registration. Access to personal account, wallet, and transaction endpoints. |
+| `COMPLIANCE` | `compliance` | Compliance officer. Reserved for audit and regulatory workflows. |
+
+### Permission Matrix
+
+| Endpoint | Method | USER | ADMIN | COMPLIANCE |
+|----------|--------|:----:|:-----:|:----------:|
+| `/api/v1/admin/stats` | GET | - | yes | - |
+| `/api/v1/admin/transactions/:id/status` | PATCH | - | yes | - |
+| `/api/v1/admin/users/:id/status` | PATCH | - | yes | - |
+| `/api/v1/admin/users/:id/role` | PATCH | - | yes | - |
+| `/api/v1/admin/kyc/:userId/:version/:filename` | GET | - | yes | - |
+| All other JWT-authenticated endpoints | * | yes | yes | yes |
+
+> All `/api/v1/admin/*` routes additionally require the caller IP to appear on the configured allowlist (`IpAllowlistGuard`).
+<!-- ROLES-END -->
+
+## Database Migrations
+
+Schema changes are managed exclusively through TypeORM migrations. Auto-sync (`synchronize`) is disabled in all environments to prevent accidental schema changes.
+
+```bash
+# Generate a migration from entity changes
+$ npm run migration:generate
+
+# Apply pending migrations
+$ npm run migration:run
+
+# Revert the last migration
+$ npm run migration:revert
+
+# Dry-run: check for pending migrations without applying (also runs in CI)
+$ npm run migration:dryrun
+```
+
+> **Note:** Never rely on `synchronize: true` in any environment. Always generate and commit migrations alongside entity changes.
+## Documentation
+
+- [Contributing guide](./CONTRIBUTING.md)
+- [Architecture overview](./docs/architecture.md)
+
 ## Project setup
 
 ```bash
@@ -56,6 +106,22 @@ $ npm run test:e2e
 # test coverage
 $ npm run test:cov
 ```
+
+## Data retention
+
+Financial records now use soft deletes instead of hard deletes for the primary transaction, FX trade, and referral entities. Deletions should update the `deletedAt` timestamp so the data remains available for audit, reconciliation, and retention workflows.
+
+## Operational logging
+
+Slow database queries are emitted as JSON log entries with the event name `typeorm.slow_query`.
+The payload includes these fields:
+
+- `thresholdMs`
+- `durationMs`
+- `query`
+- `parameters`
+
+Set `SLOW_QUERY_THRESHOLD_MS` to adjust the slow-query warning threshold. The default is `1000` milliseconds.
 
 ## Deployment
 
