@@ -9,6 +9,7 @@ import { WebhooksListener } from './webhooks.listener';
 import { WebhookEndpoint } from './webhook-endpoint.entity';
 import { WebhookDelivery } from './webhook-delivery.entity';
 import { AuthModule } from '../auth/auth.module';
+import { WebhookRetryJob } from './webhook-retry.job';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { AuthModule } from '../auth/auth.module';
     AuthModule,
   ],
   controllers: [WebhooksController],
-  providers: [WebhooksService, WebhooksProcessor, WebhooksListener],
+  providers: [WebhooksService, WebhooksProcessor, WebhooksListener, WebhookRetryJob],
   exports: [WebhooksService],
 })
 export class WebhooksModule {}

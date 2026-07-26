@@ -5,6 +5,7 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UsersService } from '../users/users.service';
+import { UserDeactivationService } from '../modules/user-deactivation/services/user-deactivation.service';
 import { MailService } from '../mail/mail.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { LoginDto } from './dto/login.dto';
@@ -23,6 +24,7 @@ export class AuthService {
     private readonly termsService: TermsAcceptanceService,
     private readonly jwtService: JwtService,
     private readonly auditService: AuditService,
+    private readonly deactivationService: UserDeactivationService,
     private readonly mailService: MailService,
     private readonly events: EventEmitter2,
     private readonly configService: ConfigService,
@@ -135,6 +137,11 @@ export class AuthService {
     }
 
     await this.termsService.ensureAccepted(user.id);
+
+    const isDeactivated = await this.deactivationService.isUserDeactivated(user.id);
+    if (isDeactivated) {
+      throw new UnauthorizedException('Account has been deactivated by an administrator');
+    }
 
     await this.auditService.log({
       userId: user.id,

@@ -8,6 +8,7 @@ import { MailModule } from '../mail/mail.module';
 import { SharedJwtModule } from '../common/jwt/jwt.module';
 import { TermsModule } from '../terms/terms.module';
 import { UsersModule } from '../users/users.module';
+import { UserDeactivationModule } from '../modules/user-deactivation/user-deactivation.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard as PassportJwtAuthGuard } from './guards/jwt-auth.guard';
@@ -23,6 +24,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     EventEmitterModule,
     PassportModule,
     SharedJwtModule,
+    forwardRef(() => UserDeactivationModule),
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {

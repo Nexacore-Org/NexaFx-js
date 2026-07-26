@@ -91,6 +91,9 @@ import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
+import { EndpointRateLimitModule } from './modules/endpoint-rate-limit/endpoint-rate-limit.module';
+import { UserDeactivationModule } from './modules/user-deactivation/user-deactivation.module';
+import { FeeAuditModule } from './modules/fee-audit/fee-audit.module';
 import { ActivityFeedModule } from './activity-feed/activity-feed.module';
 import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
 import { ReferralModule } from './referral/referral.module';
@@ -290,6 +293,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     MetricsModule,
     StellarModule,
     RatesModule,
+    ScheduledTransactionsModule,
+    EndpointRateLimitModule,
+    UserDeactivationModule,
+    FeeAuditModule,
     ActivityFeedModule,
     NotificationPreferencesModule,
     ReferralModule,

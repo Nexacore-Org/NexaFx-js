@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { WebhooksService } from './webhooks.service';
+import { WebhookRetryJob } from './webhook-retry.job';
 
 interface AuthenticatedRequest {
   user?: {
@@ -18,7 +19,10 @@ interface AuthenticatedRequest {
 
 @Controller('api/v1/webhooks')
 export class WebhooksController {
-  constructor(private readonly webhooksService: WebhooksService) {}
+  constructor(
+    private readonly webhooksService: WebhooksService,
+    private readonly webhookRetryJob: WebhookRetryJob,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Post('endpoints')
@@ -55,5 +59,11 @@ export class WebhooksController {
       request.user?.sub ?? '',
       endpointId,
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('deliveries/:id/retry')
+  async retryDelivery(@Param('id') deliveryId: string) {
+    return this.webhookRetryJob.manualRetry(deliveryId);
   }
 }

@@ -1,11 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  Logger,
-  NotFoundException,
-  UnprocessableEntityException,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger, NotFoundException, UnprocessableEntityException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository, DataSource } from 'typeorm';
@@ -19,6 +12,7 @@ import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
 import { TransactionLimitService } from './transaction-limit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
+import { UserDeactivationService } from '../modules/user-deactivation/services/user-deactivation.service';
 import { FeesService } from '../fees/fees.service';
 
 export interface TransferDto {
@@ -111,6 +105,7 @@ export class TransactionsService implements OnModuleInit {
     private readonly events: EventEmitter2,
     private readonly limitService: TransactionLimitService,
     private readonly feesService: FeesService,
+    private readonly deactivationService: UserDeactivationService,
     private readonly termsService: TermsAcceptanceService,
   ) {}
 
@@ -134,6 +129,12 @@ export class TransactionsService implements OnModuleInit {
 
   async transfer(dto: TransferDto): Promise<Transaction> {
     await this.termsService.ensureAccepted(dto.senderId);
+
+    const isDeactivated = await this.deactivationService.isUserDeactivated(dto.senderId);
+    if (isDeactivated) {
+      throw new ForbiddenException('Account has been deactivated. Cannot perform transactions.');
+    }
+
     if (dto.amount <= 0) {
       throw new BadRequestException('Transfer amount must be positive');
     }

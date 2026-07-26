@@ -36,6 +36,12 @@ export class WebhookDelivery {
   @Column({ type: 'int', nullable: true })
   responseCode?: number | null;
 
+  @Column({ type: 'int', default: 0 })
+  retryCount: number;
+
+  @Column({ type: 'int', default: 3 })
+  maxRetries: number;
+
   @Column({ type: 'text', nullable: true })
   errorMessage?: string | null;
 
@@ -51,6 +57,12 @@ export class WebhookDelivery {
 
   @Column({ type: 'timestamp', nullable: true })
   lastAttemptAt?: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  nextRetryAt?: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  attempts: number;
 
   @CreateDateColumn()
   createdAt: Date;
