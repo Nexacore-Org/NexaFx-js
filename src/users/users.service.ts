@@ -20,6 +20,9 @@ export interface UpdateUserDto {
   isEmailVerified?: boolean;
   kycStatus?: KycStatus;
   isActive?: boolean;
+  require2fa?: boolean;
+  failedLoginAttempts?: number;
+  lockedUntil?: Date | null;
 }
 
 type WalletBalanceLoader = (userId: string) => Promise<Record<string, number>>;

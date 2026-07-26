@@ -60,6 +60,18 @@ export class User {
   @Column({ type: 'datetime', nullable: true, default: null })
   passwordChangedAt!: Date | null;
 
+  /** Enforce 2FA for admin accounts. When true, admin login requires a valid TOTP code. */
+  @Column({ type: 'boolean', default: false })
+  require2fa!: boolean;
+
+  /** Consecutive failed login attempts (resets on success). */
+  @Column({ type: 'int', default: 0 })
+  failedLoginAttempts!: number;
+
+  /** Timestamp after which the account is unlocked; null means not locked. */
+  @Column({ type: 'datetime', nullable: true, default: null })
+  lockedUntil!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
