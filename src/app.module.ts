@@ -91,6 +91,10 @@ import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
+import { ActivityFeedModule } from './activity-feed/activity-feed.module';
+import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
+import { ReferralModule } from './referral/referral.module';
+import { AmlModule } from './aml/aml.module';
 import { EscrowModule } from './modules/escrow/escrow.module';
 import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
 import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
@@ -286,6 +290,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     MetricsModule,
     StellarModule,
     RatesModule,
+    ActivityFeedModule,
+    NotificationPreferencesModule,
+    ReferralModule,
+    AmlModule,
     ModulesWalletsModule,
     ModulesCacheModule,
     AdminModule,

@@ -1,15 +1,23 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindManyOptions, Repository } from 'typeorm';
-import { ActivityEvent } from './activity-event.entity';
+import { Repository, FindManyOptions, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { OnEvent } from '@nestjs/event-emitter';
+import { ActivityFeedItem, ActivityType } from './activity-feed-item.entity';
 
-export interface ActivityFeedItem {
-  timestamp: string;
-  type: string;
+export interface CreateActivityInput {
+  userId: string;
+  type: ActivityType;
+  title: string;
   description: string;
-  ipAddress: string | null;
-  deviceInfo: string | null;
-  securityEvent: boolean;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface ActivityFeedFilters {
+  type?: ActivityType;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  limit?: number;
 }
 
 export interface ActivityFeedPage {
@@ -20,74 +28,162 @@ export interface ActivityFeedPage {
   totalPages: number;
 }
 
-export interface RecordActivityInput {
-  userId: string;
-  type: string;
-  description: string;
-  ipAddress?: string | null;
-  deviceInfo?: string | null;
-  securityEvent?: boolean;
-  metadata?: Record<string, unknown> | null;
-}
-
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
 @Injectable()
 export class ActivityFeedService {
   constructor(
-    @InjectRepository(ActivityEvent)
-    private readonly activityEventRepository: Repository<ActivityEvent>,
+    @InjectRepository(ActivityFeedItem)
+    private readonly repo: Repository<ActivityFeedItem>,
   ) {}
 
-  async recordActivity(input: RecordActivityInput): Promise<ActivityEvent> {
-    const activityEvent = this.activityEventRepository.create({
+  async recordActivity(input: CreateActivityInput): Promise<ActivityFeedItem> {
+    const item = this.repo.create({
       userId: input.userId,
       type: input.type,
+      title: input.title,
       description: input.description,
-      ipAddress: input.ipAddress ?? null,
-      deviceInfo: input.deviceInfo ?? null,
-      securityEvent: input.securityEvent ?? false,
       metadata: input.metadata ?? null,
     });
-
-    return this.activityEventRepository.save(activityEvent);
+    return this.repo.save(item);
   }
 
-  async getActivityForUser(
+  async findAll(
     userId: string,
-    page = 1,
-    limit = DEFAULT_PAGE_SIZE,
+    filters: ActivityFeedFilters = {},
   ): Promise<ActivityFeedPage> {
-    const safePage = Math.max(1, page);
-    const safeLimit = Math.min(Math.max(1, limit), MAX_PAGE_SIZE);
-    const options: FindManyOptions<ActivityEvent> = {
-      where: { userId },
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
+
+    const where: Record<string, unknown> = { userId };
+
+    if (filters.type) {
+      where.type = filters.type;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      const start = filters.startDate ? new Date(filters.startDate) : new Date(0);
+      const end = filters.endDate ? new Date(filters.endDate) : new Date();
+      where.createdAt = Between(start, end);
+    }
+
+    const options: FindManyOptions<ActivityFeedItem> = {
+      where,
       order: { createdAt: 'DESC' },
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
+      skip: (page - 1) * limit,
+      take: limit,
     };
 
-    const [events, total] =
-      await this.activityEventRepository.findAndCount(options);
+    const [items, total] = await this.repo.findAndCount(options);
 
     return {
-      items: events.map((event) => this.toFeedItem(event)),
-      page: safePage,
-      limit: safeLimit,
+      items,
+      page,
+      limit,
       total,
-      totalPages: Math.ceil(total / safeLimit),
+      totalPages: Math.ceil(total / limit),
     };
   }
 
-  private toFeedItem(event: ActivityEvent): ActivityFeedItem {
-    return {
-      timestamp: event.createdAt.toISOString(),
-      type: event.type,
-      description: event.description,
-      ipAddress: event.ipAddress,
-      deviceInfo: event.deviceInfo,
-      securityEvent: event.securityEvent,
-    };
+  async markAsRead(userId: string, id: string): Promise<ActivityFeedItem> {
+    const item = await this.repo.findOne({ where: { id, userId } });
+    if (!item) {
+      throw new NotFoundException(`Activity item ${id} not found`);
+    }
+    item.isRead = true;
+    return this.repo.save(item);
+  }
+
+  async markAllAsRead(userId: string): Promise<void> {
+    await this.repo.update(
+      { userId, isRead: false },
+      { isRead: true },
+    );
+  }
+
+  @OnEvent('transactions.completed')
+  async handleTransactionCompleted(payload: {
+    transactionId: string;
+    senderId: string;
+    receiverId: string;
+    amount: number;
+    currency: string;
+    reference: string;
+  }): Promise<void> {
+    await this.recordActivity({
+      userId: payload.senderId,
+      type: ActivityType.TRANSACTION,
+      title: 'Transaction Completed',
+      description: `Transfer of ${payload.amount} ${payload.currency} completed`,
+      metadata: {
+        transactionId: payload.transactionId,
+        counterpartyId: payload.receiverId,
+        amount: payload.amount,
+        currency: payload.currency,
+        reference: payload.reference,
+      },
+    });
+  }
+
+  @OnEvent('transactions.deposit.completed')
+  async handleDepositCompleted(payload: {
+    transactionId: string;
+    userId: string;
+  }): Promise<void> {
+    await this.recordActivity({
+      userId: payload.userId,
+      type: ActivityType.WALLET,
+      title: 'Deposit Completed',
+      description: 'A deposit has been credited to your wallet',
+      metadata: { transactionId: payload.transactionId },
+    });
+  }
+
+  @OnEvent('transactions.withdrawal.completed')
+  async handleWithdrawalCompleted(payload: {
+    transactionId: string;
+    userId: string;
+  }): Promise<void> {
+    await this.recordActivity({
+      userId: payload.userId,
+      type: ActivityType.WALLET,
+      title: 'Withdrawal Completed',
+      description: 'A withdrawal has been processed from your wallet',
+      metadata: { transactionId: payload.transactionId },
+    });
+  }
+
+  @OnEvent('kyc.submitted')
+  async handleKycSubmitted(payload: { userId: string; documentType?: string }): Promise<void> {
+    await this.recordActivity({
+      userId: payload.userId,
+      type: ActivityType.KYC,
+      title: 'KYC Submitted',
+      description: 'Your identity verification documents have been submitted',
+      metadata: { documentType: payload.documentType },
+    });
+  }
+
+  @OnEvent('auth.login')
+  async handleLogin(payload: { userId: string; ipAddress?: string }): Promise<void> {
+    await this.recordActivity({
+      userId: payload.userId,
+      type: ActivityType.LOGIN,
+      title: 'Login',
+      description: 'Successful login to your account',
+      metadata: { ipAddress: payload.ipAddress },
+    });
+  }
+
+  @OnEvent('user.profile_updated')
+  async handleProfileUpdated(payload: { userId: string; fields?: string[] }): Promise<void> {
+    await this.recordActivity({
+      userId: payload.userId,
+      type: ActivityType.PROFILE_UPDATE,
+      title: 'Profile Updated',
+      description: 'Your profile information has been updated',
+      metadata: { fields: payload.fields },
+    });
   }
 }

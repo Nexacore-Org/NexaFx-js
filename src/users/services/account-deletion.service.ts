@@ -41,7 +41,7 @@ export class AccountDeletionService {
       await manager.update(RefreshToken, { userId }, { revokedAt: now });
 
       const referralRepo = manager.getRepository(Referral);
-      await referralRepo.delete({ refereeId: userId });
+      await referralRepo.delete({ referredId: userId });
       await referralRepo.delete({ referrerId: userId });
 
       const auditRepo = manager.getRepository(AuditLog);

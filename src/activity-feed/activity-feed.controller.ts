@@ -1,48 +1,61 @@
 import {
   Controller,
   Get,
+  Patch,
+  Param,
   Query,
   Req,
-  UnauthorizedException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
-import { ActivityFeedService } from './activity-feed.service';
+import { ActivityFeedService, ActivityFeedFilters } from './activity-feed.service';
+import { ActivityType } from './activity-feed-item.entity';
 
-type ActivityRequestUser = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-};
+interface AuthenticatedRequest {
+  user?: {
+    sub?: string;
+  };
+}
 
-type ActivityRequest = {
-  user?: ActivityRequestUser;
-};
-
-const parsePositiveInteger = (value: string | undefined, fallback: number) => {
-  const parsedValue = Number.parseInt(value ?? '', 10);
-  return Number.isNaN(parsedValue) ? fallback : parsedValue;
-};
-
-@Controller('api/v1/users/me/activity')
+@Controller('api/v1/activity-feed')
 export class ActivityFeedController {
   constructor(private readonly activityFeedService: ActivityFeedService) {}
 
   @Get()
-  async getMyActivity(
-    @Req() request: ActivityRequest,
+  findAll(
+    @Req() req: AuthenticatedRequest,
+    @Query('type') type?: ActivityType,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    const userId =
-      request.user?.id ?? request.user?.sub ?? request.user?.userId ?? '';
+    const userId = req.user?.sub ?? '';
+    const filters: ActivityFeedFilters = {
+      type,
+      startDate,
+      endDate,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    };
+    return this.activityFeedService.findAll(userId, filters);
+  }
 
-    if (!userId) {
-      throw new UnauthorizedException('Authenticated user is required');
-    }
+  @Patch(':id/read')
+  @HttpCode(HttpStatus.OK)
+  markAsRead(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    const userId = req.user?.sub ?? '';
+    return this.activityFeedService.markAsRead(userId, id);
+  }
 
-    return this.activityFeedService.getActivityForUser(
-      userId,
-      parsePositiveInteger(page, 1),
-      parsePositiveInteger(limit, 20),
-    );
+  @Patch('read-all')
+  @HttpCode(HttpStatus.OK)
+  async markAllAsRead(@Req() req: AuthenticatedRequest) {
+    const userId = req.user?.sub ?? '';
+    await this.activityFeedService.markAllAsRead(userId);
+    return { message: 'All activities marked as read' };
   }
 }
