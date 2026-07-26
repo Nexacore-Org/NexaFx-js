@@ -1,9 +1,18 @@
 {
   "moduleFileExtensions": ["js", "json", "ts"],
-  "rootDir": ".",
-  "testEnvironment": "node",
+  "rootDir": "..",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
-  }
+    "^.+\\.(t|j)s$": ["ts-jest", {
+      "tsconfig": {
+        "module": "commonjs",
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true
+      }
+    }]
+  },
+  "collectCoverageFrom": ["**/*.(t|s).ts"],
+  "coverageDirectory": "../coverage",
+  "testEnvironment": "node",
+  "setupFiles": ["reflect-metadata"]
 }

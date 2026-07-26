@@ -1,70 +1,87 @@
-process.env.DISABLE_BULL = 'true';
-
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { App } from 'supertest/types';
 
-import { AppModule } from './../src/app.module';
-import { JwtAuthGuard } from '../src/modules/auth/guards/jwt.guard';
-import { AdminGuard } from '../src/modules/auth/guards/admin.guard';
-import { RateLimitGuard } from '../src/modules/rate-limit/guards/rate-limit.guard';
-
-describe('App bootstrap (e2e)', () => {
-  let app: INestApplication<App>;
+describe('App e2e', () => {
+  jest.setTimeout(20000);
+  let app: INestApplication;
+  const registrationPayload = {
+    email: 'ada@example.com',
+    password: 'correcthorsebatterystaple',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+  };
 
   beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.DISABLE_BULL = 'true';
+    process.env.DB_HOST = 'localhost';
+    process.env.DB_PORT = '5432';
+    process.env.DB_USER = 'postgres';
+    process.env.DB_PASSWORD = 'postgres';
+    process.env.DB_NAME = 'nexafx_test';
+    process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars';
+    process.env.REFRESH_TOKEN_SECRET =
+      'test-refresh-secret-must-be-at-least-32';
+    process.env.OTP_SECRET = 'test-otp-secret-must-be-at-least-32-chars';
+    process.env.MAIL_HOST = 'smtp.example.com';
+    process.env.MAIL_PORT = '587';
+    process.env.MAIL_USER = 'test@example.com';
+    process.env.MAIL_PASSWORD = 'test-password';
+    process.env.MAIL_FROM = 'test@example.com';
+
+    const { AppModule } = await import('../src/app.module');
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    })
-      .overrideProvider(JwtAuthGuard)
-      .useValue({ canActivate: () => true })
-      .overrideProvider(AdminGuard)
-      .useValue({ canActivate: () => true })
-      .overrideProvider(RateLimitGuard)
-      .useValue({ canActivate: () => true })
-      .compile();
+    }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     await app.init();
   });
 
   afterAll(async () => {
-    await app?.close();
+    if (app) {
+      await app.close();
+    }
   });
 
-  const routes: Array<{ method: 'get'; path: string }> = [
-    { method: 'get', path: '/' },
-    { method: 'get', path: '/status' },
-    { method: 'get', path: '/admin/rpc-health' },
-    { method: 'get', path: '/admin/feature-flags' },
-    { method: 'get', path: '/transactions/search' },
-    { method: 'get', path: '/admin/transactions' },
-    { method: 'get', path: '/users' },
-    { method: 'get', path: '/sessions/devices' },
-    { method: 'get', path: '/admin/notifications' },
-    { method: 'get', path: '/admin/reconciliation' },
-    { method: 'get', path: '/experiments' },
-    { method: 'get', path: '/fee' },
-    { method: 'get', path: '/admin/transaction-risk' },
-    { method: 'get', path: '/webhooks' },
-    { method: 'get', path: '/admin/secrets' },
-    { method: 'get', path: '/admin/archive' },
-    { method: 'get', path: '/announcements' },
-    { method: 'get', path: '/goals' },
-    { method: 'get', path: '/ledger' },
-  ];
+  it('GET /api/v1/health returns 200', () => {
+    return request(app.getHttpServer()).get('/api/v1/health').expect(200);
+  });
 
-  routes.forEach(({ method, path }) => {
-    it(`${path} should respond (not 404)`, async () => {
-      const httpServer = app.getHttpServer();
-      const agent = request(httpServer)[method](path).set('Authorization', 'Bearer test-token');
+  it('POST /api/v1/auth/register returns 201 for a valid payload', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send(registrationPayload)
+      .expect(201);
 
-      await agent.expect((res) => {
-        if (res.status === 404) {
-          throw new Error(`Route ${path} returned 404`);
-        }
-      });
-    });
+    expect(response.body).toHaveProperty('accessToken');
+  });
+
+  it('POST /api/v1/auth/login returns a JWT for valid credentials', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: registrationPayload.email,
+        password: registrationPayload.password,
+      })
+      .expect(200);
+
+    expect(response.body).toHaveProperty('accessToken');
+    expect(typeof response.body.accessToken).toBe('string');
+  });
+
+  it('rejects protected endpoints without a bearer token', () => {
+    return request(app.getHttpServer())
+      .get('/api/v1/wallets/acct-1')
+      .expect(401);
   });
 });
