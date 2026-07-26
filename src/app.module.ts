@@ -17,7 +17,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
-import { HealthModule } from './modules/health/health.module';
+import { HealthModule as ModulesHealthModule } from './modules/health/health.module';
 import { RpcHealthModule } from './modules/rpc-health/rpc-health.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
@@ -50,21 +50,37 @@ import { InsightsModule } from './exxagerated/exxagerated.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
-import { WalletsModule } from './modules/wallets/wallets.module';
+import { WalletsModule as ModulesWalletsModule } from './modules/wallets/wallets.module';
 import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
-import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
-import { BulkPaymentsModule } from './bulk-payments/bulk-payments.module';
-import { DisputesModule } from './disputes/disputes.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { CardsModule } from './modules/cards/cards.module';
+import { FxModule } from './modules/fx/fx.module';
+import { BankingModule } from './banking/banking.module';
+import { LoyaltyModule } from './loyalty-point/loyalty.module';
+import { DisputesModule as ModulesDisputesModule } from './modules/disputes/disputes.module';
+import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { CacheModule as ModulesCacheModule } from './modules/cache/cache.module';
+import { MailModule } from './modules/mail/mail.module';
+import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
+import { SpendingModule } from './spending/spending.module';
+import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
 import { AuditModule } from './audit/audit.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { ConfigModule } from './config/config.module';
 import { Configuration } from './config/configuration';
 import { CurrenciesModule } from './currencies/currencies.module';
-import { MailModule, MailQueueModule } from './mail/mail.module';
+import { HealthModule } from './health/health.module';
+import { MailModule as UpstreamMailModule, MailQueueModule } from './mail/mail.module';
 import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
+import { UsersModule as UpstreamUsersModule } from './users/users.module';
+import { WalletsModule } from './wallet/wallets.module';
+import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
+import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { BulkPaymentsModule } from './bulk-payments/bulk-payments.module';
 import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
+import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
@@ -211,10 +227,16 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           TransactionQueueModule,
         ]
       : []),
+    ModulesHealthModule,
     HealthModule,
     UsersModule,
+    UpstreamUsersModule,
     AuditModule,
     MailModule,
+    UpstreamMailModule,
+    TransactionApprovalModule,
+    SpendingModule,
+    FeeTiersModule,
     WalletsModule,
     ScheduledTransactionsModule,
     ExchangeRatesModule,
@@ -224,10 +246,14 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     TermsModule,
     AuthModule,
     ReconciliationModule,
+    UpstreamReconciliationModule,
     ScheduledJobsModule,
+    ModulesDisputesModule,
     MetricsModule,
     StellarModule,
     RatesModule,
+    ModulesWalletsModule,
+    ModulesCacheModule,
   ],
   controllers: [AppController],
   providers: [
