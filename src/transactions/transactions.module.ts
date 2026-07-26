@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Transaction } from './transaction.entity';
 import { TransactionsService } from './transactions.service';
 import { TransactionsController } from './transactions.controller';
+import { TransactionsGateway } from './transactions.gateway';
 import { TransactionLimitService } from './transaction-limit.service';
 import { WalletsModule } from '../wallet/wallets.module';
 import { StellarModule } from '../stellar/stellar.module';
@@ -15,6 +16,7 @@ import { IdempotencyModule } from '../idempotency/idempotency.module';
 import { FxModule } from '../fx/fx.module';
 import { FeesModule } from '../fees/fees.module';
 import { UserDeactivationModule } from '../modules/user-deactivation/user-deactivation.module';
+import { TermsModule } from '../terms/terms.module';
 
 @Module({
   imports: [
@@ -30,9 +32,10 @@ import { UserDeactivationModule } from '../modules/user-deactivation/user-deacti
     FxModule,
     FeesModule,
     UserDeactivationModule,
+    TermsModule,
   ],
   controllers: [TransactionsController],
-  providers: [TransactionsService, TransactionLimitService],
+  providers: [TransactionsService, TransactionLimitService, TransactionsGateway],
   exports: [TransactionsService],
 })
 export class TransactionsModule {}

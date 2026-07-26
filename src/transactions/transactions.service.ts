@@ -13,6 +13,7 @@ import { UsersService } from '../users/users.service';
 import { TransactionLimitService } from './transaction-limit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UserDeactivationService } from '../modules/user-deactivation/services/user-deactivation.service';
+import { FeesService } from '../fees/fees.service';
 
 export interface TransferDto {
   senderId: string;
@@ -28,8 +29,26 @@ export interface TransactionFilters {
   status?: TransactionStatus;
   currency?: string;
   receiptNumber?: string;
+  startDate?: string;
+  endDate?: string;
+  type?: string;
   page?: number;
   limit?: number;
+}
+
+export interface SwapPreviewDto {
+  userId: string;
+  fromAmount: number;
+  fromCurrency: string;
+  toCurrency: string;
+}
+
+export interface SwapPreviewResponse {
+  fromCurrency: string;
+  toCurrency: string;
+  fromAmount: number;
+  toAmount: number;
+  rate: number;
 }
 
 export interface ReverseTransactionDto {
@@ -42,6 +61,8 @@ export interface DepositDto {
   currency: string;
   reference: string;
   metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 export interface WithdrawalDto {
@@ -61,6 +82,8 @@ export interface SwapDto {
   toCurrency: string;
   reference: string;
   metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 const MAX_RETRIES = 3;
@@ -83,6 +106,7 @@ export class TransactionsService implements OnModuleInit {
     private readonly limitService: TransactionLimitService,
     private readonly feesService: FeesService,
     private readonly deactivationService: UserDeactivationService,
+    private readonly termsService: TermsAcceptanceService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -162,19 +186,37 @@ export class TransactionsService implements OnModuleInit {
     return tx;
   }
 
+  private static readonly DEFAULT_LIMIT = 20;
+  private static readonly MAX_LIMIT = 100;
+
   async findHistory(filters: TransactionFilters): Promise<{
     items: Transaction[];
     total: number;
     page: number;
     limit: number;
   }> {
-    const { userId, status, currency, receiptNumber, page = 1, limit = 20 } = filters;
+    const {
+      userId,
+      status,
+      currency,
+      receiptNumber,
+      startDate,
+      endDate,
+      type,
+      page = 1,
+      limit,
+    } = filters;
+
+    const effectiveLimit = Math.min(
+      Math.max(limit ?? TransactionsService.DEFAULT_LIMIT, 1),
+      TransactionsService.MAX_LIMIT,
+    );
 
     const qb = this.txRepo
       .createQueryBuilder('tx')
       .orderBy('tx.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
+      .skip((page - 1) * effectiveLimit)
+      .take(effectiveLimit)
       .leftJoinAndSelect('tx.sender', 'sender')
       .leftJoinAndSelect('tx.receiver', 'receiver');
 
@@ -192,9 +234,18 @@ export class TransactionsService implements OnModuleInit {
     if (receiptNumber) {
       qb.andWhere('tx.receiptNumber = :receiptNumber', { receiptNumber });
     }
+    if (startDate) {
+      qb.andWhere('tx.createdAt >= :startDate', { startDate });
+    }
+    if (endDate) {
+      qb.andWhere('tx.createdAt <= :endDate', { endDate });
+    }
+    if (type) {
+      qb.andWhere("tx.metadata->>'type' = :type", { type });
+    }
 
     const [items, total] = await qb.getManyAndCount();
-    return { items, total, page, limit };
+    return { items, total, page, limit: effectiveLimit };
   }
 
   async findById(id: string): Promise<Transaction> {
@@ -233,7 +284,7 @@ export class TransactionsService implements OnModuleInit {
 
   async createDeposit(dto: DepositDto): Promise<Transaction> {
     await this.termsService.ensureAccepted(dto.userId);
-    const fee = this.calculateFee(dto.amount);
+    const fee = this.feesService.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.currency);
 
@@ -244,7 +295,7 @@ export class TransactionsService implements OnModuleInit {
       currency: dto.currency,
       fee: fee.feeAmount,
       reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'deposit', memo: this.generateStellarMemo(tx.id).value, fullTransactionId: tx.id },
+      metadata: { ...dto.metadata, type: 'deposit', fullTransactionId: tx.id },
       status: TransactionStatus.PENDING,
     });
     await this.txRepo.save(tx);
@@ -291,7 +342,6 @@ export class TransactionsService implements OnModuleInit {
       );
     }
 
-    const fee = this.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.currency);
 
@@ -346,12 +396,12 @@ export class TransactionsService implements OnModuleInit {
 
   async createSwap(dto: SwapDto): Promise<Transaction> {
     await this.termsService.ensureAccepted(dto.userId);
-    const fee = this.calculateFee(dto.fromAmount);
+    const fee = this.feesService.calculateFee(dto.fromAmount);
     const totalChecked = dto.fromAmount + fee.feeAmount; // #742: fee included in limit check
     await this.limitService.check(dto.userId, totalChecked, dto.fromCurrency);
 
     const balance = await this.walletsService.getBalance(dto.userId, dto.fromCurrency);
-    if (balance.balance < totalChecked) {
+    if (new Big(String(balance.balance)).lt(totalChecked)) {
       throw new BadRequestException('Insufficient balance including fee');
     }
 
@@ -419,6 +469,58 @@ export class TransactionsService implements OnModuleInit {
 
     throw lastError;
   }
+
+  // ---------------------------------------------------------------------------
+  // Swap Preview — #904: indicative exchange rate in preview response
+  // ---------------------------------------------------------------------------
+
+  async getSwapPreview(dto: SwapPreviewDto): Promise<SwapPreviewResponse> {
+    if (dto.fromAmount <= 0) {
+      throw new BadRequestException('Swap amount must be positive');
+    }
+    if (dto.fromCurrency === dto.toCurrency) {
+      throw new BadRequestException('Source and target currencies must differ');
+    }
+
+    const fee = this.feesService.calculateFee(dto.fromAmount);
+    const feeAdjustedAmount = dto.fromAmount - fee.feeAmount;
+
+    // Indicative rate: how many toCurrency units per 1 fromCurrency unit
+    // In production this would query a price oracle; placeholder rate for now.
+    const rate = parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
+    const toAmount = parseFloat((feeAdjustedAmount * rate).toFixed(8));
+
+    return {
+      fromCurrency: dto.fromCurrency,
+      toCurrency: dto.toCurrency,
+      fromAmount: dto.fromAmount,
+      toAmount,
+      rate,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cancel Transaction — #905: cancel PENDING transactions
+  // ---------------------------------------------------------------------------
+
+  async cancelTransaction(id: string): Promise<Transaction> {
+    const tx = await this.findById(id);
+    if (tx.status !== TransactionStatus.PENDING) {
+      throw new UnprocessableEntityException(
+        `Transaction ${id} cannot be cancelled (current status: ${tx.status})`,
+      );
+    }
+
+    tx.status = TransactionStatus.CANCELLED;
+    await this.txRepo.save(tx);
+
+    this.events.emit('transactions.cancelled', { transactionId: tx.id });
+    return tx;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reverse
+  // ---------------------------------------------------------------------------
 
   async reverseTransaction(
     id: string,

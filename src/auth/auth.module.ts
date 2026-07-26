@@ -1,6 +1,10 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuditModule } from '../audit/audit.module';
+import { MailModule } from '../mail/mail.module';
 import { SharedJwtModule } from '../common/jwt/jwt.module';
 import { TermsModule } from '../terms/terms.module';
 import { UsersModule } from '../users/users.module';
@@ -16,6 +20,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     UsersModule,
     forwardRef(() => TermsModule),
     AuditModule,
+    MailModule,
+    EventEmitterModule,
     PassportModule,
     SharedJwtModule,
     forwardRef(() => UserDeactivationModule),
