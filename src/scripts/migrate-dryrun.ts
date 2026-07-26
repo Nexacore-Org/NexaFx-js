@@ -1,14 +1,22 @@
-import { AppDataSource } from '../src/database/data-source';
+import { AppDataSource } from '../database/data-source';
 
-async function dryRun() {
-  const ds = await AppDataSource.initialize();
+async function main(): Promise<void> {
+  await AppDataSource.initialize();
 
-  const sqlInMemory = await ds.driver.createSchemaBuilder().log();
+  const pending = await AppDataSource.showMigrations();
 
-  console.log('--- DRY RUN SQL ---');
-  console.log(sqlInMemory.upQueries.map(q => q.query).join(';\n'));
+  if (pending) {
+    console.error('Pending migrations detected. Run migrations before deploying.');
+    await AppDataSource.destroy();
+    process.exit(1);
+  }
 
-  await ds.destroy();
+  console.log('All migrations are applied.');
+  await AppDataSource.destroy();
+  process.exit(0);
 }
 
-dryRun();
+main().catch((err) => {
+  console.error('Migration dry-run failed:', err);
+  process.exit(1);
+});

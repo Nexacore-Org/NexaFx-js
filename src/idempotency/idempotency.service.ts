@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { IdempotencyKey } from './idempotency.entity';
 import * as crypto from 'crypto';
 
@@ -9,6 +10,7 @@ export class IdempotencyService {
   constructor(
     @InjectRepository(IdempotencyKey)
     private idempotencyRepo: Repository<IdempotencyKey>,
+    private readonly configService: ConfigService,
   ) {}
 
   hashRequest(method: string, url: string, body: any): string {
@@ -25,10 +27,12 @@ export class IdempotencyService {
     requestHash: string,
     response: any,
     statusCode: number,
-    ttlHours = 24,
+    ttlHours?: number,
   ): Promise<void> {
+    const hours =
+      ttlHours ?? this.configService.get<number>('idempotency.ttlHours', 24);
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + ttlHours);
+    expiresAt.setHours(expiresAt.getHours() + hours);
 
     await this.idempotencyRepo.save({
       key,
