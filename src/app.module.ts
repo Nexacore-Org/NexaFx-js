@@ -74,7 +74,10 @@ import { MailModule as UpstreamMailModule, MailQueueModule } from './mail/mail.m
 import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
-import { UsersModule as UpstreamUsersModule } from './users/users.module';
+import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history.module';
+import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
+import { PortfolioModule } from './portfolio/portfolio.module';
+import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
 import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
@@ -239,6 +242,9 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     CurrenciesModule,
     TermsModule,
     AuthModule,
+    RateAlertHistoryModule,
+    ScheduledReportsModule,
+    PortfolioModule,
     ReconciliationModule,
     UpstreamReconciliationModule,
     ScheduledJobsModule,
