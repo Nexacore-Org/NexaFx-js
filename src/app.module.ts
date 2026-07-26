@@ -89,6 +89,12 @@ import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
+import { EscrowModule } from './modules/escrow/escrow.module';
+import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
+import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
+import { FeeReportsModule } from './modules/fee-reports/fee-reports.module';
+import { WalletHistoryModule } from './modules/wallet-history/wallet-history.module';
+import { KycTiersModule } from './modules/kyc-tiers/kyc-tiers.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -277,6 +283,43 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     RatesModule,
     ModulesWalletsModule,
     ModulesCacheModule,
+    AdminModule,
+    AnalyticsModule,
+    RpcHealthModule,
+    FeatureFlagsModule,
+    RateLimitModule,
+    AdminAuditModule,
+    StrategyOptimizerModule,
+    RiskEngineModule,
+    SessionsModule,
+    TransactionsModule,
+    EnrichmentModule,
+    NotificationsModule,
+    WebSocketNotificationsModule,
+    RetryModule,
+    ExperimentsModule,
+    FeesModule,
+    TransactionRiskModule,
+    WebhooksModule,
+    SecretsModule,
+    DataArchiveModule,
+    IdempotencyModule,
+    GoalsModule,
+    AnnouncementsModule,
+    ComplianceModule,
+    LedgerModule,
+    VersioningModule,
+    InsightsModule,
+    InsightsForecastModule,
+    ReferralsModule,
+    KycModule,
+    EscrowModule,
+    SplitPaymentsModule,
+    ScheduledTransactionsModule,
+    SupportTicketsModule,
+    FeeReportsModule,
+    WalletHistoryModule,
+    KycTiersModule,
   ],
   controllers: [AppController],
   providers: [
