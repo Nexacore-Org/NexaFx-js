@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ActivityFeedController } from './activity-feed.controller';
-import { ActivityEvent } from './activity-event.entity';
+import { ActivityFeedItem } from './activity-feed-item.entity';
 import { ActivityFeedService } from './activity-feed.service';
+import { ActivityFeedController } from './activity-feed.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ActivityEvent])],
+  imports: [TypeOrmModule.forFeature([ActivityFeedItem])],
   controllers: [ActivityFeedController],
   providers: [ActivityFeedService],
   exports: [ActivityFeedService],

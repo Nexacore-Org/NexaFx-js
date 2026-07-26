@@ -1,15 +1,40 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AmlAlert } from './aml-alert.entity';
+import { AmlScreening, AmlRiskLevel } from './aml-screening.entity';
 
-export interface ScreeningResult {
+const HIGH_VALUE_THRESHOLD = 10000;
+const CRITICAL_VALUE_THRESHOLD = 50000;
+const MOCK_SANCTIONS = ['test sanctioned', 'sdn test', 'pep test'];
+const MOCK_PEP = ['minister', 'president', 'senator', 'governor'];
+
+export interface ScreenUserInput {
   userId: string;
-  matched: boolean;
-  listName?: string;
-  score?: number;
-  screenedAt: Date;
+  fullName?: string;
+  dateOfBirth?: string;
+}
+
+export interface ScreenTransactionInput {
+  userId: string;
+  transactionId: string;
+  amount: number;
+  currency: string;
+  counterpartyName?: string;
+}
+
+export interface ScreeningFilters {
+  userId?: string;
+  riskLevel?: AmlRiskLevel;
+  page?: number;
+  limit?: number;
+}
+
+export interface ScreeningPage {
+  items: AmlScreening[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 @Injectable()
@@ -17,36 +42,114 @@ export class AmlScreeningService {
   private readonly logger = new Logger(AmlScreeningService.name);
 
   constructor(
-    @InjectRepository(AmlAlert) private readonly alertRepo: Repository<AmlAlert>,
+    @InjectRepository(AmlScreening)
+    private readonly repo: Repository<AmlScreening>,
   ) {}
 
-  async screenUser(userId: string, fullName: string, dateOfBirth?: string): Promise<ScreeningResult> {
-    this.logger.log(`Screening user ${userId} against sanctions lists`);
-    const result: ScreeningResult = { userId, matched: false, screenedAt: new Date() };
-    
-    if (this.isMockMatch(fullName)) {
-      result.matched = true;
-      result.listName = 'OFAC SDN';
-      result.score = 95;
-      
-      await this.alertRepo.save(this.alertRepo.create({
-        userId,
-        ruleTriggered: 'sanctions_screening',
-        riskScore: 95,
-        metadata: { fullName, listName: result.listName, screenedAt: result.screenedAt },
-      }));
+  async screenUser(input: ScreenUserInput): Promise<AmlScreening> {
+    const flags: string[] = [];
+    let riskScore = 0;
+
+    if (input.fullName) {
+      const lowerName = input.fullName.toLowerCase();
+      if (MOCK_SANCTIONS.some((s) => lowerName.includes(s))) {
+        flags.push('sanctions_match');
+        riskScore += 50;
+      }
+      if (MOCK_PEP.some((p) => lowerName.includes(p))) {
+        flags.push('pep');
+        riskScore += 30;
+      }
     }
-    
-    return result;
+
+    const riskLevel = this.calculateRiskLevel(riskScore);
+
+    const screening = this.repo.create({
+      userId: input.userId,
+      transactionId: null,
+      riskScore,
+      riskLevel,
+      flags,
+    });
+
+    return this.repo.save(screening);
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async rescreenAllUsers(): Promise<void> {
-    this.logger.log('Running nightly re-screening of all users against sanctions lists');
+  async screenTransaction(input: ScreenTransactionInput): Promise<AmlScreening> {
+    const flags: string[] = [];
+    let riskScore = 0;
+
+    if (input.amount >= CRITICAL_VALUE_THRESHOLD) {
+      flags.push('high_value');
+      riskScore += 60;
+    } else if (input.amount >= HIGH_VALUE_THRESHOLD) {
+      flags.push('high_value');
+      riskScore += 30;
+    }
+
+    if (input.counterpartyName) {
+      const lowerName = input.counterpartyName.toLowerCase();
+      if (MOCK_SANCTIONS.some((s) => lowerName.includes(s))) {
+        flags.push('sanctions_match');
+        riskScore += 50;
+      }
+    }
+
+    const riskLevel = this.calculateRiskLevel(riskScore);
+
+    const screening = this.repo.create({
+      userId: input.userId,
+      transactionId: input.transactionId,
+      riskScore,
+      riskLevel,
+      flags,
+    });
+
+    return this.repo.save(screening);
   }
 
-  private isMockMatch(name: string): boolean {
-    const mockNames = ['test sanctioned', 'sdn test', 'pep test'];
-    return mockNames.some(n => name.toLowerCase().includes(n));
+  async findAll(filters: ScreeningFilters = {}): Promise<ScreeningPage> {
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(Math.max(1, filters.limit ?? 20), 100);
+
+    const where: Record<string, unknown> = {};
+    if (filters.userId) where.userId = filters.userId;
+    if (filters.riskLevel) where.riskLevel = filters.riskLevel;
+
+    const [items, total] = await this.repo.findAndCount({
+      where,
+      order: { screenedAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    return { items, page, limit, total, totalPages: Math.ceil(total / limit) };
+  }
+
+  async findById(id: string): Promise<AmlScreening> {
+    const screening = await this.repo.findOne({ where: { id } });
+    if (!screening) {
+      throw new NotFoundException(`AML screening ${id} not found`);
+    }
+    return screening;
+  }
+
+  async review(
+    id: string,
+    reviewedBy: string,
+    notes: string,
+  ): Promise<AmlScreening> {
+    const screening = await this.findById(id);
+    screening.reviewedBy = reviewedBy;
+    screening.reviewedAt = new Date();
+    screening.notes = notes;
+    return this.repo.save(screening);
+  }
+
+  private calculateRiskLevel(score: number): AmlRiskLevel {
+    if (score >= 80) return AmlRiskLevel.CRITICAL;
+    if (score >= 50) return AmlRiskLevel.HIGH;
+    if (score >= 20) return AmlRiskLevel.MEDIUM;
+    return AmlRiskLevel.LOW;
   }
 }

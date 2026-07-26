@@ -6,25 +6,43 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Referral } from './referral.entity';
+import { Referral, ReferralStatus } from './referral.entity';
+import { ReferralReward, RewardType, RewardStatus } from './referral-reward.entity';
 import { WalletsService } from '../wallet/wallets.service';
 import { UsersService } from '../users/users.service';
+
+export interface ReferralStats {
+  totalReferrals: number;
+  pending: number;
+  qualified: number;
+  rewarded: number;
+  totalRewardsPaid: number;
+}
 
 @Injectable()
 export class ReferralService {
   constructor(
     @InjectRepository(Referral)
     private readonly referralRepo: Repository<Referral>,
+    @InjectRepository(ReferralReward)
+    private readonly rewardRepo: Repository<ReferralReward>,
     private readonly config: ConfigService,
     private readonly wallets: WalletsService,
     private readonly users: UsersService,
     private readonly dataSource: DataSource,
   ) {}
 
-  async generateCode(userId: string): Promise<string> {
-    await this.users.findById(userId);
-    const code = `REF-${userId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
-    return code;
+  async generateCode(referrerId: string): Promise<Referral> {
+    await this.users.findById(referrerId);
+    const code = `REF-${referrerId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+
+    const referral = this.referralRepo.create({
+      referrerId,
+      referredId: referrerId,
+      referralCode: code,
+      status: ReferralStatus.PENDING,
+    });
+    return this.referralRepo.save(referral);
   }
 
   async applyCode(code: string, refereeId: string): Promise<Referral> {
@@ -36,25 +54,23 @@ export class ReferralService {
     await this.users.findById(refereeId);
 
     const existing = await this.referralRepo.findOne({
-      where: { refereeId },
+      where: { referredId: refereeId },
     });
     if (existing) {
-      throw new BadRequestException('Referee has already used a referral code');
+      throw new BadRequestException('User has already been referred');
     }
 
-    const referrals = await this.referralRepo.find({
-      where: { code },
+    const referral = await this.referralRepo.findOne({
+      where: { referralCode: code },
     });
-    if (!referrals.length) {
+    if (!referral) {
       throw new NotFoundException('Referral code not found');
     }
-
-    const referrerId = referrals[0]!.referrerId;
 
     const maxReferrals =
       this.config.get<number>('referral.maxReferrals') ?? 100;
     const referrerCount = await this.referralRepo.count({
-      where: { referrerId },
+      where: { referrerId: referral.referrerId },
     });
     if (referrerCount >= maxReferrals) {
       throw new BadRequestException(
@@ -62,29 +78,91 @@ export class ReferralService {
       );
     }
 
-    const referral = this.referralRepo.create({ referrerId, refereeId, code });
+    referral.referredId = refereeId;
+    referral.status = ReferralStatus.PENDING;
     return this.referralRepo.save(referral);
   }
 
-  async creditRewardOnFirstTransaction(refereeId: string): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
-      const referral = await manager.findOne(Referral, {
-        where: { refereeId, rewardPaid: false },
-        lock: { mode: 'pessimistic_write' },
+  async getStats(referrerId: string): Promise<ReferralStats> {
+    const all = await this.referralRepo.find({
+      where: { referrerId },
+    });
+
+    const pending = all.filter((r) => r.status === ReferralStatus.PENDING).length;
+    const qualified = all.filter((r) => r.status === ReferralStatus.QUALIFIED).length;
+    const rewarded = all.filter((r) => r.status === ReferralStatus.REWARDED).length;
+
+    const rewards = await this.rewardRepo.find({
+      where: all.filter((r) => r.status === ReferralStatus.REWARDED).map((r) => ({ referralId: r.id })),
+    });
+
+    const totalRewardsPaid = rewards
+      .filter((r) => r.status === RewardStatus.PAID)
+      .reduce((sum, r) => sum + Number(r.amount), 0);
+
+    return {
+      totalReferrals: all.length,
+      pending,
+      qualified,
+      rewarded,
+      totalRewardsPaid,
+    };
+  }
+
+  async findByReferrer(referrerId: string): Promise<Referral[]> {
+    return this.referralRepo.find({
+      where: { referrerId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async qualifyReferral(referralId: string): Promise<Referral> {
+    const referral = await this.referralRepo.findOne({
+      where: { id: referralId },
+    });
+    if (!referral) {
+      throw new NotFoundException(`Referral ${referralId} not found`);
+    }
+    if (referral.status !== ReferralStatus.PENDING) {
+      throw new BadRequestException('Referral is not in pending status');
+    }
+
+    referral.status = ReferralStatus.QUALIFIED;
+    referral.qualifiedAt = new Date();
+    return this.referralRepo.save(referral);
+  }
+
+  async rewardReferral(referralId: string): Promise<{ referral: Referral; reward: ReferralReward }> {
+    const referral = await this.referralRepo.findOne({
+      where: { id: referralId },
+    });
+    if (!referral) {
+      throw new NotFoundException(`Referral ${referralId} not found`);
+    }
+    if (referral.status !== ReferralStatus.QUALIFIED) {
+      throw new BadRequestException('Referral must be qualified before rewarding');
+    }
+
+    const rewardAmount = this.config.get<number>('referral.rewardAmount') ?? 10;
+
+    return this.dataSource.transaction(async (manager) => {
+      await this.wallets.adjustBalance(referral.referrerId, 'USD', rewardAmount);
+
+      const reward = manager.create(ReferralReward, {
+        referralId: referral.id,
+        rewardType: RewardType.CREDIT,
+        amount: rewardAmount,
+        currency: 'USD',
+        status: RewardStatus.PAID,
+        paidAt: new Date(),
       });
-      if (!referral) return;
+      await manager.save(ReferralReward, reward);
 
-      const rewardAmount =
-        this.config.get<number>('referral.rewardAmount') ?? 10;
-
-      await this.wallets.adjustBalance(
-        referral.referrerId,
-        'USD',
-        rewardAmount,
-      );
-
-      referral.rewardPaid = true;
+      referral.status = ReferralStatus.REWARDED;
+      referral.rewardedAt = new Date();
       await manager.save(Referral, referral);
+
+      return { referral, reward };
     });
   }
 }

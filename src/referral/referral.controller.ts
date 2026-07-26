@@ -1,24 +1,42 @@
 import {
   Controller,
+  Get,
   Post,
+  Param,
   Body,
+  Req,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { ReferralService } from './referral.service';
 
-export interface ApplyCodeDto {
-  code: string;
-  refereeId: string;
+interface AuthenticatedRequest {
+  user?: {
+    sub?: string;
+  };
 }
 
 @Controller('api/v1/referrals')
 export class ReferralController {
   constructor(private readonly referralService: ReferralService) {}
 
-  @Post('apply')
+  @Post('generate')
   @HttpCode(HttpStatus.CREATED)
-  apply(@Body() dto: ApplyCodeDto) {
-    return this.referralService.applyCode(dto.code, dto.refereeId);
+  generateCode(@Req() req: AuthenticatedRequest) {
+    const userId = req.user?.sub ?? '';
+    return this.referralService.generateCode(userId);
+  }
+
+  @Get('stats')
+  getStats(@Req() req: AuthenticatedRequest) {
+    const userId = req.user?.sub ?? '';
+    return this.referralService.getStats(userId);
+  }
+
+  @Get()
+  findAll(@Req() req: AuthenticatedRequest) {
+    const userId = req.user?.sub ?? '';
+    return this.referralService.findByReferrer(userId);
   }
 }

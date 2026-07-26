@@ -254,6 +254,21 @@ export class TransactionsService implements OnModuleInit {
     return tx;
   }
 
+  async updateTags(
+    id: string,
+    userId: string,
+    tag?: string,
+    tags?: string[],
+  ): Promise<Transaction> {
+    const tx = await this.findById(id);
+    if (tx.senderId !== userId) {
+      throw new BadRequestException('Only the sender can tag a transaction');
+    }
+    if (tag !== undefined) tx.tag = tag;
+    if (tags !== undefined) tx.tags = tags;
+    return this.txRepo.save(tx);
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------

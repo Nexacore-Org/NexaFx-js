@@ -47,6 +47,10 @@ import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
 import { VersioningModule } from './versioning/versioning.module';
 import { InsightsModule } from './exxagerated/exxagerated.module';
+import { AccountFreezeModule } from './modules/account-freeze/account-freeze.module';
+import { StellarFederationModule } from './modules/stellar-federation/stellar-federation.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { ExportModule } from './modules/export/export.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
@@ -74,9 +78,14 @@ import { MailModule as UpstreamMailModule, MailQueueModule } from './mail/mail.m
 import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
-import { UsersModule as UpstreamUsersModule } from './users/users.module';
+import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history.module';
+import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
+import { PortfolioModule } from './portfolio/portfolio.module';
+import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
+import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { BulkPaymentsModule } from './bulk-payments/bulk-payments.module';
 import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
@@ -85,6 +94,16 @@ import { StellarModule } from './stellar/stellar.module';
 import { EndpointRateLimitModule } from './modules/endpoint-rate-limit/endpoint-rate-limit.module';
 import { UserDeactivationModule } from './modules/user-deactivation/user-deactivation.module';
 import { FeeAuditModule } from './modules/fee-audit/fee-audit.module';
+import { ActivityFeedModule } from './activity-feed/activity-feed.module';
+import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
+import { ReferralModule } from './referral/referral.module';
+import { AmlModule } from './aml/aml.module';
+import { EscrowModule } from './modules/escrow/escrow.module';
+import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
+import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
+import { FeeReportsModule } from './modules/fee-reports/fee-reports.module';
+import { WalletHistoryModule } from './modules/wallet-history/wallet-history.module';
+import { KycTiersModule } from './modules/kyc-tiers/kyc-tiers.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -239,13 +258,37 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     SpendingModule,
     FeeTiersModule,
     WalletsModule,
+    ScheduledTransactionsModule,
+    ExchangeRatesModule,
+    BulkPaymentsModule,
+    DisputesModule,
     CurrenciesModule,
     TermsModule,
     AuthModule,
+    RateAlertHistoryModule,
+    ScheduledReportsModule,
+    PortfolioModule,
     ReconciliationModule,
+    RetryModule,
+    ExperimentsModule,
+    FeesModule,
+    TransactionRiskModule,
+    WebhooksModule,
+    SecretsModule,
+    DataArchiveModule,
+    IdempotencyModule,
+    GoalsModule,
+    AnnouncementsModule,
+    ComplianceModule,
+    LedgerModule,
+    VersioningModule,
+    InsightsModule,
+    AccountFreezeModule,
+    StellarFederationModule,
+    ApiKeysModule,
+    ExportModule,
     UpstreamReconciliationModule,
     ScheduledJobsModule,
-    DisputesModule,
     ModulesDisputesModule,
     MetricsModule,
     StellarModule,
@@ -254,8 +297,49 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     EndpointRateLimitModule,
     UserDeactivationModule,
     FeeAuditModule,
+    ActivityFeedModule,
+    NotificationPreferencesModule,
+    ReferralModule,
+    AmlModule,
     ModulesWalletsModule,
     ModulesCacheModule,
+    AdminModule,
+    AnalyticsModule,
+    RpcHealthModule,
+    FeatureFlagsModule,
+    RateLimitModule,
+    AdminAuditModule,
+    StrategyOptimizerModule,
+    RiskEngineModule,
+    SessionsModule,
+    TransactionsModule,
+    EnrichmentModule,
+    NotificationsModule,
+    WebSocketNotificationsModule,
+    RetryModule,
+    ExperimentsModule,
+    FeesModule,
+    TransactionRiskModule,
+    WebhooksModule,
+    SecretsModule,
+    DataArchiveModule,
+    IdempotencyModule,
+    GoalsModule,
+    AnnouncementsModule,
+    ComplianceModule,
+    LedgerModule,
+    VersioningModule,
+    InsightsModule,
+    InsightsForecastModule,
+    ReferralsModule,
+    KycModule,
+    EscrowModule,
+    SplitPaymentsModule,
+    ScheduledTransactionsModule,
+    SupportTicketsModule,
+    FeeReportsModule,
+    WalletHistoryModule,
+    KycTiersModule,
   ],
   controllers: [AppController],
   providers: [
