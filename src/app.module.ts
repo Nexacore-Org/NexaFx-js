@@ -43,6 +43,10 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
+import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
+import { FeeReportsModule } from './modules/fee-reports/fee-reports.module';
+import { WalletHistoryModule } from './modules/wallet-history/wallet-history.module';
+import { KycTiersModule } from './modules/kyc-tiers/kyc-tiers.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -119,6 +123,10 @@ const enableBull =
     ScheduledTransactionsModule,
     EscrowModule,
     SplitPaymentsModule,
+    SupportTicketsModule,
+    FeeReportsModule,
+    WalletHistoryModule,
+    KycTiersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
