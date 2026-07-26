@@ -34,6 +34,12 @@ export class WebhookDeliveryEntity {
   @Column({ type: 'int', nullable: true })
   lastHttpStatus?: number;
 
+  @Column({ type: 'int', default: 0 })
+  retryCount: number;
+
+  @Column({ type: 'int', default: 3 })
+  maxRetries: number;
+
   @Column({ type: 'text', nullable: true })
   lastError?: string;
 

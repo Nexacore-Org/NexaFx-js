@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FeeRuleEntity } from '../entities/fee-rule.entity';
 import { SimulateFeeDto } from '../dto/simulate-fee.dto';
+import { FeeAuditService } from '../../fee-audit/services/fee-audit.service';
 
 export interface AppliedFeeSnapshot {
   ruleId: string;
@@ -19,6 +20,7 @@ export class FeeEngineService {
   constructor(
     @InjectRepository(FeeRuleEntity)
     private readonly ruleRepo: Repository<FeeRuleEntity>,
+    private readonly feeAuditService: FeeAuditService,
   ) {}
 
   /**
@@ -56,6 +58,20 @@ export class FeeEngineService {
     }
 
     const feeAmount = this.calculateFee(amount, applicableRule);
+
+    const feeType = applicableRule.percentage && applicableRule.flatFee
+      ? 'percentage'
+      : applicableRule.percentage
+        ? 'percentage'
+        : 'flat';
+
+    this.feeAuditService.recordFeeCalculation({
+      feeAmount,
+      currency,
+      feeType,
+      calculatedAmount: amount,
+      appliedTier: applicableRule.ruleType,
+    }).catch((err) => this.logger.warn(`Failed to record fee audit: ${err.message}`));
 
     return {
       ruleId: applicableRule.id,

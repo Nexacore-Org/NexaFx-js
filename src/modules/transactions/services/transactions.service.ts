@@ -1,5 +1,5 @@
 import { TransactionExecutionSnapshotEntity } from '../entities/transaction-execution-snapshot.entity';
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { TransactionEntity } from '../entities/transaction.entity';
@@ -11,6 +11,7 @@ import { TransactionLifecycleService } from './transaction-lifecycle.service';
 import { RiskScoringService } from './risk-scoring.service';
 import { FxAggregatorService } from '../../fx/fx-aggregator.service';
 import { WebhookDispatcherService } from '../../webhooks/webhook-dispatcher.service';
+import { UserDeactivationService } from '../../user-deactivation/services/user-deactivation.service';
 
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN', 'JPY', 'BTC', 'ETH', 'USDT'];
 
@@ -25,9 +26,17 @@ export class TransactionsService {
     private readonly riskScoringService: RiskScoringService,
     private readonly fxAggregatorService: FxAggregatorService,
     private readonly webhookDispatcher: WebhookDispatcherService,
+    private readonly deactivationService: UserDeactivationService,
   ) {}
 
   async createTransaction(dto: CreateTransactionDto) {
+    if (dto.walletId) {
+      const isDeactivated = await this.deactivationService.isUserDeactivated(dto.walletId);
+      if (isDeactivated) {
+        throw new ForbiddenException('Account has been deactivated. Cannot perform transactions.');
+      }
+    }
+
     if (!SUPPORTED_CURRENCIES.includes(dto.currency.toUpperCase())) {
       throw new Error(`Unsupported currency: ${dto.currency}`);
     }

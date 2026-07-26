@@ -16,6 +16,7 @@ import { AuditLog } from '../admin-audit/decorators/audit-log.decorator';
 import { SkipAudit } from '../admin-audit/decorators/skip-audit.decorator';
 import { WebhookSandboxService } from './sandbox/webhook-sandbox.service';
 import { WebhookDispatcherService } from './webhook-dispatcher.service';
+import { WebhookRetryJob } from './webhook-retry.job';
 import { randomBytes } from 'crypto';
 
 @Controller('webhooks')
@@ -24,6 +25,7 @@ export class WebhooksController {
     private readonly service: WebhooksService,
     private readonly sandboxService: WebhookSandboxService,
     private readonly dispatcher: WebhookDispatcherService,
+    private readonly retryJob: WebhookRetryJob,
   ) {}
 
   @Post()
@@ -75,6 +77,12 @@ export class WebhooksController {
     const payload = body.payload ?? { test: true, timestamp: new Date().toISOString() };
     const secret = body.secret ?? randomBytes(16).toString('hex');
     return this.dispatcher.testSend(body.url, body.eventName ?? 'test.ping', payload, secret);
+  }
+
+  @Post(':id/retry')
+  @SkipAudit()
+  retry(@Param('id') id: string) {
+    return this.retryJob.manualRetry(id);
   }
 }
 

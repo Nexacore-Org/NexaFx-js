@@ -43,6 +43,9 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
+import { EndpointRateLimitModule } from './modules/endpoint-rate-limit/endpoint-rate-limit.module';
+import { UserDeactivationModule } from './modules/user-deactivation/user-deactivation.module';
+import { FeeAuditModule } from './modules/fee-audit/fee-audit.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -119,6 +122,9 @@ const enableBull =
     ScheduledTransactionsModule,
     EscrowModule,
     SplitPaymentsModule,
+    EndpointRateLimitModule,
+    UserDeactivationModule,
+    FeeAuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],

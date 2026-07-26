@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './guards/jwt.guard';
 import { AdminGuard } from './guards/admin.guard';
 import { ReferralsModule } from '../referrals/referrals.module';
 import { MailModule } from '../mail/mail.module';
+import { UserDeactivationModule } from '../user-deactivation/user-deactivation.module';
 
 @Global()
 @Module({
@@ -16,6 +17,7 @@ import { MailModule } from '../mail/mail.module';
     forwardRef(() => SecretsModule),
     forwardRef(() => ReferralsModule),
     MailModule,
+    forwardRef(() => UserDeactivationModule),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard, AdminGuard],

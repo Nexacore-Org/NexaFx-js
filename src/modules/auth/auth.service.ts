@@ -6,6 +6,7 @@ import { UserEntity } from '../users/entities/user.entity';
 import { ReferralService } from '../referrals/services/referral.service';
 import { MailService } from '../mail/services/mail.service';
 import { ConfigService } from '@nestjs/config';
+import { UserDeactivationService } from '../user-deactivation/services/user-deactivation.service';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +16,7 @@ export class AuthService {
     private readonly referralService: ReferralService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    private readonly deactivationService: UserDeactivationService,
   ) {}
 
   /**
@@ -33,6 +35,12 @@ export class AuthService {
     // Check if user is soft deleted
     if (user.deletedAt) {
       throw new UnauthorizedException('Account has been deactivated');
+    }
+
+    // Check if user is actively deactivated
+    const isDeactivated = await this.deactivationService.isUserDeactivated(userId);
+    if (isDeactivated) {
+      throw new UnauthorizedException('Account has been deactivated by an administrator');
     }
 
     // Check if user status is active

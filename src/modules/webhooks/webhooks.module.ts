@@ -16,6 +16,8 @@ import { WebhookInboundLogEntity } from './entities/webhook-inbound-log.entity';
 import { WebhookVerificationService } from './services/webhook-verification.service';
 import { WebhookInboundController } from './controllers/webhook-inbound.controller';
 import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
+import { WebhookRetryJob } from './webhook-retry.job';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
       WebhookInboundLogEntity,
     ]),
     NotificationsModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [WebhooksController, AdminWebhooksController, DeveloperPortalController, WebhookInboundController],
   providers: [
@@ -35,7 +38,8 @@ import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
     WebhookVerificationService,
     WebhookSignatureGuard,
     WebhookFilterService,
+    WebhookRetryJob,
   ],
-  exports: [WebhookDispatcherService, WebhooksService],
+  exports: [WebhookDispatcherService, WebhooksService, WebhookRetryJob],
 })
 export class WebhooksModule {}

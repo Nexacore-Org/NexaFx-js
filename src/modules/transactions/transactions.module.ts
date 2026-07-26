@@ -31,6 +31,7 @@ import { RiskEngineModule } from '../risk-engine/risk-engine.module';
 import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-indicator.listener';
 import { TransactionWebsocketListener } from './listeners/transaction-websocket.listener';
 import { NotificationsModule } from '../../web-sockets/notifications.module';
+import { UserDeactivationModule } from '../user-deactivation/user-deactivation.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { NotificationsModule } from '../../web-sockets/notifications.module';
     EventEmitterModule.forRoot(),
     RiskEngineModule,
     NotificationsModule,
+    UserDeactivationModule,
     TypeOrmModule.forFeature([
       TransactionEntity,
       TransactionExecutionSnapshotEntity,
