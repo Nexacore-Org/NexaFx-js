@@ -82,6 +82,9 @@ export class TransactionEntity {
   @Column({ type: 'boolean', default: false })
   requiresManualReview: boolean;
 
+  @Column({ type: 'uuid', nullable: true })
+  rollbackOf?: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

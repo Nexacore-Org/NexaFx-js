@@ -7,7 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type WebhookDeliveryStatus = 'pending' | 'success' | 'failed';
+export type WebhookDeliveryStatus = 'pending' | 'delivered' | 'failed' | 'success';
 
 @Entity('webhook_deliveries')
 export class WebhookDeliveryEntity {
@@ -25,6 +25,9 @@ export class WebhookDeliveryEntity {
   @Column({ type: 'jsonb' })
   payload: Record<string, any>;
 
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  signature?: string;
+
   @Column({ type: 'varchar', length: 20, default: 'pending' })
   status: WebhookDeliveryStatus;
 
@@ -36,6 +39,9 @@ export class WebhookDeliveryEntity {
 
   @Column({ type: 'text', nullable: true })
   lastError?: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastAttemptAt?: Date;
 
   @Column({ type: 'timestamptz', nullable: true })
   nextRetryAt?: Date;

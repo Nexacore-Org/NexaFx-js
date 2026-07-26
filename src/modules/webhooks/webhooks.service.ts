@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
@@ -18,7 +18,7 @@ export class WebhooksService {
     private readonly deliveryRepo: Repository<WebhookDeliveryEntity>,
   ) {}
 
-  async create(dto: CreateWebhookDto) {
+  async create(dto: CreateWebhookDto, userId?: string) {
     const secret = randomBytes(32).toString('hex');
     const events = this.normalizeEvents(dto.events);
 
@@ -27,6 +27,8 @@ export class WebhooksService {
       events,
       secret,
       status: 'active',
+      isActive: true,
+      userId,
     });
 
     const saved = await this.subRepo.save(sub);
@@ -37,13 +39,16 @@ export class WebhooksService {
       url: saved.url,
       events: saved.events,
       status: saved.status,
+      isActive: saved.isActive,
       createdAt: saved.createdAt,
       signingSecret: secret,
     };
   }
 
-  async list() {
+  async list(userId?: string) {
+    const where = userId ? { userId } : {};
     const subs = await this.subRepo.find({
+      where,
       order: { createdAt: 'DESC' },
     });
 
@@ -52,8 +57,31 @@ export class WebhooksService {
       url: s.url,
       events: s.events,
       status: s.status,
+      isActive: s.isActive,
       createdAt: s.createdAt,
     }));
+  }
+
+  async toggle(id: string) {
+    const sub = await this.subRepo.findOne({ where: { id } });
+
+    if (!sub) {
+      throw new NotFoundException(`Webhook subscription with ID ${id} not found`);
+    }
+
+    sub.isActive = !sub.isActive;
+    sub.status = sub.isActive ? 'active' : 'disabled';
+
+    const updated = await this.subRepo.save(sub);
+
+    return {
+      id: updated.id,
+      url: updated.url,
+      events: updated.events,
+      status: updated.status,
+      isActive: updated.isActive,
+      createdAt: updated.createdAt,
+    };
   }
 
   async update(id: string, dto: UpdateWebhookDto) {
@@ -72,6 +100,7 @@ export class WebhooksService {
       url: updated.url,
       events: updated.events,
       status: updated.status,
+      isActive: updated.isActive,
       createdAt: updated.createdAt,
     };
   }
@@ -80,6 +109,7 @@ export class WebhooksService {
     return this.subRepo
       .createQueryBuilder('s')
       .where('s.status = :status', { status: 'active' })
+      .andWhere('s."isActive" = :isActive', { isActive: true })
       .andWhere('s.events @> :event', { event: JSON.stringify([eventName]) })
       .getMany();
   }

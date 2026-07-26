@@ -36,6 +36,10 @@ export class WebhookDispatcherService {
     eventName: string,
     payload: Record<string, any>,
   ) {
+    const rawBody = JSON.stringify(payload);
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = signWebhookPayload(subscription.secret, timestamp, rawBody);
+
     const delivery = await this.deliveryRepo.save(
       this.deliveryRepo.create({
         subscriptionId: subscription.id,
@@ -43,12 +47,10 @@ export class WebhookDispatcherService {
         payload,
         status: 'pending',
         attempts: 0,
+        signature,
+        lastAttemptAt: new Date(),
       }),
     );
-
-    const rawBody = JSON.stringify(payload);
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const signature = signWebhookPayload(subscription.secret, timestamp, rawBody);
 
     try {
       const res = await axios.post(subscription.url, payload, {
@@ -65,9 +67,10 @@ export class WebhookDispatcherService {
       await this.deliveryRepo.update(
         { id: delivery.id },
         {
-          status: 'success',
+          status: 'delivered',
           attempts: delivery.attempts + 1,
           lastHttpStatus: res.status,
+          lastAttemptAt: new Date(),
         },
       );
     } catch (err: any) {
@@ -87,6 +90,7 @@ export class WebhookDispatcherService {
           lastHttpStatus: status,
           lastError: message,
           nextRetryAt,
+          lastAttemptAt: new Date(),
         },
       );
 

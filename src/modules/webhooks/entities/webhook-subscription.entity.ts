@@ -2,9 +2,9 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
-  Index,
 } from 'typeorm';
 
 export type WebhookStatus = 'active' | 'disabled';
@@ -13,6 +13,9 @@ export type WebhookStatus = 'active' | 'disabled';
 export class WebhookSubscriptionEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  userId?: string;
 
   @Index({ unique: true })
   @Column({ type: 'varchar', length: 500 })
@@ -24,6 +27,9 @@ export class WebhookSubscriptionEntity {
   // ⚠️ keep secret server-side only (never return in responses)
   @Column({ type: 'varchar', length: 255 })
   secret: string;
+
+  @Column({ type: 'boolean', default: true })
+  isActive: boolean;
 
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status: WebhookStatus;
