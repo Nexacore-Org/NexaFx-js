@@ -47,6 +47,10 @@ import { ComplianceModule } from './compliance-evidence/compliance.module';
 import { LedgerModule } from './double-entry-ledger/ledger.module';
 import { VersioningModule } from './versioning/versioning.module';
 import { InsightsModule } from './exxagerated/exxagerated.module';
+import { AccountFreezeModule } from './modules/account-freeze/account-freeze.module';
+import { StellarFederationModule } from './modules/stellar-federation/stellar-federation.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { ExportModule } from './modules/export/export.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
@@ -246,6 +250,24 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     ScheduledReportsModule,
     PortfolioModule,
     ReconciliationModule,
+    RetryModule,
+    ExperimentsModule,
+    FeesModule,
+    TransactionRiskModule,
+    WebhooksModule,
+    SecretsModule,
+    DataArchiveModule,
+    IdempotencyModule,
+    GoalsModule,
+    AnnouncementsModule,
+    ComplianceModule,
+    LedgerModule,
+    VersioningModule,
+    InsightsModule,
+    AccountFreezeModule,
+    StellarFederationModule,
+    ApiKeysModule,
+    ExportModule,
     UpstreamReconciliationModule,
     ScheduledJobsModule,
     DisputesModule,
