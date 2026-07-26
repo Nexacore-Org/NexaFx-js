@@ -84,6 +84,8 @@ import { PortfolioModule } from './portfolio/portfolio.module';
 import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
+import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { BulkPaymentsModule } from './bulk-payments/bulk-payments.module';
 import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
@@ -249,6 +251,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     SpendingModule,
     FeeTiersModule,
     WalletsModule,
+    ScheduledTransactionsModule,
+    ExchangeRatesModule,
+    BulkPaymentsModule,
+    DisputesModule,
     CurrenciesModule,
     TermsModule,
     AuthModule,
@@ -276,7 +282,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     ExportModule,
     UpstreamReconciliationModule,
     ScheduledJobsModule,
-    DisputesModule,
     ModulesDisputesModule,
     MetricsModule,
     StellarModule,
