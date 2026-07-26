@@ -16,38 +16,23 @@ import { redisStore } from 'cache-manager-redis-store';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AuditModule } from './audit/audit.module';
-import { AuthModule } from './auth/auth.module';
-import { JwtAuthGuard } from './auth/jwt-auth.guard';
-import { ConfigModule } from './config/config.module';
-import { Configuration } from './config/configuration';
-import { CurrenciesModule } from './currencies/currencies.module';
-import { HealthModule } from './health/health.module';
-import { MailModule, MailQueueModule } from './mail/mail.module';
-import { NotificationQueueModule } from './notification/notification.module';
-import { TermsModule } from './terms/terms.module';
-import { TransactionQueueModule } from './transaction/transaction.module';
-import { UsersModule } from './users/users.module';
-import { WalletsModule } from './wallet/wallets.module';
-import { ReconciliationModule } from './reconciliation/reconciliation.module';
-import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
-import { DisputesModule } from './disputes/disputes.module';
-import { MetricsModule } from './metrics/metrics.module';
-import { RatesModule } from './rates/rates.module';
-import { StellarModule } from './stellar/stellar.module';
-import { AdminModule } from './modules/admin/admin.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { HealthModule as ModulesHealthModule } from './modules/health/health.module';
 import { RpcHealthModule } from './modules/rpc-health/rpc-health.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { StrategyOptimizerModule } from './modules/strategy-optimizer/strategy-optimizer.module';
 import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EnrichmentModule } from './modules/enrichment/enrichment.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { NotificationsModule as WebSocketNotificationsModule } from './web-sockets/notifications.module';
+import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { RetryModule } from './modules/retry/retry.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
 import { FeesModule } from './modules/fee/fee.module';
@@ -65,9 +50,40 @@ import { InsightsModule } from './exxagerated/exxagerated.module';
 import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
+import { WalletsModule as ModulesWalletsModule } from './modules/wallets/wallets.module';
+import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { CardsModule } from './modules/cards/cards.module';
+import { FxModule } from './modules/fx/fx.module';
+import { BankingModule } from './banking/banking.module';
+import { LoyaltyModule } from './loyalty-point/loyalty.module';
+import { DisputesModule as ModulesDisputesModule } from './modules/disputes/disputes.module';
+import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { CacheModule as ModulesCacheModule } from './modules/cache/cache.module';
+import { MailModule } from './modules/mail/mail.module';
+import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
+import { SpendingModule } from './spending/spending.module';
+import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
+import { AuditModule } from './audit/audit.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { ConfigModule } from './config/config.module';
+import { Configuration } from './config/configuration';
+import { CurrenciesModule } from './currencies/currencies.module';
+import { HealthModule } from './health/health.module';
+import { MailModule as UpstreamMailModule, MailQueueModule } from './mail/mail.module';
+import { NotificationQueueModule } from './notification/notification.module';
+import { TermsModule } from './terms/terms.module';
+import { TransactionQueueModule } from './transaction/transaction.module';
+import { UsersModule as UpstreamUsersModule } from './users/users.module';
+import { WalletsModule } from './wallet/wallets.module';
+import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
+import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
+import { DisputesModule } from './disputes/disputes.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { RatesModule } from './rates/rates.module';
+import { StellarModule } from './stellar/stellar.module';
 import { EscrowModule } from './modules/escrow/escrow.module';
 import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
-import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
 import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
 import { FeeReportsModule } from './modules/fee-reports/fee-reports.module';
 import { WalletHistoryModule } from './modules/wallet-history/wallet-history.module';
@@ -215,20 +231,30 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           TransactionQueueModule,
         ]
       : []),
+    ModulesHealthModule,
     HealthModule,
     UsersModule,
+    UpstreamUsersModule,
     AuditModule,
     MailModule,
+    UpstreamMailModule,
+    TransactionApprovalModule,
+    SpendingModule,
+    FeeTiersModule,
     WalletsModule,
     CurrenciesModule,
     TermsModule,
     AuthModule,
     ReconciliationModule,
+    UpstreamReconciliationModule,
     ScheduledJobsModule,
     DisputesModule,
+    ModulesDisputesModule,
     MetricsModule,
     StellarModule,
     RatesModule,
+    ModulesWalletsModule,
+    ModulesCacheModule,
     AdminModule,
     AnalyticsModule,
     RpcHealthModule,
