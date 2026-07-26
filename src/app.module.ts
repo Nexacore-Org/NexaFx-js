@@ -53,6 +53,8 @@ import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { CacheModule } from './modules/cache/cache.module';
 import { MailModule } from './modules/mail/mail.module';
 import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
+import { SpendingModule } from './spending/spending.module';
+import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -139,6 +141,8 @@ const enableBull =
     CacheModule,
     MailModule,
     TransactionApprovalModule,
+    SpendingModule,
+    FeeTiersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

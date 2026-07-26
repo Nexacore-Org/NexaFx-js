@@ -8,6 +8,8 @@ import { MailService } from '../mail/services/mail.service';
 import { ConfigService } from '@nestjs/config';
 import { AdminAuditService, AuditContext } from '../admin-audit/admin-audit.service';
 import { ActorType } from '../admin-audit/entities/admin-audit-log.entity';
+import { SecretsService } from '../secrets/services/secrets.service';
+import * as jwt from 'jsonwebtoken';
 
 @Injectable()
 export class AuthService {
@@ -20,26 +22,67 @@ export class AuthService {
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
     private readonly adminAuditService: AdminAuditService,
+    private readonly secretsService: SecretsService,
   ) {}
 
-  /**
-   * Validates if a user is active (not soft-deleted) and can login
-   */
-  async validateUserForLogin(userId: string, auditContext?: AuditContext): Promise<UserEntity> {
+  async createUser(userData: Partial<UserEntity>): Promise<UserEntity> {
+    const user = this.userRepository.create(userData);
+    return this.userRepository.save(user);
+  }
+
+  async findUserByEmail(email: string): Promise<UserEntity | null> {
+    return this.userRepository.findOne({ where: { email } });
+  }
+
+  async login(email: string, passwordHash: string): Promise<{ accessToken: string; user: UserEntity }> {
     const user = await this.userRepository.findOne({
-      where: { id: userId },
-      withDeleted: true, // Include soft deleted records to check if user is deleted
+      where: { email, deletedAt: IsNull() },
     });
 
     if (!user) {
-      // Log failed login attempt
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (user.status === 'suspended' || user.status === 'deleted') {
+      throw new UnauthorizedException('Account is suspended');
+    }
+
+    if (user.passwordHash !== passwordHash) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const secret = await this.secretsService.getActiveSecret('JWT');
+    const accessToken = jwt.sign(
+      { sub: user.id, email: user.email },
+      secret,
+      { expiresIn: '24h' },
+    );
+
+    return { accessToken, user };
+  }
+
+  async resendVerification(email: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { email, deletedAt: IsNull() } });
+    if (!user) return;
+
+    if (user.emailVerifiedAt) return;
+
+    await this.sendEmailVerification(user.id, user.email);
+  }
+
+  async validateUserForLogin(userId: string, auditContext?: AuditContext): Promise<UserEntity> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      withDeleted: true,
+    });
+
+    if (!user) {
       if (auditContext) {
         await this.logAuthEvent(auditContext, 'LOGIN_FAILED', userId, 'User not found');
       }
       throw new UnauthorizedException('User not found');
     }
 
-    // Check if user is soft deleted
     if (user.deletedAt) {
       if (auditContext) {
         await this.logAuthEvent(auditContext, 'LOGIN_FAILED', user.id, 'Account has been deactivated');
@@ -47,7 +90,6 @@ export class AuthService {
       throw new UnauthorizedException('Account has been deactivated');
     }
 
-    // Check if user status is active
     if (user.status === 'suspended' || user.status === 'deleted') {
       if (auditContext) {
         await this.logAuthEvent(auditContext, 'LOGIN_FAILED', user.id, 'Account is suspended');
@@ -55,7 +97,6 @@ export class AuthService {
       throw new UnauthorizedException('Account is suspended');
     }
 
-    // Log successful login
     if (auditContext) {
       await this.logAuthEvent(auditContext, 'LOGIN', user.id);
     }
@@ -63,18 +104,12 @@ export class AuthService {
     return user;
   }
 
-  /**
-   * Logs user logout
-   */
   async logUserLogout(userId: string, auditContext?: AuditContext): Promise<void> {
     if (auditContext) {
       await this.logAuthEvent(auditContext, 'LOGOUT', userId);
     }
   }
 
-  /**
-   * Helper method to log auth events
-   */
   private async logAuthEvent(
     context: AuditContext,
     action: string,
@@ -93,34 +128,21 @@ export class AuthService {
       });
     } catch (error) {
       this.logger.error(`Failed to log auth event: ${error.message}`, error.stack);
-      // Never block the primary operation
     }
   }
 
-  /**
-   * Verifies if a user exists and is active (used in JWT validation)
-   */
   async verifyUserIsActive(userId: string): Promise<boolean> {
     const user = await this.userRepository.findOne({
-      where: { id: userId, deletedAt: IsNull() }, // Only active users
+      where: { id: userId, deletedAt: IsNull() },
     });
-
     return !!user;
   }
 
-  /**
-   * Called after a new user has been persisted during registration.
-   * Links the new user to the referrer who owns `referralCode` (if provided).
-   * Errors are swallowed — referral linkage must never block registration.
-   */
   async linkReferralOnRegistration(newUserId: string, referralCode?: string): Promise<void> {
     if (!referralCode) return;
-
     try {
       await this.referralService.applyReferralCode(newUserId, referralCode);
     } catch (err: any) {
-      // Log but never block registration
-      // A logger cannot be injected here without circular-dep risk, so use console.warn
       console.warn(
         `[AuthService] Referral code '${referralCode}' could not be applied for user ${newUserId}: ${err?.message}`,
       );
@@ -129,18 +151,17 @@ export class AuthService {
 
   async forgotPassword(email: string, auditContext?: AuditContext): Promise<void> {
     const user = await this.userRepository.findOne({ where: { email, deletedAt: IsNull() } });
-    if (!user) return; // Don't reveal whether email exists
+    if (!user) return;
 
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+    const expiry = new Date(Date.now() + 15 * 60 * 1000);
 
     await this.userRepository.update(user.id, {
       passwordResetTokenHash: tokenHash,
       passwordResetExpiry: expiry,
     });
 
-    // Log password reset request
     if (auditContext) {
       await this.logAuthEvent(auditContext, 'PASSWORD_RESET', user.id);
     }
@@ -171,7 +192,6 @@ export class AuthService {
       passwordResetExpiry: undefined,
     });
 
-    // Log password reset completion
     if (auditContext) {
       await this.logAuthEvent(auditContext, 'PASSWORD_RESET_COMPLETED', user.id);
     }
@@ -204,7 +224,6 @@ export class AuthService {
       emailVerificationTokenHash: undefined,
     });
 
-    // Log email verification
     if (auditContext) {
       await this.logAuthEvent(auditContext, 'EMAIL_VERIFIED', userId);
     }

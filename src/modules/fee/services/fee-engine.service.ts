@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FeeRuleEntity } from '../entities/fee-rule.entity';
 import { SimulateFeeDto } from '../dto/simulate-fee.dto';
+import { FeeTiersService } from '../../fee-tiers/fee-tiers.service';
+import { KycFeeLevel } from '../../fee-tiers/entities/fee-tier.entity';
 
 export interface AppliedFeeSnapshot {
   ruleId: string;
@@ -19,16 +21,28 @@ export class FeeEngineService {
   constructor(
     @InjectRepository(FeeRuleEntity)
     private readonly ruleRepo: Repository<FeeRuleEntity>,
+    private readonly feeTiersService: FeeTiersService,
   ) {}
 
-  /**
-   * Evaluate and return the highest-priority applicable fee for a given amount/currency.
-   */
   async evaluate(
     amount: number,
     currency: string,
     promoCode?: string,
+    kycLevel?: KycFeeLevel,
   ): Promise<AppliedFeeSnapshot | null> {
+    if (kycLevel) {
+      const tierResult = await this.feeTiersService.calculateFee(kycLevel, currency, amount);
+      if (tierResult.tier) {
+        return {
+          ruleId: tierResult.tier.id,
+          ruleType: 'KYC_TIER',
+          feeAmount: tierResult.feeAmount,
+          currency,
+          appliedAt: new Date(),
+        };
+      }
+    }
+
     const now = new Date();
 
     const rules = await this.ruleRepo
@@ -41,7 +55,6 @@ export class FeeEngineService {
       .orderBy('r.priority', 'ASC')
       .getMany();
 
-    // Promotional rules take priority if promo code matches
     const promoRule = promoCode
       ? rules.find(
           (r) => r.ruleType === 'PROMOTIONAL' && r.promoCode === promoCode,
@@ -94,6 +107,6 @@ export class FeeEngineService {
       fee += Number(rule.flatFee);
     }
 
-    return Math.round(fee * 1e8) / 1e8; // precision to 8 decimal places
+    return Math.round(fee * 1e8) / 1e8;
   }
 }
