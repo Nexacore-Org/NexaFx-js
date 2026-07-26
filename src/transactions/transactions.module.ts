@@ -14,6 +14,7 @@ import { SecurityModule } from '../common/security.module';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
 import { FxModule } from '../fx/fx.module';
 import { FeesModule } from '../fees/fees.module';
+import { TermsModule } from '../terms/terms.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { FeesModule } from '../fees/fees.module';
     IdempotencyModule,
     FxModule,
     FeesModule,
+    TermsModule,
   ],
   controllers: [TransactionsController],
   providers: [TransactionsService, TransactionLimitService],

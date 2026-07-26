@@ -89,6 +89,7 @@ export class TransactionsService implements OnModuleInit {
     private readonly events: EventEmitter2,
     private readonly limitService: TransactionLimitService,
     private readonly feesService: FeesService,
+    private readonly termsService: TermsAcceptanceService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -244,7 +245,7 @@ export class TransactionsService implements OnModuleInit {
       currency: dto.currency,
       fee: fee.feeAmount,
       reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'deposit', memo: this.generateStellarMemo(tx.id).value, fullTransactionId: tx.id },
+      metadata: { ...dto.metadata, type: 'deposit', fullTransactionId: tx.id },
       status: TransactionStatus.PENDING,
     });
     await this.txRepo.save(tx);
