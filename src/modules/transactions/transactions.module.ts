@@ -24,6 +24,7 @@ import { RiskScoringAdminController, RiskScoringController } from './controllers
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { RiskEngineModule } from '../risk-engine/risk-engine.module';
 import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-indicator.listener';
+import { AccountFreezeModule } from '../account-freeze/account-freeze.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-i
     SessionsModule,
     EventEmitterModule.forRoot(),
     RiskEngineModule,
+    AccountFreezeModule,
     TypeOrmModule.forFeature([
       TransactionEntity,
       TransactionExecutionSnapshotEntity,

@@ -1,11 +1,12 @@
 import { TransactionExecutionSnapshotEntity } from '../entities/transaction-execution-snapshot.entity';
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { TransactionEntity } from '../entities/transaction.entity';
 import { SearchTransactionsDto } from '../dto/search-transactions.dto';
 import { EnrichmentService } from '../../enrichment/enrichment.service';
 import { WalletAliasService } from './wallet-alias.service';
+import { AccountFreezeService } from '../../account-freeze/services/account-freeze.service';
 
 @Injectable()
 export class TransactionsService {
@@ -14,7 +15,15 @@ export class TransactionsService {
     private readonly txRepo: Repository<TransactionEntity>,
     private readonly enrichmentService: EnrichmentService,
     private readonly walletAliasService: WalletAliasService,
+    private readonly accountFreezeService: AccountFreezeService,
   ) {}
+
+  async assertAccountNotFrozen(userId: string): Promise<void> {
+    const frozen = await this.accountFreezeService.isAccountFrozen(userId);
+    if (frozen) {
+      throw new ForbiddenException('Account is frozen and cannot initiate transactions');
+    }
+  }
 
   // ✅ NEW: FTS Search with wallet aliases
   async search(dto: SearchTransactionsDto, userId?: string) {
