@@ -5,9 +5,10 @@ import {
   Body,
   Query,
   Param,
+  Ip,
+  Headers,
   HttpCode,
   HttpStatus,
-  Req,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -24,6 +25,7 @@ import { TransactionStatus } from './transaction.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Idempotent } from '../idempotency/idempotency.decorator';
 import { IdempotencyGuard } from '../idempotency/idempotency.guard';
 import { IdempotencyInterceptor } from '../idempotency/idempotency.interceptor';
@@ -50,8 +52,13 @@ export class TransactionsController {
   @Idempotent()
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
-  deposit(@Body() dto: DepositDto) {
-    return this.txService.createDeposit(dto);
+  deposit(
+    @Body() dto: DepositDto,
+    @CurrentUser('sub') userId: string,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    return this.txService.createDeposit({ ...dto, userId, ipAddress: ip, userAgent });
   }
 
   @Post('withdrawal')
@@ -59,8 +66,11 @@ export class TransactionsController {
   @Idempotent()
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
-  withdrawal(@Body() dto: WithdrawalDto) {
-    return this.txService.createWithdrawal(dto);
+  withdrawal(
+    @Body() dto: WithdrawalDto,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.txService.createWithdrawal({ ...dto, userId });
   }
 
   @Post('swap')
@@ -68,8 +78,13 @@ export class TransactionsController {
   @Idempotent()
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
-  swap(@Body() dto: SwapDto) {
-    return this.txService.createSwap(dto);
+  swap(
+    @Body() dto: SwapDto,
+    @CurrentUser('sub') userId: string,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    return this.txService.createSwap({ ...dto, userId, ipAddress: ip, userAgent });
   }
 
   @Get()
@@ -102,10 +117,10 @@ export class TransactionsController {
   reverse(
     @Param('id') id: string,
     @Body() body: ReverseTransactionDto,
-    @Req() request: AuthenticatedRequest,
+    @CurrentUser('sub') userId: string,
   ) {
     return this.txService.reverseTransaction(id, {
-      reversedBy: request.user?.sub ?? '',
+      reversedBy: userId ?? '',
       reason: body.reason,
     });
   }

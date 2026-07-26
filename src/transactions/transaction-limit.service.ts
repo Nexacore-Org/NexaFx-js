@@ -4,6 +4,7 @@ import { ExchangeRateService } from '../fx/exchange-rate.service';
 /** Daily limit in USD equivalent (configurable via env). */
 const DAILY_LIMIT_USD = parseFloat(process.env.DAILY_LIMIT_USD ?? '50000');
 const MONTHLY_LIMIT_USD = parseFloat(process.env.MONTHLY_LIMIT_USD ?? '500000');
+const SINGLE_TX_LIMIT_USD = parseFloat(process.env.SINGLE_TX_LIMIT_USD ?? '25000');
 
 /** In-memory accumulators keyed by `userId:YYYY-MM-DD` and `userId:YYYY-MM`. */
 const dailyTotals = new Map<string, number>();
@@ -21,6 +22,12 @@ export class TransactionLimitService {
    */
   async check(userId: string, amount: number, currency: string): Promise<void> {
     const amountUsd = await this.toUsd(amount, currency);
+
+    if (amountUsd > SINGLE_TX_LIMIT_USD) {
+      throw new BadRequestException(
+        `Transaction exceeds single-transaction USD-equivalent limit of $${SINGLE_TX_LIMIT_USD}`,
+      );
+    }
 
     const today = this.dateKey();
     const month = this.monthKey();
