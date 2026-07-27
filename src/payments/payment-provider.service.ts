@@ -30,4 +30,25 @@ export class PaymentProviderService {
   async processDeposit(event: Record<string, unknown>): Promise<void> {
     this.logger.log(`Processing deposit webhook event: ${JSON.stringify(event)}`);
   }
+
+  async processBankWithdrawal(dto: { userId: string; amount: number; currency: string; bankCode: string; accountNumber: string }) {
+    const reference = `offramp_${Date.now()}_${dto.userId.slice(0, 6)}`;
+    this.logger.log(`Processing bank withdrawal: user=${dto.userId} amount=${dto.amount} bank=${dto.bankCode}`);
+    return {
+      reference,
+      status: 'PROCESSING',
+      estimatedSettlementMinutes: 30,
+      accountNumberMasked: `****${dto.accountNumber.slice(-4)}`,
+    };
+  }
+
+  async processCardOnRamp(dto: { userId: string; amount: number; currency: string; cardToken?: string }) {
+    const reference = `onramp_${Date.now()}_${dto.userId.slice(0, 6)}`;
+    this.logger.log(`Processing card on-ramp: user=${dto.userId} amount=${dto.amount} ${dto.currency}`);
+    return {
+      reference,
+      status: 'SUCCESS',
+      redirectUrl: `https://checkout.nexafx.com/pay/${reference}`,
+    };
+  }
 }

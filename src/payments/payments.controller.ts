@@ -22,4 +22,19 @@ export class PaymentsController {
     await this.paymentProviderService.processDeposit(body);
     return { received: true };
   }
+
+  @Get('recurring')
+  getRecurringPayments(@Query('userId') userId: string) {
+    return this.paymentProviderService.getRecurringPayments(userId);
+  }
+
+  @Post('bank-withdraw')
+  processBankWithdrawal(@Body() dto: { userId: string; amount: number; currency: string; bankCode: string; accountNumber: string }) {
+    return this.paymentProviderService.processBankWithdrawal(dto);
+  }
+
+  @Post('card-onramp')
+  processCardOnRamp(@Body() dto: { userId: string; amount: number; currency: string; cardToken?: string }) {
+    return this.paymentProviderService.processCardOnRamp(dto);
+  }
 }
