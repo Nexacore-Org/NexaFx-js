@@ -162,4 +162,17 @@ export class TransactionsController {
       reason: body.reason,
     });
   }
+
+  @Post(':id/comments')
+  addComment(
+    @Param('id') id: string,
+    @Body() body: { authorId: string; text: string },
+  ) {
+    return this.txService.addComment(id, body.authorId, body.text);
+  }
+
+  @Get(':id/comments')
+  getComments(@Param('id') id: string) {
+    return this.txService.getComments(id);
+  }
 }

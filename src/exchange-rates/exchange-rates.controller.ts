@@ -19,6 +19,16 @@ export class ExchangeRatesController {
     };
   }
 
+  @Get('public')
+  @ApiOperation({ summary: 'Public exchange rates endpoint' })
+  async getPublicRates() {
+    const rates = await this.exchangeRatesService.getRates();
+    return {
+      success: true,
+      data: rates,
+    };
+  }
+
   @Get(':pair')
   @ApiOperation({ summary: 'Get current rate for a specific pair' })
   @ApiQuery({ name: 'pair', description: 'Currency pair (e.g. USD/NGN)' })

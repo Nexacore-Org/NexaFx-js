@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Headers, RawBodyRequest, Req } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Headers, RawBodyRequest, Req } from '@nestjs/common';
 import { PaymentProviderService } from './payment-provider.service';
 
 @Controller('api/v1/payments')
@@ -21,5 +21,25 @@ export class PaymentsController {
     }
     await this.paymentProviderService.processDeposit(body);
     return { received: true };
+  }
+
+  @Post('invoices')
+  createInvoice(@Body() dto: { userId: string; clientName: string; currency: string; items: any[]; totalAmount: number }) {
+    return this.paymentProviderService.createInvoice(dto);
+  }
+
+  @Get('invoices/:id')
+  getInvoice(@Param('id') id: string) {
+    return this.paymentProviderService.getInvoice(id);
+  }
+
+  @Post('recurring')
+  scheduleRecurringPayment(@Body() dto: { userId: string; recipient: string; amount: number; currency: string; frequency: string }) {
+    return this.paymentProviderService.scheduleRecurringPayment(dto);
+  }
+
+  @Get('recurring')
+  getRecurringPayments(@Query('userId') userId: string) {
+    return this.paymentProviderService.getRecurringPayments(userId);
   }
 }
