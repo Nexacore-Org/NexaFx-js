@@ -42,4 +42,9 @@ export class FxController {
   reverseTrade(@Param('id') id: string) {
     return this.fxService.reverseTrade(id);
   }
+
+  @Get('volume')
+  getVolume(@Query('base') base?: string, @Query('target') target?: string) {
+    return this.fxService.getVolume(base, target);
+  }
 }

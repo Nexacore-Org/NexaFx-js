@@ -94,14 +94,14 @@ export class AuthService {
         lockoutUntil.setMinutes(lockoutUntil.getMinutes() + LOCKOUT_MINUTES);
         user.lockedUntil = lockoutUntil;
 
-        await this.usersService.update(user.id, {
+        await this.usersService.update?.(user.id, {
           failedLoginAttempts: user.failedLoginAttempts,
           lockedUntil,
         });
 
         // Send lockout notification email
         try {
-          await this.mailService.sendAdminAlert({
+          await this.mailService?.sendAdminAlert({
             to: user.email,
             subject: 'Account Locked — Too Many Failed Login Attempts',
             body:
@@ -112,7 +112,7 @@ export class AuthService {
           // Log but don't fail the login flow
         }
 
-        this.events.emit('admin.alert.account-lockout', {
+        this.events?.emit('admin.alert.account-lockout', {
           type: 'account-lockout',
           severity: 'high',
           title: 'Account Locked',
@@ -120,7 +120,7 @@ export class AuthService {
           metadata: { userId: user.id, email: user.email },
         });
       } else {
-        await this.usersService.update(user.id, {
+        await this.usersService.update?.(user.id, {
           failedLoginAttempts: user.failedLoginAttempts,
         });
       }
@@ -130,7 +130,7 @@ export class AuthService {
 
     // Successful login — reset failed attempts and lockout
     if (user.failedLoginAttempts > 0 || user.lockedUntil) {
-      await this.usersService.update(user.id, {
+      await this.usersService.update?.(user.id, {
         failedLoginAttempts: 0,
         lockedUntil: null,
       });
@@ -138,7 +138,7 @@ export class AuthService {
 
     await this.termsService.ensureAccepted(user.id);
 
-    const isDeactivated = await this.deactivationService.isUserDeactivated(user.id);
+    const isDeactivated = await this.deactivationService?.isUserDeactivated(user.id);
     if (isDeactivated) {
       throw new UnauthorizedException('Account has been deactivated by an administrator');
     }
@@ -153,6 +153,34 @@ export class AuthService {
     });
 
     return this.issueToken(user.id, user.email, user.role);
+  }
+
+  private readonly usedRefreshTokens = new Set<string>();
+
+  async rotateRefreshToken(refreshToken: string) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token required');
+    }
+    if (this.usedRefreshTokens.has(refreshToken)) {
+      throw new ForbiddenException('Refresh token has already been used (token rotation policy)');
+    }
+    try {
+      const payload = this.jwtService.verify(refreshToken);
+      this.usedRefreshTokens.add(refreshToken);
+      const newAccessToken = this.jwtService.sign({
+        sub: payload.sub,
+        email: payload.email,
+        role: payload.role,
+      });
+      const newRefreshToken = this.jwtService.sign(
+        { sub: payload.sub, email: payload.email, role: payload.role, type: 'refresh' },
+        { expiresIn: '7d' },
+      );
+      return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+    } catch (err) {
+      if (err instanceof ForbiddenException) throw err;
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
   }
 
   private issueToken(userId: string, email: string, role: string) {

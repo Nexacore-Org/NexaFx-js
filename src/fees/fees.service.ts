@@ -45,6 +45,20 @@ export class FeesService {
     return { feeAmount, reason: null };
   }
 
+  previewFee(transactionType: string, amount: number, currency = 'USD') {
+    const feeRate = transactionType === 'withdrawal' ? 0.005 : 0.001;
+    const feeAmount = Number((amount * feeRate).toFixed(8));
+    const netAmount = Number((amount - feeAmount).toFixed(8));
+    return {
+      transactionType,
+      amount,
+      feeAmount,
+      netAmount,
+      currency,
+      feePercentage: feeRate * 100,
+    };
+  }
+
   async recordFee(dto: RecordFeeDto): Promise<FeeRecord> {
     const record = this.feeRepo.create({
       transactionId: dto.transactionId,
