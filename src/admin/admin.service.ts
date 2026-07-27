@@ -237,4 +237,16 @@ export class AdminService {
 
     return updated;
   }
+
+  async searchPlatform(query: string) {
+    const users = await this.usersRepository.find({ take: 5 });
+    const transactions = await this.transactionsRepository.find({ take: 5 });
+    return {
+      query,
+      results: {
+        users: users.filter((u) => u.email?.includes(query) || u.fullName?.includes(query) || u.id?.includes(query)),
+        transactions: transactions.filter((t) => t.reference?.includes(query) || t.id?.includes(query)),
+      },
+    };
+  }
 }
