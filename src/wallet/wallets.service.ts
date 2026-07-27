@@ -114,4 +114,33 @@ export class WalletsService {
 
     return normalizedCurrency;
   }
+
+  private readonly autoSweepConfigs = new Map<string, { threshold: number; coldStorageAddress: string }>();
+
+  setAutoSweepConfig(userId: string, threshold: number, coldStorageAddress: string) {
+    const config = { threshold, coldStorageAddress };
+    this.autoSweepConfigs.set(userId, config);
+    return config;
+  }
+
+  getAutoSweepConfig(userId: string) {
+    return this.autoSweepConfigs.get(userId) || null;
+  }
+
+  async processAutoSweep(userId: string, currency: string) {
+    const config = this.getAutoSweepConfig(userId);
+    if (!config) return { swept: false, reason: 'No auto-sweep config set' };
+    const wallet = await this.getBalance(userId, currency);
+    if (wallet.balance > config.threshold) {
+      const sweepAmount = wallet.balance - config.threshold;
+      await this.adjustBalance(userId, currency, -sweepAmount);
+      return {
+        swept: true,
+        sweepAmount,
+        coldStorageAddress: config.coldStorageAddress,
+        remainingBalance: config.threshold,
+      };
+    }
+    return { swept: false, reason: 'Balance below threshold' };
+  }
 }

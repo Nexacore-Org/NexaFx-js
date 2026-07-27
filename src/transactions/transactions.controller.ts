@@ -130,6 +130,11 @@ export class TransactionsController {
     return this.txService.findHistory(filters);
   }
 
+  @Get('export/csv')
+  exportCsv(@Query('userId') userId: string) {
+    return this.txService.exportTransactionsCsv(userId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.txService.findById(id);

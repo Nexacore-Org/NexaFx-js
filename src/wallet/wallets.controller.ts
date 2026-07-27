@@ -31,4 +31,14 @@ export class WalletsController {
       dto.delta,
     );
   }
+
+  @Post('auto-sweep/config')
+  setAutoSweepConfig(@Body() body: { userId: string; threshold: number; coldStorageAddress: string }) {
+    return this.walletsService.setAutoSweepConfig(body.userId, body.threshold, body.coldStorageAddress);
+  }
+
+  @Post('auto-sweep/process')
+  processAutoSweep(@Body() body: { userId: string; currency: string }) {
+    return this.walletsService.processAutoSweep(body.userId, body.currency);
+  }
 }

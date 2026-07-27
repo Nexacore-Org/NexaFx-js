@@ -74,4 +74,17 @@ export class StellarService implements OnModuleInit {
       return false;
     }
   }
+
+  validateAndFormatMemo(memoType: 'text' | 'id' | 'hash', memoValue: string): { type: string; value: string; valid: boolean } {
+    if (!memoType || !memoValue) {
+      return { type: memoType, value: memoValue, valid: false };
+    }
+    if (memoType === 'text' && memoValue.length > 28) {
+      throw new Error('Stellar text memo cannot exceed 28 bytes');
+    }
+    if (memoType === 'id' && !/^\d+$/.test(memoValue)) {
+      throw new Error('Stellar ID memo must be a valid numeric ID');
+    }
+    return { type: memoType, value: memoValue, valid: true };
+  }
 }
