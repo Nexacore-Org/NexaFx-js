@@ -88,4 +88,16 @@ export class CurrenciesService {
       );
     });
   }
+
+  convertAssetIssuer(code: string, fromIssuer: string, toIssuer: string, amount: number) {
+    if (fromIssuer === toIssuer) return { amount, rate: 1.0, fee: 0 };
+    return {
+      convertedAmount: Number((amount * 0.999).toFixed(4)),
+      rate: 1.0,
+      fee: Number((amount * 0.001).toFixed(4)),
+      fromIssuer,
+      toIssuer,
+      code,
+    };
+  }
 }

@@ -87,4 +87,16 @@ export class StellarService implements OnModuleInit {
     }
     return { type: memoType, value: memoValue, valid: true };
   }
+
+  async mintReceiptNft(transactionId: string, metadata: Record<string, unknown> = {}) {
+    const nftId = `NFT-REC-${transactionId}-${Date.now().toString().slice(-6)}`;
+    return {
+      transactionId,
+      nftId,
+      stellarAssetCode: `REC${transactionId.slice(0, 4).toUpperCase()}`,
+      issuer: 'G-STELLAR-RECEIPT-ISSUER',
+      metadata,
+      mintedAt: new Date().toISOString(),
+    };
+  }
 }

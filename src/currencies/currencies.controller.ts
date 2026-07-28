@@ -1,4 +1,4 @@
-import { Controller, Get, Header, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Header, UseInterceptors } from '@nestjs/common';
 import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 import { CurrenciesService } from './currencies.service';
 
@@ -18,5 +18,10 @@ export class CurrenciesController {
   @Get()
   getSupportedCurrencies() {
     return this.currenciesService.listSupportedCurrencies();
+  }
+
+  @Post('convert-issuer')
+  convertAssetIssuer(@Body() body: { code: string; fromIssuer: string; toIssuer: string; amount: number }) {
+    return this.currenciesService.convertAssetIssuer(body.code, body.fromIssuer, body.toIssuer, body.amount);
   }
 }

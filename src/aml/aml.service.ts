@@ -128,4 +128,22 @@ export class AmlService {
     this.events.emit('aml.alert.created', saved);
     return saved;
   }
+
+  calculateTransactionFraudScore(amount: number, currency = 'USD', userAgeDays = 30) {
+    let score = 0;
+    const flags: string[] = [];
+    if (amount >= 10000) {
+      score += 50;
+      flags.push('LARGE_AMOUNT');
+    } else if (amount >= 5000) {
+      score += 25;
+      flags.push('MEDIUM_LARGE_AMOUNT');
+    }
+    if (userAgeDays < 7) {
+      score += 30;
+      flags.push('NEW_ACCOUNT');
+    }
+    const riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' = score >= 60 ? 'HIGH' : score >= 30 ? 'MEDIUM' : 'LOW';
+    return { score, riskLevel, flags, currency };
+  }
 }
