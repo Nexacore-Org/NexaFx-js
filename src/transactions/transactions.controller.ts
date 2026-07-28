@@ -130,9 +130,19 @@ export class TransactionsController {
     return this.txService.findHistory(filters);
   }
 
-  @Get('export/csv')
-  exportCsv(@Query('userId') userId: string) {
-    return this.txService.exportTransactionsCsv(userId);
+  @Get(':id/comments')
+  getComments(@Param('id') id: string) {
+    return this.txService.getComments(id);
+  }
+
+  @Post('internal-transfer')
+  createInternalTransfer(@Body() dto: { senderId: string; recipientEmail: string; amount: number; currency: string }) {
+    return this.txService.createInternalTransfer(dto);
+  }
+
+  @Post('simulate')
+  simulateTransaction(@Body() dto: { type: string; amount: number; fromCurrency: string; toCurrency?: string }) {
+    return this.txService.simulateTransaction(dto);
   }
 
   @Get(':id')
@@ -166,5 +176,18 @@ export class TransactionsController {
       reversedBy: userId ?? '',
       reason: body.reason,
     });
+  }
+
+  @Post(':id/comments')
+  addComment(
+    @Param('id') id: string,
+    @Body() body: { authorId: string; text: string },
+  ) {
+    return this.txService.addComment(id, body.authorId, body.text);
+  }
+
+  @Get(':id/comments')
+  getComments(@Param('id') id: string) {
+    return this.txService.getComments(id);
   }
 }

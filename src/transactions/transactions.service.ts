@@ -518,6 +518,46 @@ export class TransactionsService implements OnModuleInit {
   // Cancel Transaction — #905: cancel PENDING transactions
   // ---------------------------------------------------------------------------
 
+  async exportTransactionsCsv(userId: string): Promise<string> {
+    const { items } = await this.findHistory({ userId, limit: 1000 });
+    const header = 'id,reference,senderId,receiverId,amount,currency,status,createdAt\n';
+    const rows = items
+      .map(
+        (tx) =>
+          `"${tx.id}","${tx.reference}","${tx.senderId}","${tx.receiverId}",${tx.amount},"${tx.currency}","${tx.status}","${tx.createdAt?.toISOString?.() || tx.createdAt}"`,
+      )
+      .join('\n');
+    return header + rows;
+  }
+
+  async createInternalTransfer(dto: { senderId: string; recipientEmail: string; amount: number; currency: string }): Promise<Transaction> {
+    const recipient = await this.usersService.findByEmail(dto.recipientEmail);
+    if (!recipient) throw new NotFoundException(`Recipient with email ${dto.recipientEmail} not found`);
+    return this.transfer({
+      senderId: dto.senderId,
+      receiverId: recipient.id,
+      amount: dto.amount,
+      currency: dto.currency,
+      reference: `int_${Date.now()}`,
+      metadata: { isInternalTransfer: true, recipientEmail: dto.recipientEmail },
+    });
+  }
+
+  async simulateTransaction(dto: { type: string; amount: number; fromCurrency: string; toCurrency?: string }) {
+    const fee = this.feesService.calculateFee(dto.amount);
+    const estimatedOutput = dto.toCurrency ? Number((dto.amount * 0.985).toFixed(4)) : dto.amount;
+    return {
+      simulationId: `sim_${Date.now()}`,
+      type: dto.type,
+      inputAmount: dto.amount,
+      estimatedOutput,
+      fee: fee.feeAmount,
+      estimatedSlippagePct: 0.15,
+      route: dto.toCurrency ? [dto.fromCurrency, dto.toCurrency] : [dto.fromCurrency],
+      status: 'SIMULATION_SUCCESS',
+    };
+  }
+
   async cancelTransaction(id: string): Promise<Transaction> {
     const tx = await this.findById(id);
     if (tx.status !== TransactionStatus.PENDING) {
@@ -640,17 +680,5 @@ export class TransactionsService implements OnModuleInit {
   async getComments(transactionId: string) {
     await this.findById(transactionId);
     return this.transactionComments.get(transactionId) || [];
-  }
-
-  async exportTransactionsCsv(userId: string): Promise<string> {
-    const { items } = await this.findHistory({ userId, limit: 1000 });
-    const header = 'id,reference,senderId,receiverId,amount,currency,status,createdAt\n';
-    const rows = items
-      .map(
-        (tx) =>
-          `"${tx.id}","${tx.reference}","${tx.senderId}","${tx.receiverId}",${tx.amount},"${tx.currency}","${tx.status}","${tx.createdAt?.toISOString?.() || tx.createdAt}"`,
-      )
-      .join('\n');
-    return header + rows;
   }
 }

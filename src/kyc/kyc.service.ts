@@ -104,11 +104,30 @@ export class KycService {
     return saved;
   }
 
-  async isApproved(userId: string): Promise<boolean> {
+  async isApproved(userId: string, validityDays = 365): Promise<boolean> {
     const doc = await this.kycRepo.findOne({
       where: { userId, status: KycDocumentStatus.APPROVED },
     });
-    return !!doc;
+    if (!doc || !doc.reviewedAt) return false;
+    const expiryTime = doc.reviewedAt.getTime() + validityDays * 86_400_000;
+    return Date.now() < expiryTime;
+  }
+
+  async checkExpiry(userId: string, validityDays = 365) {
+    const doc = await this.kycRepo.findOne({
+      where: { userId, status: KycDocumentStatus.APPROVED },
+    });
+    if (!doc || !doc.reviewedAt) {
+      return { isApproved: false, isExpired: false, expiresAt: null };
+    }
+    const expiresAt = new Date(doc.reviewedAt.getTime() + validityDays * 86_400_000);
+    const isExpired = Date.now() >= expiresAt.getTime();
+    return {
+      isApproved: !isExpired,
+      isExpired,
+      reviewedAt: doc.reviewedAt,
+      expiresAt,
+    };
   }
 
   async assertApproved(userId: string): Promise<void> {

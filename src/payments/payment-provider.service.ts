@@ -30,4 +30,41 @@ export class PaymentProviderService {
   async processDeposit(event: Record<string, unknown>): Promise<void> {
     this.logger.log(`Processing deposit webhook event: ${JSON.stringify(event)}`);
   }
+
+  private readonly invoices = new Map<string, any>();
+  private readonly recurringPayments = new Map<string, any[]>();
+
+  createInvoice(dto: { userId: string; clientName: string; currency: string; items: any[]; totalAmount: number }) {
+    const id = `inv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const invoice = {
+      id,
+      ...dto,
+      status: 'UNPAID',
+      createdAt: new Date().toISOString(),
+    };
+    this.invoices.set(id, invoice);
+    return invoice;
+  }
+
+  getInvoice(id: string) {
+    return this.invoices.get(id) || null;
+  }
+
+  scheduleRecurringPayment(dto: { userId: string; recipient: string; amount: number; currency: string; frequency: string }) {
+    const id = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const schedule = {
+      id,
+      ...dto,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    const userSchedules = this.recurringPayments.get(dto.userId) || [];
+    userSchedules.push(schedule);
+    this.recurringPayments.set(dto.userId, userSchedules);
+    return schedule;
+  }
+
+  getRecurringPayments(userId: string) {
+    return this.recurringPayments.get(userId) || [];
+  }
 }
