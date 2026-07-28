@@ -149,6 +149,23 @@ export class ExchangeRatesService {
     }
   }
 
+  async calculateConversion(from: string, to: string, amount: number) {
+    const pair = `${from.toUpperCase()}/${to.toUpperCase()}`;
+    const inversePair = `${to.toUpperCase()}/${from.toUpperCase()}`;
+    const rateObj = await this.getRateByPair(pair);
+    let rate = rateObj ? Number(rateObj.rate) : null;
+    if (!rate) {
+      const invObj = await this.getRateByPair(inversePair);
+      if (invObj && Number(invObj.rate) > 0) {
+        rate = Number((1 / Number(invObj.rate)).toFixed(8));
+      } else {
+        rate = 1.0;
+      }
+    }
+    const convertedAmount = Number((amount * rate).toFixed(8));
+    return { from: from.toUpperCase(), to: to.toUpperCase(), amount, convertedAmount, rate };
+  }
+
   @Cron(CronExpression.EVERY_MINUTE)
   async refreshExpiredRates() {
     const expired = await this.cacheRepo.count({

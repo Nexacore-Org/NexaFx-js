@@ -245,6 +245,18 @@ export class MailService {
     );
   }
 
+  sendDailyDigestEmail(payload: {
+    to: string;
+    fullName: string;
+    date: string;
+    transactionCount: number;
+    totalVolume: number;
+  }): void {
+    this.logger.log(
+      `Daily digest email queued for ${payload.to}: ${payload.transactionCount} transactions (${payload.totalVolume} volume) on ${payload.date}`,
+    );
+  }
+
   private render(
     templateName: Exclude<TemplateName, 'base'>,
     context: Record<string, unknown>,

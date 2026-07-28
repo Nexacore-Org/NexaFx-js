@@ -30,6 +30,21 @@ export class ExchangeRatesController {
     };
   }
 
+  @Get('calculate')
+  @ApiOperation({ summary: 'Lightweight currency conversion calculator' })
+  async calculate(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('amount') amount: string,
+  ) {
+    const result = await this.exchangeRatesService.calculateConversion(
+      from || 'USD',
+      to || 'NGN',
+      parseFloat(amount || '1'),
+    );
+    return { success: true, data: result };
+  }
+
   @Get('history')
   @ApiOperation({ summary: 'Get exchange rate history' })
   @ApiQuery({ name: 'pair', required: false, description: 'Filter by currency pair' })

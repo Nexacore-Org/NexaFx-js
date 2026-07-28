@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
   Req,
   Res,
@@ -146,5 +147,27 @@ export class AdminController {
         res.status(404).json({ message: 'KYC file not found' });
       }
     });
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Get('spreads')
+  getSpreads() {
+    return this.adminService.getSpreads();
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Patch('spreads')
+  updateSpread(
+    @Body('pair') pair: string,
+    @Body('spreadPercentage') spreadPercentage: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.adminService.updateSpread(pair, spreadPercentage, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Post('users/:id/impersonate')
+  impersonateUser(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.adminService.impersonateUser(id, req.user.id);
   }
 }
