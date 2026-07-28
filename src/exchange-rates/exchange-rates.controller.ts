@@ -19,6 +19,16 @@ export class ExchangeRatesController {
     };
   }
 
+  @Get('public')
+  @ApiOperation({ summary: 'Public exchange rates endpoint' })
+  async getPublicRates() {
+    const rates = await this.exchangeRatesService.getRates();
+    return {
+      success: true,
+      data: rates,
+    };
+  }
+
   @Get(':pair')
   @ApiOperation({ summary: 'Get current rate for a specific pair' })
   @ApiQuery({ name: 'pair', description: 'Currency pair (e.g. USD/NGN)' })
@@ -28,6 +38,21 @@ export class ExchangeRatesController {
       success: true,
       data: rate,
     };
+  }
+
+  @Get('calculate')
+  @ApiOperation({ summary: 'Lightweight currency conversion calculator' })
+  async calculate(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('amount') amount: string,
+  ) {
+    const result = await this.exchangeRatesService.calculateConversion(
+      from || 'USD',
+      to || 'NGN',
+      parseFloat(amount || '1'),
+    );
+    return { success: true, data: result };
   }
 
   @Get('history')

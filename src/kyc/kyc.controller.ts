@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Patch,
+  Get,
   Body,
   Param,
   HttpCode,
@@ -27,5 +28,10 @@ export class KycController {
   @Patch(':id/review')
   review(@Param('id') id: string, @Body() dto: ReviewKycDto) {
     return this.kycService.review(id, dto);
+  }
+
+  @Get(':userId/expiry-status')
+  checkExpiry(@Param('userId') userId: string) {
+    return this.kycService.checkExpiry(userId);
   }
 }

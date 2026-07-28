@@ -43,4 +43,12 @@ export class AuthController {
   ) {
     return this.authService.login(dto, { ip, userAgent });
   }
+
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Post('refresh')
+  @ApiOperation({ summary: 'Rotate refresh token and issue new token pair' })
+  refresh(@Body('refreshToken') refreshToken: string) {
+    return this.authService.rotateRefreshToken(refreshToken);
+  }
 }
