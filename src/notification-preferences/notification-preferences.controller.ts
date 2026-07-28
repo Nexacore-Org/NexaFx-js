@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Put,
+  Patch,
   Body,
   Req,
   HttpCode,
@@ -33,6 +34,16 @@ export class NotificationPreferencesController {
   @Put()
   @HttpCode(HttpStatus.OK)
   updatePreferences(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { preferences: UpdatePreferenceDto[] },
+  ) {
+    const userId = req.user?.sub ?? '';
+    return this.preferencesService.updatePreferences(userId, body.preferences);
+  }
+
+  @Patch()
+  @HttpCode(HttpStatus.OK)
+  patchPreferences(
     @Req() req: AuthenticatedRequest,
     @Body() body: { preferences: UpdatePreferenceDto[] },
   ) {
