@@ -130,6 +130,21 @@ export class TransactionsController {
     return this.txService.findHistory(filters);
   }
 
+  @Get(':id/comments')
+  getComments(@Param('id') id: string) {
+    return this.txService.getComments(id);
+  }
+
+  @Post('internal-transfer')
+  createInternalTransfer(@Body() dto: { senderId: string; recipientEmail: string; amount: number; currency: string }) {
+    return this.txService.createInternalTransfer(dto);
+  }
+
+  @Post('simulate')
+  simulateTransaction(@Body() dto: { type: string; amount: number; fromCurrency: string; toCurrency?: string }) {
+    return this.txService.simulateTransaction(dto);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.txService.findById(id);

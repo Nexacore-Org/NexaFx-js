@@ -122,6 +122,18 @@ export class AdminController {
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Post('users/:id/impersonate')
+  impersonateUser(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.adminService.impersonateUser(id, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Get('reports/cbn-compliance')
+  generateCbnComplianceReport(@Query('period') period?: string) {
+    return this.adminService.generateCbnComplianceReport(period);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Get('kyc/:userId/:version/:filename')
   serveKycFile(
     @Param('userId') userId: string,
