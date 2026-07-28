@@ -620,4 +620,25 @@ export class TransactionsService implements OnModuleInit {
       return transaction;
     });
   }
+
+  private readonly transactionComments = new Map<string, Array<{ id: string; authorId: string; text: string; createdAt: Date }>>();
+
+  async addComment(transactionId: string, authorId: string, text: string) {
+    await this.findById(transactionId);
+    const comment = {
+      id: `cmt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      authorId,
+      text,
+      createdAt: new Date(),
+    };
+    const list = this.transactionComments.get(transactionId) || [];
+    list.push(comment);
+    this.transactionComments.set(transactionId, list);
+    return comment;
+  }
+
+  async getComments(transactionId: string) {
+    await this.findById(transactionId);
+    return this.transactionComments.get(transactionId) || [];
+  }
 }
