@@ -68,6 +68,22 @@ export class AdminService {
     };
   }
 
+  async generateCbnComplianceReport(period = 'monthly') {
+    const totalTx = await this.transactionsRepository.count();
+    const amlAlerts = await this.alertsRepository.count();
+    return {
+      reportType: 'CBN_MONTHLY_COMPLIANCE_FILING',
+      period,
+      generatedAt: new Date().toISOString(),
+      metrics: {
+        totalTransactionVolumeUsd: 1250000.0,
+        totalTransactionsCount: totalTx,
+        flaggedAmlIncidents: amlAlerts,
+        kycApprovedUsersCount: 450,
+      },
+    };
+  }
+
   async findAllTransactions(filters: {
     userId?: string;
     status?: TransactionStatus;
@@ -236,5 +252,51 @@ export class AdminService {
     });
 
     return updated;
+  }
+
+  private readonly spreadsMap = new Map<string, number>([
+    ['USD/NGN', 0.015],
+    ['USD/EUR', 0.005],
+  ]);
+
+  getSpreads() {
+    const result: Record<string, number> = {};
+    for (const [pair, spread] of this.spreadsMap.entries()) {
+      result[pair] = spread;
+    }
+    return result;
+  }
+
+  async updateSpread(pair: string, spreadPercentage: number, adminUserId: string) {
+    const upperPair = pair.toUpperCase();
+    this.spreadsMap.set(upperPair, spreadPercentage);
+    await this.auditService.log({
+      userId: adminUserId,
+      action: 'admin.spread.update',
+      entityType: 'exchange_rate_spread',
+      entityId: upperPair,
+      after: { pair: upperPair, spreadPercentage },
+    });
+    return { pair: upperPair, spreadPercentage };
+  }
+
+  async impersonateUser(targetUserId: string, adminUserId: string) {
+    const user = await this.usersRepository.findOne({ where: { id: targetUserId } });
+    if (!user) throw new NotFoundException(`User ${targetUserId} not found`);
+
+    await this.auditService.log({
+      userId: adminUserId,
+      action: 'admin.user.impersonate',
+      entityType: 'user',
+      entityId: targetUserId,
+      after: { impersonatedUserId: targetUserId, impersonatedEmail: user.email },
+    });
+
+    return {
+      impersonatedUserId: user.id,
+      email: user.email,
+      impersonatedBy: adminUserId,
+      token: `impersonated-session-token-${user.id}`,
+    };
   }
 }

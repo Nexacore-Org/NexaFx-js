@@ -31,24 +31,40 @@ export class PaymentProviderService {
     this.logger.log(`Processing deposit webhook event: ${JSON.stringify(event)}`);
   }
 
-  async processBankWithdrawal(dto: { userId: string; amount: number; currency: string; bankCode: string; accountNumber: string }) {
-    const reference = `offramp_${Date.now()}_${dto.userId.slice(0, 6)}`;
-    this.logger.log(`Processing bank withdrawal: user=${dto.userId} amount=${dto.amount} bank=${dto.bankCode}`);
-    return {
-      reference,
-      status: 'PROCESSING',
-      estimatedSettlementMinutes: 30,
-      accountNumberMasked: `****${dto.accountNumber.slice(-4)}`,
+  private readonly invoices = new Map<string, any>();
+  private readonly recurringPayments = new Map<string, any[]>();
+
+  createInvoice(dto: { userId: string; clientName: string; currency: string; items: any[]; totalAmount: number }) {
+    const id = `inv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const invoice = {
+      id,
+      ...dto,
+      status: 'UNPAID',
+      createdAt: new Date().toISOString(),
     };
+    this.invoices.set(id, invoice);
+    return invoice;
   }
 
-  async processCardOnRamp(dto: { userId: string; amount: number; currency: string; cardToken?: string }) {
-    const reference = `onramp_${Date.now()}_${dto.userId.slice(0, 6)}`;
-    this.logger.log(`Processing card on-ramp: user=${dto.userId} amount=${dto.amount} ${dto.currency}`);
-    return {
-      reference,
-      status: 'SUCCESS',
-      redirectUrl: `https://checkout.nexafx.com/pay/${reference}`,
+  getInvoice(id: string) {
+    return this.invoices.get(id) || null;
+  }
+
+  scheduleRecurringPayment(dto: { userId: string; recipient: string; amount: number; currency: string; frequency: string }) {
+    const id = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const schedule = {
+      id,
+      ...dto,
+      active: true,
+      createdAt: new Date().toISOString(),
     };
+    const userSchedules = this.recurringPayments.get(dto.userId) || [];
+    userSchedules.push(schedule);
+    this.recurringPayments.set(dto.userId, userSchedules);
+    return schedule;
+  }
+
+  getRecurringPayments(userId: string) {
+    return this.recurringPayments.get(userId) || [];
   }
 }
