@@ -63,6 +63,18 @@ export class AdminController {
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Get('reports/cbn-compliance')
+  generateCbnComplianceReport(@Query('period') period?: string) {
+    return this.adminService.generateCbnComplianceReport(period);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Get('search')
+  searchPlatform(@Query('q') query: string) {
+    return this.adminService.searchPlatform(query ?? '');
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Get('transactions')
   findAllTransactions(@Query() query: AdminTransactionsQueryDto) {
     return this.adminService.findAllTransactions({

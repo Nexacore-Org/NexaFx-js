@@ -93,4 +93,22 @@ export class AdminAlertService {
       }
     }
   }
+
+  private readonly alertHistory: Array<AdminAlertPayload & { id: string; timestamp: Date; read: boolean }> = [];
+
+  async broadcastAlert(payload: AdminAlertPayload) {
+    const alert = {
+      id: `alt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      ...payload,
+      timestamp: new Date(),
+      read: false,
+    };
+    this.alertHistory.push(alert);
+    await this.sendAlert(payload);
+    return alert;
+  }
+
+  getRecentAlerts() {
+    return this.alertHistory.slice(-50);
+  }
 }

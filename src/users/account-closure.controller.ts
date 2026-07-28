@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   Post,
 } from '@nestjs/common';
@@ -38,5 +39,15 @@ export class AccountClosureController {
     }
 
     return token;
+  }
+
+  @Get('export-data')
+  exportData(@Headers('x-user-id') userId: string) {
+    return {
+      exportId: `exp_${Date.now()}_${userId?.slice(0, 6) ?? 'usr'}`,
+      requestedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 48 * 3600_000).toISOString(),
+      sections: ['profile', 'wallets', 'transactions', 'notification_preferences', 'audit_logs'],
+    };
   }
 }
