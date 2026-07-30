@@ -56,6 +56,8 @@ export class WalletsService {
         accountId: saved.accountId,
         currency: saved.currency,
         balance: saved.balance,
+        label: saved.label,
+        color: saved.color,
         createdAt: saved.createdAt,
         updatedAt: saved.updatedAt,
       };
@@ -85,6 +87,8 @@ export class WalletsService {
       accountId: wallet.accountId,
       currency: wallet.currency,
       balance: wallet.balance,
+      label: wallet.label,
+      color: wallet.color,
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
     };
@@ -100,6 +104,8 @@ export class WalletsService {
       accountId: wallet.accountId,
       currency: wallet.currency,
       balance: wallet.balance,
+      label: wallet.label,
+      color: wallet.color,
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
     }));
@@ -141,6 +147,29 @@ export class WalletsService {
         remainingBalance: config.threshold,
       };
     }
+    }
     return { swept: false, reason: 'Balance below threshold' };
+  }
+
+  async updateCustomization(accountId: string, currency: string, label?: string, color?: string): Promise<WalletBalance> {
+    const normalizedCurrency = this.validateCurrency(currency);
+    const wallet = await this.walletRepository.findOne({ where: { accountId, currency: normalizedCurrency } });
+    if (!wallet) {
+      throw new BadRequestException('Wallet not found');
+    }
+    if (label !== undefined) wallet.label = label;
+    if (color !== undefined) wallet.color = color;
+    
+    const saved = await this.walletRepository.save(wallet);
+    return {
+      id: saved.id,
+      accountId: saved.accountId,
+      currency: saved.currency,
+      balance: saved.balance,
+      label: saved.label,
+      color: saved.color,
+      createdAt: saved.createdAt,
+      updatedAt: saved.updatedAt,
+    };
   }
 }

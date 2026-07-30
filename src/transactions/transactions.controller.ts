@@ -11,8 +11,13 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseGuards,
   UseInterceptors,
+  Sse,
 } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { map, filter } from 'rxjs/operators';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   TransactionsService,
   TransferDto,
@@ -41,7 +46,11 @@ interface AuthenticatedRequest {
 
 @Controller('api/v1/transactions')
 export class TransactionsController {
-  constructor(private readonly txService: TransactionsService) {}
+export class TransactionsController {
+  constructor(
+    private readonly txService: TransactionsService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   @Post('transfer')
   @HttpCode(HttpStatus.CREATED)
@@ -143,6 +152,39 @@ export class TransactionsController {
   @Post('simulate')
   simulateTransaction(@Body() dto: { type: string; amount: number; fromCurrency: string; toCurrency?: string }) {
     return this.txService.simulateTransaction(dto);
+  }
+
+  @Sse(':id/status/stream')
+  subscribeToTransactionStatus(@Param('id') id: string): Observable<MessageEvent> {
+    return new Observable<any>((observer) => {
+      const handler = (status: string) => (payload: any) => {
+        if (payload.transactionId === id) {
+          observer.next({ data: { ...payload, status } });
+        }
+      };
+
+      const handlers = {
+        'transactions.completed': handler('completed'),
+        'transactions.deposit.completed': handler('completed'),
+        'transactions.withdrawal.completed': handler('completed'),
+        'transactions.swap.completed': handler('completed'),
+        'transactions.swap.failed': handler('failed'),
+        'transactions.reversed': handler('reversed'),
+      };
+
+      for (const [event, cb] of Object.entries(handlers)) {
+        this.eventEmitter.on(event, cb);
+      }
+
+      // Return teardown logic
+      return () => {
+        for (const [event, cb] of Object.entries(handlers)) {
+          this.eventEmitter.off(event, cb);
+        }
+      };
+    }).pipe(
+      map((payload: any) => ({ data: payload } as MessageEvent))
+    );
   }
 
   @Get(':id')
