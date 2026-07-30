@@ -99,4 +99,23 @@ export class StellarService implements OnModuleInit {
       mintedAt: new Date().toISOString(),
     };
   }
+
+  async executeSep31Payment(params: {
+    amount: string;
+    assetCode: string;
+    senderId: string;
+    receiverId: string;
+    anchorDomain: string;
+  }) {
+    this.logger.log(`Executing SEP-31 payment for ${params.amount} ${params.assetCode} via ${params.anchorDomain}`);
+    return {
+      status: 'pending_receiver',
+      transactionId: `SEP31-${Date.now()}`,
+      anchorDomain: params.anchorDomain,
+      amount: params.amount,
+      assetCode: params.assetCode,
+      senderId: params.senderId,
+      receiverId: params.receiverId,
+    };
+  }
 }
