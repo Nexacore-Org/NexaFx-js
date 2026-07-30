@@ -104,6 +104,7 @@ import { SupportTicketsModule } from './modules/support-tickets/support-tickets.
 import { FeeReportsModule } from './modules/fee-reports/fee-reports.module';
 import { WalletHistoryModule } from './modules/wallet-history/wallet-history.module';
 import { KycTiersModule } from './modules/kyc-tiers/kyc-tiers.module';
+import { AppGraphQLModule } from './graphql/graphql.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -340,6 +341,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     FeeReportsModule,
     WalletHistoryModule,
     KycTiersModule,
+    AppGraphQLModule,
   ],
   controllers: [AppController],
   providers: [

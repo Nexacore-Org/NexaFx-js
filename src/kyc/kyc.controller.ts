@@ -24,6 +24,11 @@ export class KycController {
     return this.kycService.submit(dto);
   }
 
+  @Post(':id/appeal')
+  appeal(@Param('id') id: string, @Body('reason') reason: string) {
+    return this.kycService.appeal(id, reason);
+  }
+
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Patch(':id/review')
   review(@Param('id') id: string, @Body() dto: ReviewKycDto) {

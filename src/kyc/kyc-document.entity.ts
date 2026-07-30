@@ -13,6 +13,7 @@ export enum KycDocumentStatus {
   PENDING = 'pending',
   APPROVED = 'approved',
   REJECTED = 'rejected',
+  APPEALED = 'appealed',
 }
 
 @Entity('kyc_documents')
@@ -50,6 +51,9 @@ export class KycDocument {
 
   @Column({ type: 'timestamp', nullable: true })
   reviewedAt!: Date;
+
+  @Column({ type: 'text', nullable: true })
+  appealReason?: string;
 
   @CreateDateColumn()
   createdAt!: Date;

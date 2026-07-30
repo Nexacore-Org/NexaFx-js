@@ -23,6 +23,7 @@ import { EncryptionModule } from '../common/encryption/encryption.module';
 import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 import { SharedJwtModule } from '../common/jwt/jwt.module';
+import { AdminApproval } from './admin-approval.entity';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SharedJwtModule } from '../common/jwt/jwt.module';
       WebhookEndpoint,
       AmlAlert,
       WalletBalanceEntity,
+      AdminApproval,
     ]),
     BullModule.registerQueue({ name: 'admin-exports' }),
     SecurityModule,

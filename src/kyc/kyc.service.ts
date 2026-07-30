@@ -92,7 +92,7 @@ export class KycService {
   async review(id: string, dto: ReviewKycDto): Promise<KycDocument> {
     const doc = await this.kycRepo.findOne({ where: { id } });
     if (!doc) throw new NotFoundException(`KYC document ${id} not found`);
-    if (doc.status !== KycDocumentStatus.PENDING) {
+    if (doc.status !== KycDocumentStatus.PENDING && doc.status !== KycDocumentStatus.APPEALED) {
       throw new ForbiddenException('Document has already been reviewed');
     }
 
@@ -102,6 +102,18 @@ export class KycService {
     const saved = await this.kycRepo.save(doc);
     this.events.emit('kyc.reviewed', saved);
     return saved;
+  }
+
+  async appeal(id: string, reason: string): Promise<KycDocument> {
+    const doc = await this.kycRepo.findOne({ where: { id } });
+    if (!doc) throw new NotFoundException(`KYC document ${id} not found`);
+    if (doc.status !== KycDocumentStatus.REJECTED) {
+      throw new ForbiddenException('Only rejected documents can be appealed');
+    }
+    
+    doc.status = KycDocumentStatus.APPEALED;
+    doc.appealReason = reason;
+    return this.kycRepo.save(doc);
   }
 
   async isApproved(userId: string, validityDays = 365): Promise<boolean> {
