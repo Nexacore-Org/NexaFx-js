@@ -67,4 +67,14 @@ export class PaymentProviderService {
   getRecurringPayments(userId: string) {
     return this.recurringPayments.get(userId) || [];
   }
+
+  processMerchantPayment(dto: { merchantId: string; customerId: string; amount: number; currency: string; orderId: string }) {
+    this.logger.log(`Processing merchant payment: ${JSON.stringify(dto)}`);
+    return {
+      transactionId: `tx_merch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      status: 'COMPLETED',
+      ...dto,
+      processedAt: new Date().toISOString(),
+    };
+  }
 }

@@ -42,4 +42,9 @@ export class PaymentsController {
   getRecurringPayments(@Query('userId') userId: string) {
     return this.paymentProviderService.getRecurringPayments(userId);
   }
+
+  @Post('merchant/process')
+  processMerchantPayment(@Body() dto: { merchantId: string; customerId: string; amount: number; currency: string; orderId: string }) {
+    return this.paymentProviderService.processMerchantPayment(dto);
+  }
 }

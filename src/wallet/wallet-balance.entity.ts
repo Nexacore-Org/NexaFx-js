@@ -25,6 +25,13 @@ export class WalletBalanceEntity {
 
   @Column({ type: 'boolean', default: false })
   isPrimary!: boolean;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  label?: string;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  color?: string;
+
   /** Key version used to encrypt sensitive fields for this wallet. */
   @Column({ type: 'int', default: 1 })
   keyVersion!: number;

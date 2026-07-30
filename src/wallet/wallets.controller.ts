@@ -41,4 +41,13 @@ export class WalletsController {
   processAutoSweep(@Body() body: { userId: string; currency: string }) {
     return this.walletsService.processAutoSweep(body.userId, body.currency);
   }
+
+  @Post(':accountId/:currency/customize')
+  updateCustomization(
+    @Param('accountId') accountId: string,
+    @Param('currency') currency: string,
+    @Body() body: { label?: string; color?: string }
+  ) {
+    return this.walletsService.updateCustomization(accountId, currency, body.label, body.color);
+  }
 }
