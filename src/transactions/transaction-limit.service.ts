@@ -10,6 +10,9 @@ const SINGLE_TX_LIMIT_USD = parseFloat(process.env.SINGLE_TX_LIMIT_USD ?? '25000
 const dailyTotals = new Map<string, number>();
 const monthlyTotals = new Map<string, number>();
 
+/** Per-user lock chain so check-and-increment is atomic within this instance. */
+const userLocks = new Map<string, Promise<unknown>>();
+
 @Injectable()
 export class TransactionLimitService {
   private readonly logger = new Logger(TransactionLimitService.name);
@@ -29,10 +32,23 @@ export class TransactionLimitService {
       );
     }
 
-    const today = this.dateKey();
-    const month = this.monthKey();
-    const dayKey = `${userId}:${today}`;
-    const monKey = `${userId}:${month}`;
+    // Chain onto any in-flight check for this user so the read-check-write
+    // below is never interleaved with a concurrent call for the same user.
+    const previous = userLocks.get(userId) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() => this.checkAndCommit(userId, amountUsd));
+    userLocks.set(userId, current);
+    try {
+      await current;
+    } finally {
+      if (userLocks.get(userId) === current) userLocks.delete(userId);
+    }
+  }
+
+  private checkAndCommit(userId: string, amountUsd: number): void {
+    const dayKey = `${userId}:${this.dateKey()}`;
+    const monKey = `${userId}:${this.monthKey()}`;
 
     const dayTotal = (dailyTotals.get(dayKey) ?? 0) + amountUsd;
     const monTotal = (monthlyTotals.get(monKey) ?? 0) + amountUsd;
