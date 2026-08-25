@@ -20,7 +20,7 @@ class SignupDto {
 
   @IsString()
   @MinLength(8)
-  passwordHash: string;
+  password: string;
 
   @IsOptional()
   @IsString()
@@ -40,7 +40,7 @@ class LoginDto {
   email: string;
 
   @IsString()
-  passwordHash: string;
+  password: string;
 }
 
 class ForgotPasswordDto {
@@ -57,7 +57,7 @@ class ResetPasswordDto {
 
   @IsString()
   @MinLength(8)
-  newPasswordHash: string;
+  newPassword: string;
 }
 
 class VerifyEmailDto {
@@ -89,7 +89,7 @@ export class AuthController {
 
     const user = await this.authService.createUser({
       email: dto.email,
-      passwordHash: dto.passwordHash,
+      password: dto.password,
       firstName: dto.firstName,
       lastName: dto.lastName,
     });
@@ -113,7 +113,7 @@ export class AuthController {
 
   @Post('login')
   async login(@Body(ValidationPipe) dto: LoginDto) {
-    const result = await this.authService.login(dto.email, dto.passwordHash);
+    const result = await this.authService.login(dto.email, dto.password);
     const isEmailVerified = !!result.user.emailVerifiedAt;
 
     return {
@@ -137,7 +137,7 @@ export class AuthController {
 
   @Post('reset-password')
   async resetPassword(@Body(ValidationPipe) dto: ResetPasswordDto) {
-    await this.authService.resetPassword(dto.email, dto.token, dto.newPasswordHash);
+    await this.authService.resetPassword(dto.email, dto.token, dto.newPassword);
     return { message: 'Password reset successfully.' };
   }
 
