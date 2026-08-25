@@ -420,6 +420,13 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Insufficient balance including fee');
     }
 
+    // #1058: never trust the client-supplied toAmount — derive it server-side
+    // from the same rate source used for previews, so a swap can't be used
+    // to mint an arbitrary destination-currency amount.
+    const feeAdjustedAmount = dto.fromAmount - fee.feeAmount;
+    const rate = parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
+    const serverToAmount = parseFloat((feeAdjustedAmount * rate).toFixed(8));
+
     const tx = this.txRepo.create({
       senderId: dto.userId,
       receiverId: dto.userId,
@@ -427,7 +434,7 @@ export class TransactionsService implements OnModuleInit {
       currency: dto.fromCurrency,
       fee: fee.feeAmount,
       reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'swap', toAmount: dto.toAmount, toCurrency: dto.toCurrency },
+      metadata: { ...dto.metadata, type: 'swap', toAmount: serverToAmount, toCurrency: dto.toCurrency },
       status: TransactionStatus.PENDING,
       retryCount: 0,
     });
@@ -440,7 +447,7 @@ export class TransactionsService implements OnModuleInit {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         // Stellar / blockchain swap submission would happen here
-        await this.walletsService.adjustBalance(dto.userId, dto.toCurrency, dto.toAmount);
+        await this.walletsService.adjustBalance(dto.userId, dto.toCurrency, serverToAmount);
         tx.status = TransactionStatus.COMPLETED;
         tx.completedAt = new Date();
         tx.retryCount = attempt;
