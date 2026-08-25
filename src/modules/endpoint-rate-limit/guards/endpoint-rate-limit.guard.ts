@@ -48,7 +48,14 @@ export class EndpointRateLimitGuard implements CanActivate {
         throw error;
       }
       this.logger.error(`Endpoint rate limit check failed: ${error.message}`);
-      return true;
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          message: 'Rate limit service unavailable',
+          error: 'Internal Server Error',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 }

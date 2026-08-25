@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { ApiKeyEntity } from '../entities/api-key.entity';
 
 @Injectable()
@@ -17,9 +17,7 @@ export class ApiKeysService {
   ) {}
 
   private generateApiKey(): string {
-    const bytes = createHash('sha256')
-      .update(`${Date.now()}-${Math.random().toString(36).substring(2)}`)
-      .digest('hex');
+    const bytes = randomBytes(32).toString('hex');
     return `nxf_${bytes}`;
   }
 
