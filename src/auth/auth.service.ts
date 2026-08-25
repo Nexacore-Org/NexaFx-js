@@ -10,9 +10,8 @@ import { MailService } from '../mail/mail.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-
-const hashPassword = (password: string): string =>
-  createHash('sha256').update(password).digest('hex');
+import { PasswordService } from './password.service';
+import { PasswordPolicyService } from './password-policy.service';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 30;
@@ -28,15 +27,19 @@ export class AuthService {
     private readonly mailService: MailService,
     private readonly events: EventEmitter2,
     private readonly configService: ConfigService,
+    private readonly passwordService: PasswordService,
+    private readonly passwordPolicyService: PasswordPolicyService,
   ) {}
 
   async register(
     dto: RegisterDto,
     context: { ip?: string; userAgent?: string } = {},
   ) {
+    this.passwordPolicyService.validate(dto.password);
+    const passwordHash = await this.passwordService.hash(dto.password);
     const user = await this.usersService.create({
       email: dto.email,
-      passwordHash: hashPassword(dto.password),
+      passwordHash,
       firstName: dto.firstName,
       lastName: dto.lastName,
     });
@@ -81,12 +84,23 @@ export class AuthService {
       );
     }
 
-    const expected = Buffer.from(user.passwordHash);
-    const actual = Buffer.from(hashPassword(dto.password));
-    if (
-      expected.length !== actual.length ||
-      !timingSafeEqual(expected, actual)
-    ) {
+    const isBcryptHash = user.passwordHash.startsWith('$');
+    let passwordMatches = false;
+
+    if (isBcryptHash) {
+      passwordMatches = await this.passwordService.verify(dto.password, user.passwordHash);
+    } else {
+      const expected = Buffer.from(user.passwordHash);
+      const actual = Buffer.from(createHash('sha256').update(dto.password).digest('hex'));
+      if (expected.length === actual.length && timingSafeEqual(expected, actual)) {
+        passwordMatches = true;
+        const bcryptHash = await this.passwordService.hash(dto.password);
+        (user as any).passwordHash = bcryptHash;
+        await this.usersService.update?.(user.id, { passwordHash: bcryptHash } as any);
+      }
+    }
+
+    if (!passwordMatches) {
       // #911: Increment failed attempts and lock if threshold exceeded
       user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
       if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
@@ -96,7 +110,7 @@ export class AuthService {
 
         await this.usersService.update?.(user.id, {
           failedLoginAttempts: user.failedLoginAttempts,
-          lockedUntil,
+          lockedUntil: lockoutUntil,
         });
 
         // Send lockout notification email
