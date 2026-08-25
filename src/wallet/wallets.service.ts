@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import Big from 'big.js';
 import { withTransaction } from '../common/helpers/with-transaction.helper';
 import {
@@ -22,6 +22,7 @@ export class WalletsService {
     accountId: string,
     currency: string,
     delta: number,
+    manager?: EntityManager,
   ): Promise<WalletBalance> {
     const normalizedCurrency = this.validateCurrency(currency);
 
@@ -29,7 +30,9 @@ export class WalletsService {
       return this.getBalance(accountId, normalizedCurrency);
     }
 
-    return withTransaction(this.dataSource, async (manager) => {
+    // #1060: run inside the caller's transaction when one is supplied,
+    // instead of always opening an independent one that commits early.
+    const run = async (manager: EntityManager) => {
       let wallet = await manager.findOne(WalletBalanceEntity, {
         where: { accountId, currency: normalizedCurrency },
         lock: { mode: 'pessimistic_write' as const },
@@ -62,7 +65,9 @@ export class WalletsService {
         createdAt: saved.createdAt,
         updatedAt: saved.updatedAt,
       };
-    });
+    };
+
+    return manager ? run(manager) : withTransaction(this.dataSource, run);
   }
 
   async getBalance(
