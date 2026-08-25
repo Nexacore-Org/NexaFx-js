@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, Between } from 'typeorm';
+import { Repository, MoreThan, LessThanOrEqual, Between } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ExchangeRateCacheEntity } from './entities/exchange-rate-cache.entity';
 import { ExchangeRateHistoryEntity } from './entities/exchange-rate-history.entity';
@@ -168,12 +168,12 @@ export class ExchangeRatesService {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async refreshExpiredRates() {
-    const expired = await this.cacheRepo.count({
-      where: { expiresAt: MoreThan(new Date()) },
+    const expiredCount = await this.cacheRepo.count({
+      where: { expiresAt: LessThanOrEqual(new Date()) },
     });
 
-    if (expired === 0) {
-      this.logger.log('Refreshing expired exchange rates');
+    if (expiredCount > 0) {
+      this.logger.log(`Refreshing ${expiredCount} expired exchange rate(s)`);
       await this.fetchAndCacheRates();
     }
   }
