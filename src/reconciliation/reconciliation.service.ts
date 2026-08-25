@@ -31,15 +31,31 @@ export class ReconciliationService {
     const wallet = await this.walletRepo.findOneBy({ accountId, currency });
     if (!wallet) return;
 
-    const result = await this.txRepo
-      .createQueryBuilder('tx')
-      .select('SUM(tx.amount)', 'total')
-      .where('tx.receiverId = :id AND tx.currency = :currency AND tx.status = :status', {
-        id: accountId, currency, status: TransactionStatus.COMPLETED,
-      })
-      .getRawOne<{ total: string }>();
+    const txs = await this.txRepo.find({
+      where: [
+        { receiverId: accountId, currency, status: TransactionStatus.COMPLETED },
+        { senderId: accountId, currency, status: TransactionStatus.COMPLETED },
+      ],
+    });
 
-    const ledgerBalance = new Big(result?.total ?? '0');
+    let ledgerBalance = new Big('0');
+    for (const tx of txs) {
+      const amount = new Big(String(tx.amount));
+      const fee = new Big(String(tx.fee ?? 0));
+      const type = (tx.metadata as { type?: string } | null)?.type;
+
+      if (tx.receiverId === accountId && type === 'withdrawal') {
+        // self-referencing withdrawal row: money leaves the account
+        ledgerBalance = ledgerBalance.minus(amount).minus(fee);
+      } else if (tx.receiverId === accountId) {
+        // deposit or incoming transfer: money enters the account
+        ledgerBalance = ledgerBalance.plus(amount);
+      } else if (tx.senderId === accountId) {
+        // outgoing transfer: sender-side debit, previously never subtracted
+        ledgerBalance = ledgerBalance.minus(amount).minus(fee);
+      }
+    }
+
     const diff = ledgerBalance.minus(new Big(String(wallet.balance))).abs();
 
     if (diff.gt(TOLERANCE)) {
