@@ -1,42 +1,34 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { RateAlertEntity } from './rate-alert.entity';
 
-export interface RateAlert {
-  id: string;
-  userId: string;
-  currencyPair: string;
-  targetRate: number;
-  direction: 'above' | 'below';
-  triggered: boolean;
-  createdAt: Date;
-}
+export type RateAlert = RateAlertEntity;
 
 @Injectable()
 export class RateAlertsService {
   private readonly logger = new Logger(RateAlertsService.name);
-  private alerts: RateAlert[] = [];
 
-  constructor(private readonly events: EventEmitter2) {}
+  constructor(
+    @InjectRepository(RateAlertEntity)
+    private readonly alertsRepo: Repository<RateAlertEntity>,
+    private readonly events: EventEmitter2,
+  ) {}
 
   async create(userId: string, currencyPair: string, targetRate: number, direction: 'above' | 'below'): Promise<RateAlert> {
-    const alert: RateAlert = {
-      id: Math.random().toString(36).slice(2),
-      userId, currencyPair, targetRate, direction,
-      triggered: false, createdAt: new Date(),
-    };
-    this.alerts.push(alert);
-    return alert;
+    const alert = this.alertsRepo.create({ userId, currencyPair, targetRate, direction, triggered: false });
+    return this.alertsRepo.save(alert);
   }
 
   async deactivate(alertId: string): Promise<void> {
-    const alert = this.alerts.find(a => a.id === alertId);
-    if (alert) alert.triggered = true;
+    await this.alertsRepo.update({ id: alertId }, { triggered: true });
   }
 
-  checkThresholds(rates: Record<string, number>): void {
-    for (const alert of this.alerts) {
-      if (alert.triggered) continue;
+  async checkThresholds(rates: Record<string, number>): Promise<void> {
+    const activeAlerts = await this.alertsRepo.find({ where: { triggered: false } });
+
+    for (const alert of activeAlerts) {
       const currentRate = rates[alert.currencyPair];
       if (!currentRate) continue;
 
@@ -45,7 +37,7 @@ export class RateAlertsService {
         : currentRate <= alert.targetRate;
 
       if (breached) {
-        alert.triggered = true;
+        await this.alertsRepo.update({ id: alert.id }, { triggered: true });
         this.events.emit('rate-alert.triggered', { alertId: alert.id, userId: alert.userId, currencyPair: alert.currencyPair, rate: currentRate });
         this.logger.log(`Rate alert ${alert.id} triggered for ${alert.currencyPair} at ${currentRate}`);
       }
