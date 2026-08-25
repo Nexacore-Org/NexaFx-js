@@ -5,8 +5,26 @@ import { AmlScreening, AmlRiskLevel } from './aml-screening.entity';
 
 const HIGH_VALUE_THRESHOLD = 10000;
 const CRITICAL_VALUE_THRESHOLD = 50000;
-const MOCK_SANCTIONS = ['test sanctioned', 'sdn test', 'pep test'];
-const MOCK_PEP = ['minister', 'president', 'senator', 'governor'];
+
+const SANCTIONS_LIST: string[] = [
+  'vladimir putin', 'sergei lavrov', 'dmitry peskov',
+  'ali hosseinmenehbadi', 'ahmad vahidi', 'mohammad javad zarif',
+  'kim jong un', 'choe ryong hae',
+  'bashar al-assad', 'asma al-assad',
+  'nicolas maduro', 'diosdado cabello',
+  'alexander lukashenko', 'viktor sheiman',
+  'omar al-bashir', 'ahmed harun',
+  'yevgeny prigozhin', 'dmitry utkin',
+];
+
+const PEP_LIST: string[] = [
+  'minister', 'president', 'senator', 'governor',
+  'prime minister', 'chief justice', 'speaker',
+  'ambassador', 'secretary', 'chancellor',
+  'parliamentarian', 'congressman', 'congresswoman',
+  'premier', 'dictator', 'monarch', 'king', 'queen',
+  'emir', 'sultan', 'ayatollah', 'general',
+];
 
 export interface ScreenUserInput {
   userId: string;
@@ -52,11 +70,11 @@ export class AmlScreeningService {
 
     if (input.fullName) {
       const lowerName = input.fullName.toLowerCase();
-      if (MOCK_SANCTIONS.some((s) => lowerName.includes(s))) {
+      if (SANCTIONS_LIST.some((s) => lowerName.includes(s))) {
         flags.push('sanctions_match');
         riskScore += 50;
       }
-      if (MOCK_PEP.some((p) => lowerName.includes(p))) {
+      if (PEP_LIST.some((p) => lowerName.includes(p))) {
         flags.push('pep');
         riskScore += 30;
       }
@@ -89,7 +107,7 @@ export class AmlScreeningService {
 
     if (input.counterpartyName) {
       const lowerName = input.counterpartyName.toLowerCase();
-      if (MOCK_SANCTIONS.some((s) => lowerName.includes(s))) {
+      if (SANCTIONS_LIST.some((s) => lowerName.includes(s))) {
         flags.push('sanctions_match');
         riskScore += 50;
       }

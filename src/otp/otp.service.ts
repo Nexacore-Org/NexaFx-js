@@ -7,37 +7,19 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import * as nodemailer from 'nodemailer';
 import { Otp, OtpPurpose } from './otp.entity';
 import { MailService } from '../mail/mail.service';
 
 const MAX_ATTEMPTS = 5;
 
-const OTP_SUBJECTS: Record<string, string> = {
-  en: 'Your NexaFx verification code',
-  fr: 'Votre code de vérification NexaFx',
-};
-
 @Injectable()
 export class OtpService {
-  private readonly transporter: nodemailer.Transporter;
-
   constructor(
     @InjectRepository(Otp)
     private readonly otpRepo: Repository<Otp>,
     private readonly config: ConfigService,
     private readonly mailService: MailService,
-  ) {
-    this.transporter = nodemailer.createTransport({
-      host: this.config.get<string>('mail.host'),
-      port: this.config.get<number>('mail.port'),
-      secure: this.config.get<boolean>('mail.secure'),
-      auth: {
-        user: this.config.get<string>('mail.user'),
-        pass: this.config.get<string>('mail.password'),
-      },
-    });
-  }
+  ) {}
 
   async generate(
     userId: string,
@@ -57,17 +39,7 @@ export class OtpService {
     const otp = this.otpRepo.create({ userId, codeHash, purpose, expiresAt });
     await this.otpRepo.save(otp);
 
-    const html = this.mailService.renderEmailVerification(
-      { fullName, verificationCode: code, expiresMinutes: Math.round(expiry / 60) },
-      preferredLanguage,
-    );
-
-    await this.transporter.sendMail({
-      from: this.config.get<string>('mail.from'),
-      to: email,
-      subject: OTP_SUBJECTS[preferredLanguage] ?? OTP_SUBJECTS.en,
-      html,
-    });
+    await this.mailService.sendVerificationOtp(email, code);
   }
 
   async verify(userId: string, code: string, purpose: OtpPurpose): Promise<boolean> {
@@ -84,7 +56,11 @@ export class OtpService {
     }
 
     const secret = this.config.get<string>('otp.secret') ?? '';
-    const isValid = this.hmac(code, secret) === otp.codeHash;
+    const computedHash = Buffer.from(this.hmac(code, secret), 'hex');
+    const storedHash = Buffer.from(otp.codeHash, 'hex');
+
+    const isValid = computedHash.length === storedHash.length &&
+      crypto.timingSafeEqual(computedHash, storedHash);
 
     if (!isValid) {
       otp.attempts += 1;
