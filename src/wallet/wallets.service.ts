@@ -43,7 +43,8 @@ export class WalletsService {
         });
       }
 
-      const newBalance = Number(new Big(wallet.balance).plus(new Big(delta)).toFixed(2));
+      // #1059: preserve full precision instead of truncating to 2dp
+      const newBalance = Number(new Big(wallet.balance).plus(new Big(delta)).toFixed(8));
       if (newBalance < 0) {
         throw new BadRequestException('Insufficient balance');
       }
