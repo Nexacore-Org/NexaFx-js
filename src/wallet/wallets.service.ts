@@ -9,6 +9,8 @@ import {
 } from '../currencies/supported-currencies';
 import { WalletBalanceEntity } from './wallet-balance.entity';
 import { WalletBalance } from './wallets.types';
+import { LedgerService } from '../ledger/ledger.service';
+import { LedgerEntryType } from '../ledger/ledger-entry.entity';
 
 @Injectable()
 export class WalletsService {
@@ -16,6 +18,7 @@ export class WalletsService {
     @InjectRepository(WalletBalanceEntity)
     private readonly walletRepository: Repository<WalletBalanceEntity>,
     private readonly dataSource: DataSource,
+    private readonly ledgerService: LedgerService,
   ) {}
 
   async adjustBalance(
@@ -50,6 +53,14 @@ export class WalletsService {
 
       wallet.balance = newBalance;
       const saved = await manager.save(wallet);
+
+      await this.ledgerService.recordEntry({
+        userId: accountId,
+        type: delta > 0 ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT,
+        amount: Math.abs(delta),
+        currency: normalizedCurrency,
+        balanceAfter: newBalance,
+      });
 
       return {
         id: saved.id,
