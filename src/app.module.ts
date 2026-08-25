@@ -24,9 +24,10 @@ import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { StrategyOptimizerModule } from './modules/strategy-optimizer/strategy-optimizer.module';
 import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
-import { AdminModule } from './modules/admin/admin.module';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { UsersModule } from './modules/users/users.module';
+// NOTE: './modules/users/users.module' does not exist; the only UsersModule is at './users/users.module'.
+// Aliased as UpstreamUsersModule below (line 84).
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EnrichmentModule } from './modules/enrichment/enrichment.module';
@@ -81,7 +82,7 @@ import { TransactionQueueModule } from './transaction/transaction.module';
 import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history.module';
 import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
-import { UsersModule } from './users/users.module';
+import { UsersModule as UpstreamUsersModule } from './users/users.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
@@ -250,7 +251,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
       : []),
     ModulesHealthModule,
     HealthModule,
-    UsersModule,
     UpstreamUsersModule,
     AuditModule,
     MailModule,
@@ -294,7 +294,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     MetricsModule,
     StellarModule,
     RatesModule,
-    ScheduledTransactionsModule,
     EndpointRateLimitModule,
     UserDeactivationModule,
     FeeAuditModule,
@@ -317,31 +316,17 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     EnrichmentModule,
     NotificationsModule,
     WebSocketNotificationsModule,
-    RetryModule,
-    ExperimentsModule,
-    FeesModule,
-    TransactionRiskModule,
-    WebhooksModule,
-    SecretsModule,
-    DataArchiveModule,
-    IdempotencyModule,
-    GoalsModule,
-    AnnouncementsModule,
-    ComplianceModule,
-    LedgerModule,
-    VersioningModule,
-    InsightsModule,
     InsightsForecastModule,
     ReferralsModule,
     KycModule,
     EscrowModule,
     SplitPaymentsModule,
-    ScheduledTransactionsModule,
     SupportTicketsModule,
     FeeReportsModule,
     WalletHistoryModule,
     KycTiersModule,
     AppGraphQLModule,
+    FxModule,
   ],
   controllers: [AppController],
   providers: [
