@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import Big from 'big.js';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
@@ -17,6 +17,8 @@ export class ReconciliationService {
     private readonly txRepo: Repository<Transaction>,
     @InjectRepository(WalletBalanceEntity)
     private readonly walletRepo: Repository<WalletBalanceEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   @Cron('0 2 * * *')
@@ -38,8 +40,18 @@ export class ReconciliationService {
       ],
     });
 
+    // Archived transactions are deleted from the live table, but the wallet
+    // balance still reflects the money they moved — union them back in.
+    const archivedTxs = await this.dataSource
+      .query(
+        `SELECT "senderId", "receiverId", amount, fee, metadata FROM "transactions_archive"
+         WHERE ("receiverId" = $1 OR "senderId" = $1) AND currency = $2 AND status = $3`,
+        [accountId, currency, TransactionStatus.COMPLETED],
+      )
+      .catch(() => []);
+
     let ledgerBalance = new Big('0');
-    for (const tx of txs) {
+    for (const tx of [...txs, ...archivedTxs]) {
       const amount = new Big(String(tx.amount));
       const fee = new Big(String(tx.fee ?? 0));
       const type = (tx.metadata as { type?: string } | null)?.type;
