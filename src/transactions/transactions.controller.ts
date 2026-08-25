@@ -54,6 +54,9 @@ export class TransactionsController {
 
   @Post('transfer')
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   transfer(@Body() dto: TransferDto) {
     return this.txService.transfer(dto);
   }
