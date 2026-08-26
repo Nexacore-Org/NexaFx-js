@@ -17,9 +17,14 @@ export class MetricsInterceptor implements NestInterceptor {
     const http = context.switchToHttp();
     const req = http.getRequest<Request>();
     const res = http.getResponse<Response>();
-    const method = req.method;
-    const route =
-      (req.route?.path as string | undefined) ?? req.path ?? 'unknown';
+    let route = 'unmatched';
+    if (req.route?.path) {
+      route = String(req.route.path);
+    } else if (req.path) {
+      route = req.path
+        .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '/:id')
+        .replace(/\/\d+/g, '/:id');
+    }
 
     return next.handle().pipe(
       tap({
