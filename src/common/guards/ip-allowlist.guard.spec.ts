@@ -12,7 +12,7 @@ describe('IpAllowlistGuard', () => {
     jest.clearAllMocks();
   });
 
-  it('allows requests when the allowlist is not configured', () => {
+  it('denies requests when the allowlist is not configured', () => {
     (config.get as jest.Mock).mockReturnValue([]);
     const context = {
       switchToHttp: () => ({
@@ -20,7 +20,9 @@ describe('IpAllowlistGuard', () => {
       }),
     } as unknown as ExecutionContext;
 
-    expect(guard.canActivate(context)).toBe(true);
+    expect(() => guard.canActivate(context)).toThrow(
+      'ADMIN_ALLOWED_IPS is not configured; admin access denied',
+    );
   });
 
   it('blocks requests outside allowlisted cidrs', () => {
