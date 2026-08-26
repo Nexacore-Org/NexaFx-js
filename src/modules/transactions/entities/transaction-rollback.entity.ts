@@ -7,12 +7,12 @@ import {
 } from 'typeorm';
 
 @Entity('transaction_rollbacks')
-@Index('idx_transaction_rollbacks_original', ['originalTransactionId'])
+@Index('idx_transaction_rollbacks_original', ['originalTransactionId'], { unique: true })
 export class TransactionRollbackEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', unique: true })
   originalTransactionId: string;
 
   @Column({ type: 'uuid' })

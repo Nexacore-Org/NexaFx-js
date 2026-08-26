@@ -19,7 +19,8 @@ export interface RecordFeeDto {
   reason?: string | null;
 }
 
-const FEE_RATE = 0.001; // 0.1% flat fee
+const DEFAULT_FEE_RATE = 0.001; // 0.1% flat fee
+const WITHDRAWAL_FEE_RATE = 0.005; // 0.5% flat fee
 
 @Injectable()
 export class FeesService {
@@ -31,12 +32,16 @@ export class FeesService {
     private readonly feeAuditService: FeeAuditService,
   ) {}
 
-  calculateFee(amount: number): FeeResult {
-    const feeAmount = Number((amount * FEE_RATE).toFixed(8));
+  private getFeeRate(transactionType: string): number {
+    return transactionType === 'withdrawal' ? WITHDRAWAL_FEE_RATE : DEFAULT_FEE_RATE;
+  }
+
+  calculateFee(amount: number, transactionType = 'default', currency = 'USD'): FeeResult {
+    const feeAmount = Number((amount * this.getFeeRate(transactionType)).toFixed(8));
 
     this.feeAuditService.recordFeeCalculation({
       feeAmount,
-      currency: 'USD',
+      currency,
       feeType: 'percentage',
       calculatedAmount: amount,
       appliedTier: 'flat',
@@ -46,7 +51,7 @@ export class FeesService {
   }
 
   previewFee(transactionType: string, amount: number, currency = 'USD') {
-    const feeRate = transactionType === 'withdrawal' ? 0.005 : 0.001;
+    const feeRate = this.getFeeRate(transactionType);
     const feeAmount = Number((amount * feeRate).toFixed(8));
     const netAmount = Number((amount - feeAmount).toFixed(8));
     return {

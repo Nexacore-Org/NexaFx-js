@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 import { TransactionCategoryEntity } from './transaction-category.entity';
 
-@Entity('transactions')
+@Entity('wallet_transactions')
 @Index('idx_transactions_status', ['status'])
 @Index('idx_transactions_created_at', ['createdAt'])
 @Index('idx_transactions_search_vector', ['searchVector'], { fulltext: true })

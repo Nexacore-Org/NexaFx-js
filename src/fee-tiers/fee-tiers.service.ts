@@ -21,13 +21,14 @@ export class FeeTiersService {
   }
 
   async findByKycLevelAndAmount(kycLevel: KycFeeLevel, currency: string, amount: number): Promise<FeeTierEntity | null> {
-    return this.feeTierRepo.findOne({
-      where: {
-        kycLevel,
-        currency,
-        isActive: true,
-      },
-    });
+    return this.feeTierRepo
+      .createQueryBuilder('t')
+      .where('t.kycLevel = :kycLevel', { kycLevel })
+      .andWhere('t.currency = :currency', { currency })
+      .andWhere('t.isActive = true')
+      .andWhere('t.tierMin <= :amount', { amount })
+      .andWhere('t.tierMax >= :amount', { amount })
+      .getOne();
   }
 
   async calculateFee(kycLevel: KycFeeLevel, currency: string, amount: number): Promise<{ tier: FeeTierEntity | null; feeAmount: number; totalAmount: number }> {
