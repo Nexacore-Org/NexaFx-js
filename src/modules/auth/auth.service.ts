@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException, BadRequestException, Logger } from '
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { UserEntity } from '../users/entities/user.entity';
 import { ReferralService } from '../referrals/services/referral.service';
 import { MailService } from '../mail/services/mail.service';
@@ -26,6 +27,10 @@ export class AuthService {
   ) {}
 
   async createUser(userData: Partial<UserEntity>): Promise<UserEntity> {
+    if (userData.password && !userData.passwordHash) {
+      userData.passwordHash = await bcrypt.hash(userData.password, 12);
+      delete userData.password;
+    }
     const user = this.userRepository.create(userData);
     return this.userRepository.save(user);
   }
@@ -34,7 +39,7 @@ export class AuthService {
     return this.userRepository.findOne({ where: { email } });
   }
 
-  async login(email: string, passwordHash: string): Promise<{ accessToken: string; user: UserEntity }> {
+  async login(email: string, password: string): Promise<{ accessToken: string; user: UserEntity }> {
     const user = await this.userRepository.findOne({
       where: { email, deletedAt: IsNull() },
     });
@@ -47,7 +52,8 @@ export class AuthService {
       throw new UnauthorizedException('Account is suspended');
     }
 
-    if (user.passwordHash !== passwordHash) {
+    const passwordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordValid) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -171,7 +177,7 @@ export class AuthService {
     await this.mailService.sendPasswordReset(email, resetUrl);
   }
 
-  async resetPassword(email: string, token: string, newPasswordHash: string, auditContext?: AuditContext): Promise<void> {
+  async resetPassword(email: string, token: string, newPassword: string, auditContext?: AuditContext): Promise<void> {
     const user = await this.userRepository.findOne({ where: { email, deletedAt: IsNull() } });
     if (!user || !user.passwordResetTokenHash || !user.passwordResetExpiry) {
       throw new BadRequestException('Invalid or expired reset token');
@@ -186,8 +192,9 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired reset token');
     }
 
+    const passwordHash = await bcrypt.hash(newPassword, 12);
     await this.userRepository.update(user.id, {
-      passwordHash: newPasswordHash,
+      passwordHash,
       passwordResetTokenHash: undefined,
       passwordResetExpiry: undefined,
     });

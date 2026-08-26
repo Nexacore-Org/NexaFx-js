@@ -13,6 +13,9 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
 import { BackupCodesService } from './2fa/backup-codes.service';
+import { PasswordService } from './password.service';
+import { PasswordPolicyService } from './password-policy.service';
+import { BiometricGuard } from './biometric.guard';
 import { JwtAuthGuard as PassportJwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -44,7 +47,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, TokenService, BackupCodesService, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
-  exports: [AuthService, TokenService, BackupCodesService, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
+  providers: [AuthService, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
+  exports: [AuthService, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
 })
 export class AuthModule {}
