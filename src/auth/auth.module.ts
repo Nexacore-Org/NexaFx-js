@@ -11,6 +11,7 @@ import { UsersModule } from '../users/users.module';
 import { UserDeactivationModule } from '../modules/user-deactivation/user-deactivation.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PasswordService } from './password.service';
 import { JwtAuthGuard as PassportJwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -42,7 +43,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
-  exports: [AuthService, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
+  providers: [AuthService, PasswordService, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
+  exports: [AuthService, PasswordService, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
 })
 export class AuthModule {}

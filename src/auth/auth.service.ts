@@ -1,7 +1,8 @@
 import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { createHash, timingSafeEqual } from 'crypto';
+import { timingSafeEqual } from 'crypto';
+import { createHash } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UsersService } from '../users/users.service';
@@ -10,9 +11,7 @@ import { MailService } from '../mail/mail.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-
-const hashPassword = (password: string): string =>
-  createHash('sha256').update(password).digest('hex');
+import { PasswordService } from './password.service';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 30;
@@ -28,15 +27,17 @@ export class AuthService {
     private readonly mailService: MailService,
     private readonly events: EventEmitter2,
     private readonly configService: ConfigService,
+    private readonly passwordService: PasswordService,
   ) {}
 
   async register(
     dto: RegisterDto,
     context: { ip?: string; userAgent?: string } = {},
   ) {
+    const passwordHash = await this.passwordService.hash(dto.password);
     const user = await this.usersService.create({
       email: dto.email,
-      passwordHash: hashPassword(dto.password),
+      passwordHash,
       firstName: dto.firstName,
       lastName: dto.lastName,
     });
@@ -81,12 +82,25 @@ export class AuthService {
       );
     }
 
-    const expected = Buffer.from(user.passwordHash);
-    const actual = Buffer.from(hashPassword(dto.password));
-    if (
-      expected.length !== actual.length ||
-      !timingSafeEqual(expected, actual)
-    ) {
+    const isBcryptHash = user.passwordHash.startsWith('$');
+    let passwordMatches = false;
+
+    if (isBcryptHash) {
+      passwordMatches = await this.passwordService.verify(dto.password, user.passwordHash);
+    } else {
+      // Legacy SHA-256 hash — verify with old method, then migrate to bcrypt
+      const expected = Buffer.from(user.passwordHash);
+      const actual = Buffer.from(createHash('sha256').update(dto.password).digest('hex'));
+      if (expected.length === actual.length && timingSafeEqual(expected, actual)) {
+        passwordMatches = true;
+        // Lazy-migrate to bcrypt
+        const bcryptHash = await this.passwordService.hash(dto.password);
+        (user as any).passwordHash = bcryptHash;
+        await this.usersService.update?.(user.id, { passwordHash: bcryptHash } as any);
+      }
+    }
+
+    if (!passwordMatches) {
       // #911: Increment failed attempts and lock if threshold exceeded
       user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
       if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
