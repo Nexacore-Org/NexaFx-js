@@ -164,7 +164,6 @@ export class WalletsService {
         remainingBalance: config.threshold,
       };
     }
-    }
     return { swept: false, reason: 'Balance below threshold' };
   }
 

@@ -10,11 +10,14 @@ import { FxTrade } from './fx-trade.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { WalletsService } from '../wallet/wallets.service';
 
+import { FxQuoteCache } from './fx-quote-cache';
+
 export interface ExecuteTradeDto {
   userId: string;
   fromCurrency: string;
   toCurrency: string;
   fromAmount: number;
+  quoteId?: string;
 }
 
 @Injectable()
@@ -29,10 +32,25 @@ export class FxService {
   ) {}
 
   async executeTrade(dto: ExecuteTradeDto): Promise<FxTrade> {
-    const { rate } = await this.rateService.getRate(
-      dto.fromCurrency,
-      dto.toCurrency,
-    );
+    let rate: number;
+    if (dto.quoteId) {
+      const lockedRate = FxQuoteCache.get(dto.quoteId);
+      if (lockedRate !== null) {
+        rate = lockedRate;
+      } else {
+        const rateResult = await this.rateService.getRate(
+          dto.fromCurrency,
+          dto.toCurrency,
+        );
+        rate = rateResult.rate;
+      }
+    } else {
+      const rateResult = await this.rateService.getRate(
+        dto.fromCurrency,
+        dto.toCurrency,
+      );
+      rate = rateResult.rate;
+    }
     const toAmount = parseFloat((dto.fromAmount * rate).toFixed(8));
 
     return this.dataSource.transaction(async (manager) => {

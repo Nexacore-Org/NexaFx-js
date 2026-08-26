@@ -84,6 +84,15 @@ export class ExchangeRateService {
       );
     }
 
+    const key = `${base.toUpperCase()}:${target.toUpperCase()}`;
+    const cached = this.cache.get(key);
+    if (cached) {
+      this.logger.warn(
+        `Both exchange rate providers failed; returning stale rate from cache for ${key}`,
+      );
+      return cached;
+    }
+
     throw new ServiceUnavailableException(
       'Exchange rate providers are currently unavailable',
     );
