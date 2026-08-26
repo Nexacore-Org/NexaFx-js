@@ -25,23 +25,28 @@ export class WalletHistoryService {
     const balances: Record<string, number> = {};
     let totalValueUsd = 0;
 
-    for (const wallet of wallets) {
-      const transactions = await this.txRepo.find({
-        where: { walletId: wallet.id },
-      });
+    if (wallets.length > 0) {
+      // Single grouped aggregate instead of one find() per wallet + JS summation (was O(n) per snapshot).
+      const sums = await this.txRepo
+        .createQueryBuilder('tx')
+        .select('tx.walletId', 'walletId')
+        .addSelect(
+          `SUM(CASE WHEN tx.metadata->>'type' = 'CREDIT' OR tx.fromAddress IS NULL THEN tx.amount ELSE -tx.amount END)`,
+          'balance',
+        )
+        .where('tx.walletId IN (:...walletIds)', { walletIds: wallets.map((w) => w.id) })
+        .andWhere('tx.status = :status', { status: 'SUCCESS' })
+        .groupBy('tx.walletId')
+        .getRawMany<{ walletId: string; balance: string }>();
 
-      let balance = 0;
-      for (const tx of transactions) {
-        const amount = Number(tx.amount);
-        const isCredit = tx.metadata?.type === 'CREDIT' || tx.fromAddress == null;
-        if (tx.status === 'SUCCESS') {
-          balance += isCredit ? amount : -amount;
+      const balanceByWallet = new Map(sums.map((s) => [s.walletId, Number(s.balance) || 0]));
+
+      for (const wallet of wallets) {
+        const balance = balanceByWallet.get(wallet.id) ?? 0;
+        balances[wallet.currency] = (balances[wallet.currency] ?? 0) + balance;
+        if (wallet.currency === 'USD') {
+          totalValueUsd += balance;
         }
-      }
-
-      balances[wallet.currency] = (balances[wallet.currency] ?? 0) + balance;
-      if (wallet.currency === 'USD') {
-        totalValueUsd += balance;
       }
     }
 

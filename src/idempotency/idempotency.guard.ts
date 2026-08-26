@@ -8,9 +8,6 @@ import {
 import { Reflector } from '@nestjs/core';
 import { IdempotencyService } from './idempotency.service';
 import { IDEMPOTENCY_KEY } from './idempotency.decorator';
-
-export const MIN_KEY_LENGTH = 16;
-export const MAX_KEY_LENGTH = 255;
 import { MAX_KEY_LENGTH, MIN_KEY_LENGTH } from './constants';
 
 @Injectable()

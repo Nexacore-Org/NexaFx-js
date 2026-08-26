@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotImplementedException } from '@nestjs/common';
 
 export interface BatchTransactionItem {
   recipientAddress: string;
@@ -16,7 +16,9 @@ export interface BatchProcessingResult {
 
 /**
  * Transaction Batch Processing Service
- * Enables businesses to process multiple payments in a single API call
+ * @deprecated Not registered in any module and not wired to real transaction
+ * submission — `submitSingleTransaction`/`getBatchStatus` are unfinished
+ * placeholders. Do not use until a real implementation lands (#1074).
  */
 @Injectable()
 export class BatchProcessorService {
@@ -58,10 +60,10 @@ export class BatchProcessorService {
    * @returns Current status of the batch
    */
   async getBatchStatus(batchId: string): Promise<any> {
-    return { batchId, status: 'completed' };
+    throw new NotImplementedException('Batch status tracking is not implemented; no batch state is persisted.');
   }
 
   private async submitSingleTransaction(from: string, item: BatchTransactionItem): Promise<string> {
-    return 'tx_hash_placeholder';
+    throw new NotImplementedException('Batch transaction submission is not implemented.');
   }
 }

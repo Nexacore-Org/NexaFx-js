@@ -11,9 +11,9 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
-  UseGuards,
   UseInterceptors,
   Sse,
+  Req,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map, filter } from 'rxjs/operators';
@@ -54,6 +54,9 @@ export class TransactionsController {
 
   @Post('transfer')
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   transfer(@Body() dto: TransferDto) {
     return this.txService.transfer(dto);
   }
@@ -226,10 +229,5 @@ export class TransactionsController {
     @Body() body: { authorId: string; text: string },
   ) {
     return this.txService.addComment(id, body.authorId, body.text);
-  }
-
-  @Get(':id/comments')
-  getComments(@Param('id') id: string) {
-    return this.txService.getComments(id);
   }
 }
