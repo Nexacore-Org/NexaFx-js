@@ -31,6 +31,22 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
   ) {}
 
+  private getRequest(context: ExecutionContext): AuthenticatedRequest {
+    if ((context.getType() as string) === 'graphql') {
+      try {
+        const { GqlExecutionContext } = require('@nestjs/graphql');
+        const gqlContext = GqlExecutionContext.create(context);
+        return gqlContext.getContext().req;
+      } catch {
+        const args = context.getArgs();
+        return (
+          args[2]?.req || context.switchToHttp().getRequest<AuthenticatedRequest>()
+        );
+      }
+    }
+    return context.switchToHttp().getRequest<AuthenticatedRequest>();
+  }
+
   canActivate(context: ExecutionContext): boolean {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
@@ -41,7 +57,7 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const request = this.getRequest(context);
     const authorization = request.headers.authorization;
     const bearerToken = Array.isArray(authorization)
       ? authorization[0]
