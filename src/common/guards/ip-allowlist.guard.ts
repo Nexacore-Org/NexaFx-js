@@ -79,9 +79,11 @@ export class IpAllowlistGuard implements CanActivate {
 
     if (allowedIps.length === 0) {
       this.logger.warn(
-        'ADMIN_ALLOWED_IPS is not configured; allowing admin requests from any IP',
+        'ADMIN_ALLOWED_IPS is not configured; denying admin requests',
       );
-      return true;
+      throw new ForbiddenException(
+        'ADMIN_ALLOWED_IPS is not configured; admin access denied',
+      );
     }
 
     const request = context.switchToHttp().getRequest<Request>();
