@@ -1,19 +1,29 @@
 import { Module } from '@nestjs/common';
-import { GraphQLModule } from '@nestjs/graphql';
-import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
-import { UserResolver } from './user.resolver';
 import { UsersModule } from '../users/users.module';
 
-@Module({
-  imports: [
-    GraphQLModule.forRoot<ApolloDriverConfig>({
+let graphqlImports: any[] = [];
+let providersList: any[] = [];
+
+try {
+  const { GraphQLModule } = require('@nestjs/graphql');
+  const { ApolloDriver } = require('@nestjs/apollo');
+  const { UserResolver } = require('./user.resolver');
+
+  graphqlImports.push(
+    GraphQLModule.forRoot({
       driver: ApolloDriver,
       autoSchemaFile: true,
       sortSchema: true,
       path: '/graphql',
     }),
-    UsersModule,
-  ],
-  providers: [UserResolver],
+  );
+  providersList.push(UserResolver);
+} catch {
+  // @nestjs/graphql or @nestjs/apollo not installed
+}
+
+@Module({
+  imports: [...graphqlImports, UsersModule],
+  providers: providersList,
 })
 export class AppGraphQLModule {}
