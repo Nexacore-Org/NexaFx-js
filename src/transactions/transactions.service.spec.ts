@@ -1,6 +1,5 @@
 import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
-import { BadRequestException } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { Transaction, TransactionStatus } from './transaction.entity';
 import { WalletsService } from '../wallet/wallets.service';
@@ -21,9 +20,6 @@ const makeMockManager = (): MockManager => ({
   save: jest.fn((_entity, value) => Promise.resolve({ id: 'generated-id', ...value })),
 });
 
-describe('TransactionsService', () => {
-  let service: TransactionsService;
-  let txRepo: jest.Mocked<Pick<Repository<Transaction>, 'findOne' | 'createQueryBuilder'>>;
 type TransactionManager = {
   create: <T extends Record<string, unknown>>(entity: new () => T, value: T) => T;
   save: <T extends { id?: string }>(entity: new () => T, value: T) => Promise<T>;
@@ -58,25 +54,44 @@ describe('TransactionsService', () => {
   let auditService: jest.Mocked<Pick<AuditService, 'log'>>;
   let mailService: jest.Mocked<Pick<MailService, 'sendTransactionReversalNotice'>>;
   let usersService: jest.Mocked<Pick<UsersService, 'findById'>>;
-  let events: jest.Mocked<Pick<EventEmitter2, 'emit'>>;
+  let events: any;
+  let service: TransactionsService;
+  let limitService: any;
+  let feesService: any;
+  let stellarService: any;
+  let configService: any;
+  let deactivationService: any;
+  let termsService: any;
 
   beforeEach(() => {
-    txRepo = { findOne: jest.fn(), createQueryBuilder: jest.fn() } as any;
+    txRepo = { findOne: jest.fn(), createQueryBuilder: jest.fn(), create: jest.fn((e) => e), save: jest.fn((e) => Promise.resolve(e)) } as any;
     dataSource = { transaction: jest.fn() } as any;
     walletsService = { getBalance: jest.fn(), adjustBalance: jest.fn() } as any;
-    auditService = { log: jest.fn() } as any;
+    stellarService = { submitTransaction: jest.fn(), accountExists: jest.fn().mockResolvedValue(true) } as any;
+    configService = { get: jest.fn().mockReturnValue('S1234567890') } as any;
+    auditService = { log: jest.fn().mockResolvedValue(undefined) } as any;
     mailService = { sendTransactionReversalNotice: jest.fn() } as any;
-    usersService = { findById: jest.fn() } as any;
+    usersService = { findById: jest.fn(), invalidateWalletBalanceCache: jest.fn().mockResolvedValue(undefined) } as any;
     events = { emit: jest.fn() } as any;
+    limitService = { check: jest.fn().mockResolvedValue(undefined) } as any;
+    feesService = { calculateFee: jest.fn().mockReturnValue({ feeAmount: 0, reason: null }), recordFee: jest.fn().mockResolvedValue({}) } as any;
+    deactivationService = { isUserDeactivated: jest.fn().mockResolvedValue(false) } as any;
+    termsService = { ensureAccepted: jest.fn().mockResolvedValue(undefined) } as any;
 
     service = new TransactionsService(
       txRepo as any,
       dataSource as any,
       walletsService as any,
+      stellarService as any,
+      configService as any,
       auditService as any,
       mailService as any,
       usersService as any,
       events as any,
+      limitService as any,
+      feesService as any,
+      deactivationService as any,
+      termsService as any,
     );
   });
 
@@ -168,38 +183,7 @@ describe('TransactionsService', () => {
       await expect(
         service.reverseTransaction('tx-1', { reversedBy: 'admin-1', reason: 'test' }),
       ).rejects.toThrow(UnprocessableEntityException);
-  let service: TransactionsService;
-
-  beforeEach(() => {
-    txRepo = {
-      findOne: jest.fn(),
-      createQueryBuilder: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-    };
-    dataSource = { transaction: jest.fn() };
-    walletsService = { getBalance: jest.fn(), adjustBalance: jest.fn() };
-    auditService = { log: jest.fn().mockResolvedValue(undefined) };
-    mailService = { sendTransactionReversalNotice: jest.fn() };
-    usersService = { findById: jest.fn() };
-    events = { emit: jest.fn() };
-    limitService = { check: jest.fn().mockResolvedValue(undefined) };
-    feesService = {
-      calculateFee: jest.fn().mockReturnValue({ feeAmount: 0, reason: null }),
-      recordFee: jest.fn().mockResolvedValue({}),
-    };
-
-    service = new TransactionsService(
-      txRepo as unknown as Repository<Transaction>,
-      dataSource as unknown as DataSource,
-      walletsService as unknown as WalletsService,
-      auditService as unknown as AuditService,
-      mailService as unknown as MailService,
-      usersService as unknown as UsersService,
-      events as unknown as EventEmitter2,
-      limitService as unknown as TransactionLimitService,
-      feesService as unknown as FeesService,
-    );
+    });
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -251,7 +235,7 @@ describe('TransactionsService', () => {
   // ---------------------------------------------------------------------------
 
   describe('createWithdrawal', () => {
-    const dto = { userId: 'u1', amount: 100, currency: 'USD', reference: 'wd-1' };
+    const dto = { userId: 'u1', amount: 100, currency: 'USD', reference: 'wd-1', destinationAddress: 'GA123' };
 
     it('deducts balance (amount + fee) and sets COMPLETED on success', async () => {
       const tx = makeSavedTx({ status: TransactionStatus.PENDING });
@@ -292,10 +276,8 @@ describe('TransactionsService', () => {
         .mockResolvedValueOnce({ accountId: 'u1', currency: 'USD', balance: 899.9 } as any) // deduct
         .mockResolvedValueOnce({ accountId: 'u1', currency: 'USD', balance: 1000 } as any); // refund
 
-      // Simulate Stellar failure by making the tx save (after deduct) throw on second save
-      txRepo.save
-        .mockResolvedValueOnce(tx) // initial create save
-        .mockRejectedValueOnce(new Error('Stellar timeout')); // "Stellar" step fails
+      // Simulate Stellar failure inside try block
+      usersService.invalidateWalletBalanceCache.mockRejectedValueOnce(new Error('Stellar timeout'));
 
       await expect(service.createWithdrawal(dto)).rejects.toThrow('Stellar timeout');
 

@@ -309,6 +309,8 @@ export default () => {
         process.env.PENDING_TX_TIMEOUT_MINUTES || '30',
         10,
       ),
+    },
+
     // Auth-specific throttle limit (validated via Zod — must be a positive integer)
     throttleAuth: {
       limit: parseInt(process.env.THROTTLE_AUTH_LIMIT || '5', 10),

@@ -46,7 +46,6 @@ interface AuthenticatedRequest {
 
 @Controller('api/v1/transactions')
 export class TransactionsController {
-export class TransactionsController {
   constructor(
     private readonly txService: TransactionsService,
     private readonly eventEmitter: EventEmitter2,

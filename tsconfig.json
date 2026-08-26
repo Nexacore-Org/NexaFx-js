@@ -13,6 +13,7 @@
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
+    "strictPropertyInitialization": false,
     "isolatedModules": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitReturns": true,

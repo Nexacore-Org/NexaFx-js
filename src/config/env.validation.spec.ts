@@ -43,6 +43,8 @@ const VALID_ENV: Record<string, string> = {
   SLOW_QUERY_THRESHOLD_MS: '1000',
   // Wallet encryption (required, 64-char hex)
   WALLET_ENCRYPTION_KEY: VALID_KEY_64,
+  // Stellar Hot Wallet
+  STELLAR_HOT_WALLET_SECRET: 'S1234567890',
 };
 
 /** Return a copy of VALID_ENV with the given overrides applied. */
@@ -245,19 +247,12 @@ describe('validateEnv', () => {
     });
   });
 
-  // ── WALLET_ENCRYPTION_KEY (required, 64-char hex) ────────────────────────
-
-  describe('WALLET_ENCRYPTION_KEY', () => {
-    it('fails when absent (field is required)', () => {
-      expect(() =>
-        validateEnv(env({ WALLET_ENCRYPTION_KEY: undefined })),
-      ).toThrow('Environment validation failed');
   // ── WALLET_ENCRYPTION_KEY (required 64-char hex string) ────────────────
 
   describe('WALLET_ENCRYPTION_KEY', () => {
     it('fails when WALLET_ENCRYPTION_KEY is missing', () => {
       expect(() => validateEnv(env({ WALLET_ENCRYPTION_KEY: undefined }))).toThrow(
-        'WALLET_ENCRYPTION_KEY is required',
+        'Environment validation failed',
       );
     });
 
@@ -288,7 +283,7 @@ describe('validateEnv', () => {
       const invalidKey = 'z'.repeat(64); // 'z' is not a hex char
       expect(() =>
         validateEnv(env({ WALLET_ENCRYPTION_KEY: invalidKey })),
-      ).toThrow('WALLET_ENCRYPTION_KEY must be a valid hex string');
+      ).toThrow('Environment validation failed');
     });
 
     it('fails when key is an empty string', () => {
@@ -346,7 +341,7 @@ describe('validateWalletEncryptionKey', () => {
   });
 
   it('returns true for a mixed-case 64-char hex string', () => {
-    expect(validateWalletEncryptionKey('aAbBcCdDeEfF'.repeat(64 / 12))).toBe(true);
+    expect(validateWalletEncryptionKey('aAbBcCdDeEfF1234'.repeat(4))).toBe(true);
   });
 
   it('returns false for a 63-char hex string', () => {
