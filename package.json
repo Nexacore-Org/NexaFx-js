@@ -5,7 +5,11 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
+    "prebuild": "npm run check:no-wildcard-deps",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -23,7 +27,7 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:dryrun": "ts-node -r tsconfig-paths/register src/scripts/migrate-dryrun.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "test:unit:wallet-currencies": "jest src/wallet/wallets.service.spec.ts src/wallet/wallets.controller.spec.ts src/currencies/currencies.service.spec.ts src/currencies/currencies.controller.spec.ts --runInBand",
     "test:integration:wallet-currencies": "jest test/wallets-currencies.e2e-spec.ts --runInBand --config ./test/jest-e2e.json",
     "test:integration": "jest --config ./jest.integration.json --runInBand",
@@ -111,6 +115,7 @@
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
     "lint-staged": "^15.2.0",
     "prettier": "^3.4.2",

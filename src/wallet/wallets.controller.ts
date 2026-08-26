@@ -1,6 +1,4 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AdjustBalanceDto } from './dto/adjust-balance.dto';
 import {
   ApiBearerAuth,
   ApiOkResponse,

@@ -310,9 +310,10 @@ export class TransactionsService implements OnModuleInit {
       currency: dto.currency,
       fee: fee.feeAmount,
       reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'deposit', fullTransactionId: tx.id },
+      metadata: { ...dto.metadata, type: 'deposit' },
       status: TransactionStatus.PENDING,
     });
+    tx.metadata = { ...tx.metadata, fullTransactionId: tx.id };
     await this.txRepo.save(tx);
     await this.generateReceiptNumber(tx);
 
