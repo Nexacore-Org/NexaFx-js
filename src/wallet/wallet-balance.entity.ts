@@ -20,7 +20,9 @@ export class WalletBalanceEntity {
   @Column({ type: 'varchar', length: 3 })
   currency!: string;
 
-  @Column({ type: 'decimal', precision: 20, scale: 2, default: 0 })
+  // #1059: scale 8 to match Transaction/FxTrade precision and avoid
+  // truncating sub-cent/stroop amounts (1 stroop = 0.0000001 XLM).
+  @Column({ type: 'decimal', precision: 20, scale: 8, default: 0 })
   balance!: number;
 
   @Column({ type: 'boolean', default: false })
