@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { IsNumber, IsString, IsUUID, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { TransactionsService } from '../../../transactions/transactions.service';
 
 const beneficiaryCooldowns = new Map<string, number>();
 const BENEFICIARY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -27,12 +28,14 @@ export class WithdrawalDto {
 }
 
 /**
- * Withdrawal endpoint — deducts from wallet balance and creates a transaction record.
- * Daily/monthly limits are enforced via SpendingLimitsService in full implementation.
+ * Withdrawal endpoint — deducts from wallet balance and creates a transaction record
+ * by delegating to the real, working TransactionsService.createWithdrawal() flow.
  */
 @Controller('api/v1/withdrawals')
 @UseGuards(JwtAuthGuard)
 export class WithdrawalController {
+  constructor(private readonly transactionsService: TransactionsService) {}
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async initiateWithdrawal(
@@ -54,18 +57,15 @@ export class WithdrawalController {
         'New beneficiary requires a 24-hour cooldown before first transfer use',
       );
     }
-    // Full implementation: call WalletBalanceService.deduct() + TransactionsService.create()
-    return {
-      success: true,
-      data: {
-        transactionId: `txn_${Date.now()}`,
-        userId,
-        amount: dto.amount,
-        currency: dto.currency,
-        beneficiaryId: dto.beneficiaryId,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      },
-    };
+
+    const transaction = await this.transactionsService.createWithdrawal({
+      userId,
+      amount: dto.amount,
+      currency: dto.currency,
+      reference: `wd_${userId}_${now}`,
+      destinationAddress: dto.beneficiaryId,
+    });
+
+    return { success: true, data: transaction };
   }
 }
