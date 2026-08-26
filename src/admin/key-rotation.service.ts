@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { WalletBalanceEntity } from '../../wallet/wallet-balance.entity';
-import { EncryptionService } from '../../common/encryption/encryption.service';
+import { WalletBalanceEntity } from '../wallet/wallet-balance.entity';
+import { EncryptionService } from '../common/encryption/encryption.service';
 
 @Injectable()
 export class KeyRotationService {
