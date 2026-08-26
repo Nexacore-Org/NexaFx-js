@@ -1,64 +1,67 @@
 # Architecture
 
-This repository is a NestJS application organized around a small set of focused modules:
+This repository is an enterprise NestJS financial technology platform organized into focused domain module groupings wired into `AppModule`:
 
-- `ConfigModule` validates and structures runtime configuration.
-- `IdempotencyModule` deduplicates replayable requests and stores cached responses.
-- `WalletsModule` manages in-memory balance updates.
-- `ActivityFeedModule` stores and serves audit-style activity records.
+- **Auth & Identity**: `AuthModule`, `UsersModule`, `SessionsModule`, `ApiKeysModule` providing global `JwtAuthGuard` JWT verification.
+- **Payments, FX & Ledger**: `WalletsModule`, `FxModule`, `ExchangeRatesModule`, `LedgerModule`, `BulkPaymentsModule`, `ScheduledTransactionsModule`, `FeeTiersModule`.
+- **Compliance & Risk**: `AmlModule`, `ComplianceModule`, `KycModule`, `KycTiersModule`, `RiskEngineModule`, `TransactionRiskModule`.
+- **Infrastructure & Observability**: `ConfigModule`, `HealthModule`, `MetricsModule`, `QueuesModule`, `AuditModule`, `AppGraphQLModule`.
 
 ## Module dependency graph
 
 ```mermaid
-flowchart LR
+flowchart TD
   AppModule["AppModule"] --> ConfigModule["ConfigModule"]
   AppModule --> TypeOrmModule["TypeOrmModule"]
   AppModule --> BullModule["BullModule"]
-  AppModule --> IdempotencyModule["IdempotencyModule"]
+  AppModule --> AuthModule["AuthModule"]
   AppModule --> WalletsModule["WalletsModule"]
-  WalletsModule --> ActivityFeedModule["ActivityFeedModule"]
-  IdempotencyModule --> TypeOrmModule
-  IdempotencyModule --> ScheduleModule["ScheduleModule"]
-  ActivityFeedModule --> TypeOrmModule
+  AppModule --> FxModule["FxModule"]
+  AppModule --> LedgerModule["LedgerModule"]
+  AppModule --> ComplianceModule["ComplianceModule"]
+  AppModule --> MetricsModule["MetricsModule"]
+  AppModule --> HealthModule["HealthModule"]
+  AppModule --> AppGraphQLModule["AppGraphQLModule"]
 ```
 
 ## Authentication flow
 
-The repository currently does not ship a full auth module, but the expected request flow is:
+Authentication is handled globally by `JwtAuthGuard` registered as an `APP_GUARD`. Requests without `@Public()` decorator require a valid Bearer JWT header.
 
 ```mermaid
 flowchart LR
   Client["Client"] --> Api["API request"]
-  Api --> JwtGuard["Auth guard / JWT validation"]
-  JwtGuard --> UserContext["Authenticated user context"]
-  UserContext --> Controllers["Controllers"]
-  Controllers --> Services["Services"]
+  Api --> JwtGuard["JwtAuthGuard (Global APP_GUARD)"]
+  JwtGuard -->|Valid Token| UserContext["Authenticated User Context (req.user)"]
+  JwtGuard -->|@Public() Decorator| PublicEndpoint["Public Controller Endpoint"]
+  UserContext --> Controllers["Domain Controllers / GraphQL Resolvers"]
+  Controllers --> Services["Domain Services"]
 ```
 
 ## Transaction lifecycle
 
-Wallet balance changes and related activity events follow the same general lifecycle:
+Wallet balance changes and related ledger entries follow an atomic database transaction lifecycle:
 
 ```mermaid
 sequenceDiagram
   participant Client
   participant WalletsController
   participant WalletsService
-  participant ActivityFeedService
+  participant LedgerService
   participant Database
 
   Client->>WalletsController: Adjust balance request
   WalletsController->>WalletsService: adjustBalance(...)
-  WalletsService->>Database: Update balance state
-  WalletsService->>ActivityFeedService: recordActivity(...)
-  ActivityFeedService->>Database: Persist activity event
-  WalletsService-->>Client: Updated balance
+  WalletsService->>Database: Update wallet balance
+  WalletsService->>LedgerService: recordEntry(...)
+  LedgerService->>Database: Persist ledger credit/debit entry
+  WalletsService-->>Client: Updated balance response
 ```
 
 ## Key design decisions
 
-- **Idempotency first**: replayable requests are cached so duplicate submissions can reuse a safe response.
-- **Event-driven hooks**: balance changes emit activity records so the feed stays in sync with business events.
-- **Structured feed items**: the activity feed returns consistent fields (`timestamp`, `type`, `description`, `ipAddress`, `deviceInfo`, `securityEvent`) for UI rendering.
-- **Configuration validation**: environment values are validated at startup to fail fast on bad deployment settings.
-- **Modular boundaries**: each domain area stays in its own Nest module to keep growth manageable.
+- **Global Authentication**: `JwtAuthGuard` enforces authentication across REST and GraphQL endpoints unless explicitly decorated with `@Public()`.
+- **Idempotency first**: Replayable requests are cached so duplicate submissions reuse safe cached responses.
+- **Double-Entry Bookkeeping**: Money-movement flows record dual ledger entries for complete auditability.
+- **Failover Exchange Rates**: Dual provider failover with stale-rate fallback guarantees FX rate availability.
+- **Container Observability**: Health indicators and Prometheus metrics export application state for orchestrators.
