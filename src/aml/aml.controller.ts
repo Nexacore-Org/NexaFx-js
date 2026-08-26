@@ -31,14 +31,14 @@ interface AuthenticatedRequest {
 export class AmlController {
   constructor(private readonly screeningService: AmlScreeningService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminRoleGuard)
   @Post('aml/screen/user')
   @HttpCode(HttpStatus.CREATED)
   screenUser(@Body() input: ScreenUserInput) {
     return this.screeningService.screenUser(input);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminRoleGuard)
   @Post('aml/screen/transaction')
   @HttpCode(HttpStatus.CREATED)
   screenTransaction(@Body() input: ScreenTransactionInput) {
