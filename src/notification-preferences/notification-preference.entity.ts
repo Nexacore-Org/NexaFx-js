@@ -40,6 +40,9 @@ export class NotificationPreference {
   @Column({ default: true })
   isEnabled!: boolean;
 
+  @Column({ type: 'boolean', default: true })
+  batchingEnabled!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

@@ -26,6 +26,8 @@ import { StrategyOptimizerModule } from './modules/strategy-optimizer/strategy-o
 import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
+// NOTE: './modules/users/users.module' does not exist; the only UsersModule is at './users/users.module'.
+// Aliased as UpstreamUsersModule below (line 84).
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EnrichmentModule } from './modules/enrichment/enrichment.module';
@@ -324,6 +326,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     WalletHistoryModule,
     KycTiersModule,
     AppGraphQLModule,
+    FxModule,
   ],
   controllers: [AppController],
   providers: [
