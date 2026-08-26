@@ -73,7 +73,7 @@ class ResendVerificationDto {
   email: string;
 }
 
-@Controller('auth')
+@Controller('api/v1/legacy-auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 

@@ -12,6 +12,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password.service';
+import { PasswordPolicyService } from './password-policy.service';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 30;
@@ -28,12 +29,14 @@ export class AuthService {
     private readonly events: EventEmitter2,
     private readonly configService: ConfigService,
     private readonly passwordService: PasswordService,
+    private readonly passwordPolicyService: PasswordPolicyService,
   ) {}
 
   async register(
     dto: RegisterDto,
     context: { ip?: string; userAgent?: string } = {},
   ) {
+    this.passwordPolicyService.validate(dto.password);
     const passwordHash = await this.passwordService.hash(dto.password);
     const user = await this.usersService.create({
       email: dto.email,
@@ -110,7 +113,7 @@ export class AuthService {
 
         await this.usersService.update?.(user.id, {
           failedLoginAttempts: user.failedLoginAttempts,
-          lockedUntil,
+          lockedUntil: lockoutUntil,
         });
 
         // Send lockout notification email
