@@ -1,7 +1,8 @@
 import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { createHash, timingSafeEqual } from 'crypto';
+import { timingSafeEqual } from 'crypto';
+import { createHash } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UsersService } from '../users/users.service';
@@ -90,10 +91,12 @@ export class AuthService {
     if (isBcryptHash) {
       passwordMatches = await this.passwordService.verify(dto.password, user.passwordHash);
     } else {
+      // Legacy SHA-256 hash — verify with old method, then migrate to bcrypt
       const expected = Buffer.from(user.passwordHash);
       const actual = Buffer.from(createHash('sha256').update(dto.password).digest('hex'));
       if (expected.length === actual.length && timingSafeEqual(expected, actual)) {
         passwordMatches = true;
+        // Lazy-migrate to bcrypt
         const bcryptHash = await this.passwordService.hash(dto.password);
         (user as any).passwordHash = bcryptHash;
         await this.usersService.update?.(user.id, { passwordHash: bcryptHash } as any);

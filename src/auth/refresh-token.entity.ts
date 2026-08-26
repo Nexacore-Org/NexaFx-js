@@ -41,4 +41,13 @@ export class RefreshToken {
 
   @Column({ type: 'timestamp', nullable: true })
   lastUsedAt: Date | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  deviceName: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  deviceOs: string | null;
+
+  @Column({ type: 'varchar', length: 45, nullable: true })
+  ipAddress: string | null;
 }

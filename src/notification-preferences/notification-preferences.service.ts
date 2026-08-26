@@ -11,6 +11,7 @@ export interface UpdatePreferenceDto {
   channel: NotificationChannel;
   eventType: NotificationEventType;
   isEnabled: boolean;
+  batchingEnabled?: boolean;
 }
 
 @Injectable()
@@ -46,12 +47,16 @@ export class NotificationPreferencesService {
 
     if (pref) {
       pref.isEnabled = dto.isEnabled;
+      if (dto.batchingEnabled !== undefined) {
+        pref.batchingEnabled = dto.batchingEnabled;
+      }
     } else {
       pref = this.repo.create({
         userId,
         channel: dto.channel,
         eventType: dto.eventType,
         isEnabled: dto.isEnabled,
+        batchingEnabled: dto.batchingEnabled ?? true,
       });
     }
 
