@@ -1,5 +1,6 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { FxQuoteCache } from '../../fx/fx-quote-cache';
 
 export interface FxPreviewResponse {
   fromCurrency: string;
@@ -19,8 +20,6 @@ export interface FxPreviewResponse {
 @Controller('api/v1/fx')
 @UseGuards(JwtAuthGuard)
 export class FxPreviewController {
-  private readonly quoteCache = new Map<string, { rate: number; expiresAt: Date }>();
-
   @Get('preview')
   getPreview(
     @Query('from') from: string,
@@ -34,7 +33,7 @@ export class FxPreviewController {
     const quoteId = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const expiresAt = new Date(Date.now() + 30_000);
 
-    this.quoteCache.set(quoteId, { rate, expiresAt });
+    FxQuoteCache.set(quoteId, rate, expiresAt);
 
     return {
       fromCurrency: from ?? '',
