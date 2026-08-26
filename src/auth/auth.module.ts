@@ -11,6 +11,8 @@ import { UsersModule } from '../users/users.module';
 import { UserDeactivationModule } from '../modules/user-deactivation/user-deactivation.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { TokenService } from './token.service';
+import { BackupCodesService } from './2fa/backup-codes.service';
 import { PasswordService } from './password.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { BiometricGuard } from './biometric.guard';
