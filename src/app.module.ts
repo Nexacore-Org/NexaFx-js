@@ -16,9 +16,6 @@ import { redisStore } from 'cache-manager-redis-store';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AnalyticsModule } from './modules/analytics/analytics.module';
-import { HealthModule as ModulesHealthModule } from './modules/health/health.module';
-import { RpcHealthModule } from './modules/rpc-health/rpc-health.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
@@ -106,6 +103,7 @@ import { FeeReportsModule } from './modules/fee-reports/fee-reports.module';
 import { WalletHistoryModule } from './modules/wallet-history/wallet-history.module';
 import { KycTiersModule } from './modules/kyc-tiers/kyc-tiers.module';
 import { AppGraphQLModule } from './graphql/graphql.module';
+import { QueuesModule } from './queues/queues.module';
 
 const enableBull =
   process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
@@ -247,9 +245,9 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           MailQueueModule,
           NotificationQueueModule,
           TransactionQueueModule,
+          QueuesModule,
         ]
       : []),
-    ModulesHealthModule,
     HealthModule,
     UpstreamUsersModule,
     AuditModule,
@@ -304,8 +302,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     ModulesWalletsModule,
     ModulesCacheModule,
     AdminModule,
-    AnalyticsModule,
-    RpcHealthModule,
     FeatureFlagsModule,
     RateLimitModule,
     AdminAuditModule,
