@@ -64,8 +64,9 @@ export class SupportTicketsController {
   @ApiOperation({ summary: 'Assign a support ticket to an agent' })
   @ApiParam({ name: 'id', description: 'Support ticket UUID' })
   @ApiOkResponse({ description: 'Ticket assigned' })
-  async assign(@Param('id') id: string, @Body(ValidationPipe) dto: AssignTicketDto) {
-    return this.supportTicketsService.assign(id, dto.assignedTo, dto.status as any);
+  async assign(@Param('id') id: string, @Request() req: any, @Body(ValidationPipe) dto: AssignTicketDto) {
+    const userId = req.user?.id ?? req.user?.sub;
+    return this.supportTicketsService.assign(id, dto.assignedTo, dto.status as any, userId);
   }
 
   @Post(':id/messages')
