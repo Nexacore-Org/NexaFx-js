@@ -94,6 +94,7 @@ import { UserDeactivationModule } from './modules/user-deactivation/user-deactiv
 import { FeeAuditModule } from './modules/fee-audit/fee-audit.module';
 import { ActivityFeedModule } from './activity-feed/activity-feed.module';
 import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
+import { NotificationsModule as ConsolidatedNotificationsModule } from './notifications/notifications.module';
 import { ReferralModule } from './referral/referral.module';
 import { AmlModule } from './aml/aml.module';
 import { EscrowModule } from './modules/escrow/escrow.module';
@@ -297,6 +298,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     FeeAuditModule,
     ActivityFeedModule,
     NotificationPreferencesModule,
+    ConsolidatedNotificationsModule,
     ReferralModule,
     AmlModule,
     ModulesWalletsModule,
