@@ -1,7 +1,7 @@
-import { WalletsService } from './wallet/wallets.service';
-import { StellarService } from './stellar/stellar.service';
-import { TransactionsService } from './transactions/transactions.service';
-import { NotificationPreferencesService } from './notification-preferences/notification-preferences.service';
+import { WalletsService } from './wallets.service';
+import { StellarService } from '../stellar/stellar.service';
+import { TransactionsService } from '../transactions/transactions.service';
+import { NotificationPreferencesService } from '../notification-preferences/notification-preferences.service';
 
 describe('prismn Features (Issues #976, #934, #921, #920)', () => {
   it('WalletsService supports configurable auto-sweep for wallet balance management', async () => {

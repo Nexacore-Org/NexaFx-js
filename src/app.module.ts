@@ -95,6 +95,7 @@ import { ActivityFeedModule } from './activity-feed/activity-feed.module';
 import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
 import { NotificationsModule as ConsolidatedNotificationsModule } from './notifications/notifications.module';
 import { ReferralModule } from './referral/referral.module';
+import { FeeRevenueModule } from './reports/fee-revenue.module';
 import { AmlModule } from './aml/aml.module';
 import { EscrowModule } from './modules/escrow/escrow.module';
 import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
@@ -300,6 +301,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     NotificationPreferencesModule,
     ConsolidatedNotificationsModule,
     ReferralModule,
+    FeeRevenueModule,
     AmlModule,
     ModulesWalletsModule,
     ModulesCacheModule,

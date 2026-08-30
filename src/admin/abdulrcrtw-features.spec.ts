@@ -1,6 +1,6 @@
-import { AdminService } from './admin/admin.service';
-import { ExchangeRatesService } from './exchange-rates/exchange-rates.service';
-import { MailService } from './mail/mail.service';
+import { AdminService } from '../admin/admin.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { MailService } from '../mail/mail.service';
 
 describe('abdulrcrtw Features (Issues #992, #991, #990, #989)', () => {
   it('AdminService supports spread configuration management and audit logging', async () => {
