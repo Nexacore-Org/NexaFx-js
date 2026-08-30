@@ -1,6 +1,6 @@
-import { TransactionsService } from './transactions/transactions.service';
-import { FxService } from './fx/fx.service';
-import { AdminService } from './admin/admin.service';
+import { TransactionsService } from './transactions.service';
+import { FxService } from '../fx/fx.service';
+import { AdminService } from '../admin/admin.service';
 
 describe('femaleotaku Features (Issues #988, #987, #986, #985)', () => {
   it('TransactionsService supports user-to-user internal transfer', async () => {

@@ -1,7 +1,7 @@
-import { AdminService } from './admin/admin.service';
-import { AdminAlertService } from './admin/admin-alert.service';
-import { CurrenciesService } from './currencies/currencies.service';
-import { UsersService } from './users/users.service';
+import { AdminService } from '../admin/admin.service';
+import { AdminAlertService } from '../admin/admin-alert.service';
+import { CurrenciesService } from '../currencies/currencies.service';
+import { UsersService } from '../users/users.service';
 
 describe('kike-alt Features (Issues #980, #979, #978, #977)', () => {
   it('AdminService performs platform-wide search across users and transactions', async () => {

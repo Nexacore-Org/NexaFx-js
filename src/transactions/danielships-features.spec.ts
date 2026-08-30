@@ -1,6 +1,6 @@
-import { ExchangeRatesService } from './exchange-rates/exchange-rates.service';
-import { PaymentProviderService } from './payments/payment-provider.service';
-import { TransactionsService } from './transactions/transactions.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { PaymentProviderService } from '../payments/payment-provider.service';
+import { TransactionsService } from './transactions.service';
 
 describe('danielships Features (Issues #984, #983, #982, #981)', () => {
   it('ExchangeRatesService provides public exchange rates dataset', async () => {

@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { KycService } from '../src/kyc/kyc.service';
-import { FxService } from '../src/fx/fx.service';
-import { FeesService } from '../src/fees/fees.service';
-import { AuthService } from '../src/auth/auth.service';
+import { KycService } from './kyc.service';
+import { FxService } from '../fx/fx.service';
+import { FeesService } from '../fees/fees.service';
+import { AuthService } from '../auth/auth.service';
 
 describe('mxllv Features (Issues #919, #918, #915, #912)', () => {
   it('KYC expiry check correctly identifies active vs expired approval', async () => {

@@ -1,6 +1,6 @@
-import { StellarService } from './stellar/stellar.service';
-import { AmlService } from './aml/aml.service';
-import { PaymentProviderService } from './payments/payment-provider.service';
+import { StellarService } from './stellar.service';
+import { AmlService } from '../aml/aml.service';
+import { PaymentProviderService } from '../payments/payment-provider.service';
 
 describe('ibinola Features (Issues #996, #995, #994, #993)', () => {
   it('StellarService supports NFT receipt minting', async () => {
