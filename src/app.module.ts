@@ -28,8 +28,6 @@ import { AuthModule } from './modules/auth/auth.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EnrichmentModule } from './modules/enrichment/enrichment.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
-import { NotificationsModule as WebSocketNotificationsModule } from './web-sockets/notifications.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { RetryModule } from './modules/retry/retry.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
@@ -75,6 +73,7 @@ import { HealthModule } from './health/health.module';
 import { MailModule as UpstreamMailModule, MailQueueModule } from './mail/mail.module';
 import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
+import { StatementsModule } from './statements/statements.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
 import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history.module';
 import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
@@ -264,6 +263,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     DisputesModule,
     CurrenciesModule,
     TermsModule,
+    StatementsModule,
     AuthModule,
     RateAlertHistoryModule,
     ScheduledReportsModule,
@@ -312,8 +312,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     SessionsModule,
     TransactionsModule,
     EnrichmentModule,
-    NotificationsModule,
-    WebSocketNotificationsModule,
     InsightsForecastModule,
     ReferralsModule,
     KycModule,

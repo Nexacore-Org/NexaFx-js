@@ -10,8 +10,9 @@ import {
 } from '@nestjs/common';
 import {
   NotificationPreferencesService,
-  UpdatePreferenceDto,
+  UpdatePreferenceDto as UpdatePreferenceBody,
 } from './notification-preferences.service';
+import { UpdatePreferencesRequestDto } from './dto/update-preferences.dto';
 
 interface AuthenticatedRequest {
   user?: {
@@ -35,7 +36,7 @@ export class NotificationPreferencesController {
   @HttpCode(HttpStatus.OK)
   updatePreferences(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { preferences: UpdatePreferenceDto[] },
+    @Body() body: UpdatePreferencesRequestDto,
   ) {
     const userId = req.user?.sub ?? '';
     return this.preferencesService.updatePreferences(userId, body.preferences);
@@ -45,7 +46,7 @@ export class NotificationPreferencesController {
   @HttpCode(HttpStatus.OK)
   patchPreferences(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { preferences: UpdatePreferenceDto[] },
+    @Body() body: { preferences: UpdatePreferenceBody[] },
   ) {
     const userId = req.user?.sub ?? '';
     return this.preferencesService.updatePreferences(userId, body.preferences);
