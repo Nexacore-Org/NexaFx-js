@@ -39,4 +39,24 @@ export class ReferralController {
     const userId = req.user?.sub ?? '';
     return this.referralService.findByReferrer(userId);
   }
+
+  @Post('apply')
+  @HttpCode(HttpStatus.CREATED)
+  applyCode(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { code?: string },
+  ) {
+    const userId = req.user?.sub ?? '';
+    return this.referralService.applyCode(body.code ?? '', userId);
+  }
+
+  @Post(':id/qualify')
+  qualify(@Param('id') id: string) {
+    return this.referralService.qualifyReferral(id);
+  }
+
+  @Post(':id/reward')
+  reward(@Param('id') id: string) {
+    return this.referralService.rewardReferral(id);
+  }
 }
