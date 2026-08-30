@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Referral, ReferralStatus } from './referral.entity';
 import { ReferralReward, RewardType, RewardStatus } from './referral-reward.entity';
@@ -92,9 +92,15 @@ export class ReferralService {
     const qualified = all.filter((r) => r.status === ReferralStatus.QUALIFIED).length;
     const rewarded = all.filter((r) => r.status === ReferralStatus.REWARDED).length;
 
-    const rewards = await this.rewardRepo.find({
-      where: all.filter((r) => r.status === ReferralStatus.REWARDED).map((r) => ({ referralId: r.id })),
-    });
+    const rewardedIds = all
+      .filter((r) => r.status === ReferralStatus.REWARDED)
+      .map((r) => r.id);
+
+    const rewards = rewardedIds.length
+      ? await this.rewardRepo.find({
+          where: { referralId: In(rewardedIds) },
+        })
+      : [];
 
     const totalRewardsPaid = rewards
       .filter((r) => r.status === RewardStatus.PAID)
@@ -146,7 +152,12 @@ export class ReferralService {
     const rewardAmount = this.config.get<number>('referral.rewardAmount') ?? 10;
 
     return this.dataSource.transaction(async (manager) => {
-      await this.wallets.adjustBalance(referral.referrerId, 'USD', rewardAmount);
+      await this.wallets.adjustBalance(
+        referral.referrerId,
+        'USD',
+        rewardAmount,
+        manager,
+      );
 
       const reward = manager.create(ReferralReward, {
         referralId: referral.id,
