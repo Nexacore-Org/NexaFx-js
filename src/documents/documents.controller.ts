@@ -1,20 +1,43 @@
-import { Controller, Get, Param, Query, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { Readable } from 'stream';
 import { PdfService } from './pdf.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { StatementQueryDto } from './dto/statement-query.dto';
 import { StatementView } from '../statements/statements.types';
+
+interface AuthenticatedRequest {
+  user?: {
+    sub?: string;
+  };
+}
 
 @Controller()
 export class DocumentsController {
   constructor(private readonly pdfService: PdfService) {}
 
+  @UseGuards(JwtAuthGuard)
   @Get('statements/:userId')
   async downloadStatement(
     @Param('userId') userId: string,
     @Query() query: StatementQueryDto,
+    @Req() request: AuthenticatedRequest,
     @Res() res: Response,
   ) {
+    if (request.user?.sub !== userId) {
+      throw new UnauthorizedException(
+        'You can only download your own statements',
+      );
+    }
     const pdf = await this.pdfService.generateStatementPdf({
       user: {
         id: userId,

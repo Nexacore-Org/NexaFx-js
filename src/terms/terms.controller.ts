@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Post,
   Req,
@@ -24,17 +23,13 @@ export class TermsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('accept')
-  accept(
-    @Req() request: AuthenticatedRequest,
-    @Body() body: { version?: string },
-  ) {
+  accept(@Req() request: AuthenticatedRequest) {
     const userId = request.user?.sub ?? request.user?.id;
     if (!userId) {
       throw new UnauthorizedException('Authenticated user is required');
     }
     return this.termsService.accept({
       userId,
-      version: body.version,
       ipAddress: request.ip ?? null,
       userAgent: request.headers?.['user-agent'] ?? null,
     });

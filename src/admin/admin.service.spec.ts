@@ -6,7 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { User, UserRole, KycStatus } from '../users/user.entity';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
-import { SupportTicket } from '../support/support-ticket.entity';
+import { SupportTicketEntity } from '../modules/support-tickets/entities/support-ticket.entity';
 import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
 
@@ -35,7 +35,7 @@ describe('AdminService', () => {
         { provide: getRepositoryToken(User), useFactory: mockRepository },
         { provide: getRepositoryToken(Transaction), useFactory: mockRepository },
         { provide: getRepositoryToken(KycDocument), useFactory: mockRepository },
-        { provide: getRepositoryToken(SupportTicket), useFactory: mockRepository },
+        { provide: getRepositoryToken(SupportTicketEntity), useFactory: mockRepository },
         { provide: getRepositoryToken(WebhookEndpoint), useFactory: mockRepository },
         { provide: getRepositoryToken(AmlAlert), useFactory: mockRepository },
         { provide: AuditService, useFactory: mockAuditService },
