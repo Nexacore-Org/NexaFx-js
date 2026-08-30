@@ -35,7 +35,7 @@ import { RetryModule } from './modules/retry/retry.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
 import { FeesModule } from './modules/fee/fee.module';
 import { TransactionRiskModule } from './modules/transaction-risk/transaction-risk.module';
-import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
 import { DataArchiveModule } from './modules/data-archive/data-archive.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
@@ -54,13 +54,9 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { WalletsModule as ModulesWalletsModule } from './modules/wallets/wallets.module';
 import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
-import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
-import { CardsModule } from './modules/cards/cards.module';
 import { FxModule } from './modules/fx/fx.module';
-import { BankingModule } from './banking/banking.module';
-import { LoyaltyModule } from './loyalty-point/loyalty.module';
-import { DisputesModule as ModulesDisputesModule } from './modules/disputes/disputes.module';
-import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { DisputesModule as ModulesDisputesModule } from './disputes/disputes.module';
+import { BlockchainModule } from './blockchain/blockchain.module';
 import { CacheModule as ModulesCacheModule } from './modules/cache/cache.module';
 import { MailModule } from './modules/mail/mail.module';
 import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
@@ -72,7 +68,10 @@ import { ConfigModule } from './config/config.module';
 import { Configuration } from './config/configuration';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { HealthModule } from './health/health.module';
-import { MailModule as UpstreamMailModule, MailQueueModule } from './mail/mail.module';
+import {
+  MailModule as UpstreamMailModule,
+  MailQueueModule,
+} from './mail/mail.module';
 import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
@@ -97,7 +96,6 @@ import { NotificationPreferencesModule } from './notification-preferences/notifi
 import { ReferralModule } from './referral/referral.module';
 import { AmlModule } from './aml/aml.module';
 import { EscrowModule } from './modules/escrow/escrow.module';
-import { SplitPaymentsModule } from './modules/split-payments/split-payments.module';
 import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
 import { FeeReportsModule } from './modules/fee-reports/fee-reports.module';
 import { WalletHistoryModule } from './modules/wallet-history/wallet-history.module';
@@ -316,13 +314,13 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     ReferralsModule,
     KycModule,
     EscrowModule,
-    SplitPaymentsModule,
     SupportTicketsModule,
     FeeReportsModule,
     WalletHistoryModule,
     KycTiersModule,
     AppGraphQLModule,
     FxModule,
+    BlockchainModule,
   ],
   controllers: [AppController],
   providers: [
@@ -338,8 +336,9 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
   ],
 })
 export class AppModule implements NestModule {
-  configure(_consumer: MiddlewareConsumer) {
+  configure(consumer: MiddlewareConsumer) {
     // Reserved for future middleware wiring.
+    void consumer;
     void RequestMethod.ALL;
   }
 }
