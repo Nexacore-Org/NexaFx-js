@@ -50,7 +50,6 @@ import {
   MailModule as UpstreamMailModule,
   MailQueueModule,
 } from './mail/mail.module';
-import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
 import { StatementsModule } from './statements/statements.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
@@ -221,7 +220,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           }),
           BullModule.registerQueue({ name: 'default' }),
           MailQueueModule,
-          NotificationQueueModule,
           TransactionQueueModule,
           QueuesModule,
         ]
