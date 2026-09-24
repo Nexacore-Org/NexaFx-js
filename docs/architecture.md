@@ -28,6 +28,29 @@ their real locations under `src/ledger`, `src/kyc` and `src/fx`.
 `npm run check:app-module-imports` (run in CI and on `prebuild`) fails the build if a relative
 import in `src/app.module.ts` stops resolving to a file on disk.
 
+## Removed dead code
+
+- **`AccountDeletionService`** (`src/users/services/account-deletion.service.ts`) — removed. It
+  hard-deleted referrals/rate alerts and deactivated the account with no password confirmation,
+  no 2FA, and no zero-balance check — unlike the live `AccountClosureService`
+  (`src/users/account-closure.service.ts`), which enforces all three. It had zero callers or
+  module registrations anywhere in `src/`. Account closure/deletion should go through
+  `AccountClosureService`; this weaker, unreachable duplicate was removed rather than merged, to
+  avoid a future refactor accidentally wiring up the path with no safeguards.
+- **`src/modules/wallets/controllers/withdrawal.controller.ts`** — removed (issue #1301's
+  "stray withdrawal controller with no module file" fragment of the `src/wallet` vs.
+  `src/modules/wallets` directory duplication). It had no owning `.module.ts`, so it was never
+  registered/reachable, and its `JwtAuthGuard` import (`../../auth/guards/jwt-auth.guard`) didn't
+  even resolve to a file on disk — it predates a guard relocation and was never updated. It
+  implemented a real 24h new-beneficiary withdrawal cooldown on top of the deprecated
+  `src/transactions/transactions.service.ts`'s `createWithdrawal()`, which is a genuinely useful
+  safeguard the live `POST /transactions/withdrawal` route (`src/transactions/transactions.controller.ts`)
+  doesn't have — but wiring an unreviewed, previously-broken money-movement endpoint live without
+  being able to run the test suite against it here was judged too risky. If this cooldown is
+  wanted, it should be re-added directly to the live withdrawal flow (or ported once the
+  `src/transactions` vs. `src/modules/transactions` consolidation from issue #1300 lands), fixed,
+  and tested before going live.
+
 ## Module dependency graph
 
 ```mermaid
