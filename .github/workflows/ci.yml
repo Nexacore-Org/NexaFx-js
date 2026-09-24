@@ -27,6 +27,8 @@ jobs:
       - name: Check wildcard dependencies
         run: npm run check:no-wildcard-deps
 
+      - name: Check .env.example covers the env schema
+        run: npm run check:env-example
       - name: Check AppModule imports resolve
         run: npm run check:app-module-imports
 
