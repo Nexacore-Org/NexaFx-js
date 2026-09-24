@@ -15,9 +15,12 @@
  * - redis: Redis cache settings
  * - rateLimit: Rate limiting settings
  */
+import { buildPostgresConnectionOptions } from './database-options';
+
 export default () => {
   // WALLET_ENCRYPTION_KEY is required and validated by Zod in env.validation.ts
   const walletKey = process.env.WALLET_ENCRYPTION_KEY!;
+  const dbConnection = buildPostgresConnectionOptions();
 
   const nodeEnv = process.env.NODE_ENV || 'development';
   const port = parseInt(process.env.PORT || '3000', 10);
@@ -120,14 +123,12 @@ export default () => {
       urlencoded: bodyLimitUrlencoded * 1024 * 1024,
     },
 
-    // Database configuration (validated via Zod in env.validation.ts)
+    // Database configuration (validated via Zod in env.validation.ts).
+    // Connection fields come from the same buildPostgresConnectionOptions()
+    // helper used by src/database/data-source.ts, so the running app and the
+    // CLI migration/seed path can't silently diverge (issue #1290).
     database: {
-      host: process.env.DB_HOST!,
-      port: dbPort,
-      username: process.env.DB_USER!,
-      password: process.env.DB_PASSWORD!,
-      database: process.env.DB_NAME!,
-      ssl: process.env.DB_SSL === 'true',
+      ...dbConnection,
       url: `postgresql://${process.env.DB_USER!}:${process.env.DB_PASSWORD!}@${process.env.DB_HOST!}:${dbPort}/${process.env.DB_NAME!}`,
     },
 
