@@ -26,7 +26,7 @@ interface AuthenticatedRequest extends Request {
 }
 
 @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-@Controller('api/v1/admin/exports')
+@Controller('admin/exports')
 export class AdminExportsController {
   constructor(
     @Optional()

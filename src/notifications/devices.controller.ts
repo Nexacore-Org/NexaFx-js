@@ -16,7 +16,7 @@ export interface RegisterDeviceDto {
   platform: DevicePlatform;
 }
 
-@Controller('api/v1/devices')
+@Controller('devices')
 export class DevicesController {
   constructor(private readonly pushService: PushNotificationService) {}
 

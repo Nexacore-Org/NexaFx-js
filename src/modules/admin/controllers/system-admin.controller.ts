@@ -20,7 +20,7 @@ class FundWalletDto {
   address!: string;
 }
 
-@Controller('api/v1/admin')
+@Controller('admin')
 export class SystemAdminController {
   private readonly logger = new Logger(SystemAdminController.name);
 

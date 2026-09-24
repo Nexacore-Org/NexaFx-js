@@ -20,7 +20,7 @@ interface AuthenticatedRequest {
   };
 }
 
-@Controller('api/v1/notification-preferences')
+@Controller('notification-preferences')
 export class NotificationPreferencesController {
   constructor(
     private readonly preferencesService: NotificationPreferencesService,

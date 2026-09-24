@@ -14,7 +14,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
 
-@Controller('api/v1/kyc')
+@Controller('kyc')
 export class KycController {
   constructor(private readonly kycService: KycService) {}
 

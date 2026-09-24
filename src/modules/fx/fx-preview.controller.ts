@@ -17,7 +17,7 @@ export interface FxPreviewResponse {
  * FX rate preview — returns a locked 30-second rate quote before committing to a trade.
  * The quoteId can be passed to the FX conversion endpoint to use the locked rate.
  */
-@Controller('api/v1/fx')
+@Controller('fx')
 @UseGuards(JwtAuthGuard)
 export class FxPreviewController {
   @Get('preview')
