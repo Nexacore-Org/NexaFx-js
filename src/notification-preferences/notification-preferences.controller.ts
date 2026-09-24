@@ -7,12 +7,14 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   NotificationPreferencesService,
   UpdatePreferenceDto as UpdatePreferenceBody,
 } from './notification-preferences.service';
 import { UpdatePreferencesRequestDto } from './dto/update-preferences.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 interface AuthenticatedRequest {
   user?: {
@@ -20,6 +22,7 @@ interface AuthenticatedRequest {
   };
 }
 
+@UseGuards(JwtAuthGuard)
 @Controller('api/v1/notification-preferences')
 export class NotificationPreferencesController {
   constructor(
