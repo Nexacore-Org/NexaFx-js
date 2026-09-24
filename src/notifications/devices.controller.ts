@@ -4,31 +4,48 @@ import {
   Delete,
   Body,
   Param,
+  Req,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { PushNotificationService } from './push/push.service';
 import { DevicePlatform } from './device-token.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 export interface RegisterDeviceDto {
-  userId: string;
   token: string;
   platform: DevicePlatform;
 }
 
+interface AuthenticatedRequest {
+  user?: {
+    sub?: string;
+  };
+}
+
+@UseGuards(JwtAuthGuard)
 @Controller('api/v1/devices')
 export class DevicesController {
   constructor(private readonly pushService: PushNotificationService) {}
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  register(@Body() dto: RegisterDeviceDto) {
-    return this.pushService.registerToken(dto.userId, dto.token, dto.platform);
+  register(@Req() req: AuthenticatedRequest, @Body() dto: RegisterDeviceDto) {
+    // The token is always bound to the caller, never to a body-supplied userId.
+    return this.pushService.registerToken(
+      req.user?.sub ?? '',
+      dto.token,
+      dto.platform,
+    );
   }
 
   @Delete(':token')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deregister(@Param('token') token: string) {
-    await this.pushService.deregisterToken(token);
+  async deregister(
+    @Req() req: AuthenticatedRequest,
+    @Param('token') token: string,
+  ) {
+    await this.pushService.deregisterToken(token, req.user?.sub ?? '');
   }
 }

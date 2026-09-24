@@ -8,6 +8,9 @@ Thanks for helping improve `NexaFx-js`.
    ```bash
    cp .env.example .env
    ```
+   `.env.example` lists every key in the `src/config/env.validation.ts` schema.
+   When you add a new key to that schema, add it to `.env.example` too —
+   `npm run check:env-example` (run in CI) fails otherwise.
 2. Start the backing services with Docker Compose if you use local containers for PostgreSQL and Redis.
 3. Install dependencies and run the seed script when your environment needs sample data:
    ```bash
@@ -26,6 +29,13 @@ Thanks for helping improve `NexaFx-js`.
 - Prefer conventional commits such as `fix:`, `feat:`, or `chore:`.
 - Reference the issue number in the PR description with `Closes #123`.
 - Keep PR titles concise and action-oriented.
+
+## Routing
+
+- `src/main.ts` applies a single global prefix (`api/v1`) to every route.
+- Never repeat it inside `@Controller()` — write `@Controller('wallets')`, not
+  `@Controller('api/v1/wallets')`, which resolves to `/api/v1/api/v1/wallets`.
+- `npm run check:controller-prefixes` enforces this and runs in CI.
 
 ## Code style
 

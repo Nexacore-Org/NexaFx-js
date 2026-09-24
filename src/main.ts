@@ -14,6 +14,8 @@ import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { Configuration } from './config/configuration';
 
+const GLOBAL_PREFIX = 'api/v1';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
@@ -65,7 +67,9 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.setGlobalPrefix('api/v1');
+  // Every controller relies on this single global prefix; no @Controller() may
+  // repeat it (enforced by `npm run check:controller-prefixes`).
+  app.setGlobalPrefix(GLOBAL_PREFIX);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -84,6 +88,8 @@ async function bootstrap() {
       .setDescription('NexaFx financial platform REST API')
       .setVersion('1.0')
       .addBearerAuth()
+      // Documented paths are relative to the global prefix.
+      .addServer(`/${GLOBAL_PREFIX}`)
       .build();
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
@@ -92,7 +98,7 @@ async function bootstrap() {
     });
   }
 
-  const port = configService.get<number>('app.port');
+  // `port` is declared and validated at the top of bootstrap(); reuse it here.
   await app.listen(port);
 }
 

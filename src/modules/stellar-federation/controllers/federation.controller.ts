@@ -16,7 +16,7 @@ import { CreateFederationAddressDto } from '../dto/create-federation-address.dto
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 
 @ApiTags('Stellar Federation')
-@Controller('api/v1/federation')
+@Controller('federation')
 export class FederationController {
   constructor(private readonly federationService: StellarFederationService) {}
 

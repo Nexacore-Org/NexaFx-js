@@ -17,7 +17,7 @@ interface AuthenticatedRequest {
   };
 }
 
-@Controller('api/v1/webhooks')
+@Controller('webhooks')
 export class WebhooksController {
   constructor(
     private readonly webhooksService: WebhooksService,

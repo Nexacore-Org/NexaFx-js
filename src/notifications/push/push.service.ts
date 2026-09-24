@@ -51,8 +51,12 @@ export class PushNotificationService {
     return this.tokenRepo.save(dt);
   }
 
-  async deregisterToken(token: string): Promise<void> {
-    await this.tokenRepo.delete({ token });
+  /**
+   * Deletes a device token. When `userId` is supplied the delete is scoped to
+   * that owner, so a caller cannot deregister another user's device.
+   */
+  async deregisterToken(token: string, userId?: string): Promise<void> {
+    await this.tokenRepo.delete(userId ? { token, userId } : { token });
   }
 
   async sendToUser(userId: string, payload: PushPayload): Promise<void> {

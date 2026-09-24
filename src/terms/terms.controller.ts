@@ -17,7 +17,7 @@ type AuthenticatedRequest = {
   headers?: Record<string, string | undefined>;
 };
 
-@Controller('api/v1/terms')
+@Controller('terms')
 export class TermsController {
   constructor(private readonly termsService: TermsAcceptanceService) {}
 
