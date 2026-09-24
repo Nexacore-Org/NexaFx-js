@@ -30,6 +30,13 @@ Thanks for helping improve `NexaFx-js`.
 - Reference the issue number in the PR description with `Closes #123`.
 - Keep PR titles concise and action-oriented.
 
+## Routing
+
+- `src/main.ts` applies a single global prefix (`api/v1`) to every route.
+- Never repeat it inside `@Controller()` — write `@Controller('wallets')`, not
+  `@Controller('api/v1/wallets')`, which resolves to `/api/v1/api/v1/wallets`.
+- `npm run check:controller-prefixes` enforces this and runs in CI.
+
 ## Code style
 
 - ESLint and Prettier are already configured in the repository.

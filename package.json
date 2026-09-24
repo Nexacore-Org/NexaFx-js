@@ -9,6 +9,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "prebuild": "npm run check:no-wildcard-deps && npm run check:controller-prefixes",
     "prebuild": "npm run check:no-wildcard-deps && npm run check:env-example",
     "prebuild": "npm run check:no-wildcard-deps && npm run check:app-module-imports",
     "build": "nest build",
@@ -32,6 +33,7 @@
     "test:unit:wallet-currencies": "jest src/wallet/wallets.service.spec.ts src/wallet/wallets.controller.spec.ts src/currencies/currencies.service.spec.ts src/currencies/currencies.controller.spec.ts --runInBand",
     "test:integration:wallet-currencies": "jest test/wallets-currencies.e2e-spec.ts --runInBand --config ./test/jest-e2e.json",
     "test:integration": "jest --config ./jest.integration.json --runInBand",
+    "check:controller-prefixes": "node scripts/check-controller-prefixes.js",
     "check:env-example": "node scripts/check-env-example.js",
     "check:app-module-imports": "node scripts/check-app-module-imports.js",
     "check:no-wildcard-deps": "node -e \"const pkg=require('./package.json');const w=Object.entries({...pkg.dependencies,...pkg.devDependencies}).filter(([,v])=>v==='*');if(w.length){console.error('Wildcard dependencies found:',w);process.exit(1);}\""

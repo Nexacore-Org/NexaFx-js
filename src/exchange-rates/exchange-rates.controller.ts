@@ -4,7 +4,7 @@ import { ExchangeRatesService } from './exchange-rates.service';
 import { QueryExchangeRateHistoryDto } from './dto/query-exchange-rate-history.dto';
 
 @ApiTags('Exchange Rates')
-@Controller('api/v1/exchange-rates')
+@Controller('exchange-rates')
 export class ExchangeRatesController {
   constructor(private readonly exchangeRatesService: ExchangeRatesService) {}
 

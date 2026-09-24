@@ -22,7 +22,7 @@ interface AuthenticatedRequest {
   };
 }
 
-@Controller('api/v1/scheduled-reports')
+@Controller('scheduled-reports')
 @UseGuards(JwtAuthGuard)
 export class ScheduledReportsController {
   constructor(private readonly reportsService: ScheduledReportsService) {}

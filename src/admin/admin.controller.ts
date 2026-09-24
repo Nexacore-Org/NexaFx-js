@@ -49,7 +49,7 @@ function assertSafePathSegment(segment: string, paramName: string): void {
   }
 }
 
-@Controller('api/v1/admin')
+@Controller('admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 

@@ -31,7 +31,7 @@ export class WithdrawalDto {
  * Withdrawal endpoint — deducts from wallet balance and creates a transaction record
  * by delegating to the real, working TransactionsService.createWithdrawal() flow.
  */
-@Controller('api/v1/withdrawals')
+@Controller('withdrawals')
 @UseGuards(JwtAuthGuard)
 export class WithdrawalController {
   constructor(private readonly transactionsService: TransactionsService) {}

@@ -16,7 +16,7 @@ interface AuthenticatedRequest {
   user: { sub: string };
 }
 
-@Controller('api/v1/auth/sessions')
+@Controller('auth/sessions')
 @UseGuards(JwtAuthGuard)
 export class SessionsController {
   constructor(private readonly refreshTokensService: RefreshTokensService) {}

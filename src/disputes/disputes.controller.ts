@@ -44,7 +44,7 @@ interface AuthenticatedRequest extends Request {
 
 @ApiTags('Disputes')
 @ApiBearerAuth('access-token')
-@Controller('api/v1')
+@Controller()
 @UseGuards(JwtAuthGuard)
 export class DisputesController {
   constructor(private readonly disputesService: DisputesService) {}

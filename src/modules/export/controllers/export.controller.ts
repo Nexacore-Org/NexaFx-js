@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 
 @ApiTags('Export')
 @ApiBearerAuth('access-token')
-@Controller('api/v1/export')
+@Controller('export')
 @UseGuards(JwtAuthGuard)
 export class ExportController {
   constructor(private readonly exportService: ExportService) {}
