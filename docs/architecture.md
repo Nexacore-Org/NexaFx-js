@@ -3,9 +3,30 @@
 This repository is an enterprise NestJS financial technology platform organized into focused domain module groupings wired into `AppModule`:
 
 - **Auth & Identity**: `AuthModule`, `UsersModule`, `SessionsModule`, `ApiKeysModule` providing global `JwtAuthGuard` JWT verification.
-- **Payments, FX & Ledger**: `WalletsModule`, `FxModule`, `ExchangeRatesModule`, `LedgerModule`, `BulkPaymentsModule`, `ScheduledTransactionsModule`, `FeeTiersModule`.
-- **Compliance & Risk**: `AmlModule`, `ComplianceModule`, `KycModule`, `KycTiersModule`, `RiskEngineModule`, `TransactionRiskModule`.
+- **Payments, FX & Ledger**: `WalletsModule`, `FxModule`, `ExchangeRatesModule`, `LedgerModule`, `BulkPaymentsModule`, `FeeTiersModule`.
+- **Compliance & Risk**: `AmlModule`, `KycModule`, `KycTiersModule`.
 - **Infrastructure & Observability**: `ConfigModule`, `HealthModule`, `MetricsModule`, `QueuesModule`, `AuditModule`, `AppGraphQLModule`.
+
+## Deferred modules
+
+`AppModule` previously imported the module files below, none of which were ever committed to the
+repository. The imports have been removed so the root module compiles; each name is recorded here as
+deferred scope rather than as working functionality:
+
+`AdminAuditModule`, `AnnouncementsModule`, `ComplianceModule`, `DataArchiveModule`,
+`EnrichmentModule`, `EscrowModule`, `ExperimentsModule`, `FeatureFlagsModule`, `GoalsModule`,
+`InsightsModule`, `InsightsForecastModule`, `ModulesCacheModule`, `RetryModule`, `RiskEngineModule`,
+`ScheduledTransactionsModule`, `SecretsModule`, `StrategyOptimizerModule`,
+`TransactionApprovalModule`, `TransactionRiskModule`, `VersioningModule`.
+
+A further set of dangling imports duplicated modules that do exist under a different path, and were
+dropped in favour of the real ones: `./modules/reconciliation` (use `ReconciliationModule` from
+`src/reconciliation`), `./modules/mail` (`src/mail`), `./modules/wallets` (`src/wallet`) and
+`./modules/referrals` (`src/referral`). `LedgerModule`, `KycModule` and `FxModule` were repointed at
+their real locations under `src/ledger`, `src/kyc` and `src/fx`.
+
+`npm run check:app-module-imports` (run in CI and on `prebuild`) fails the build if a relative
+import in `src/app.module.ts` stops resolving to a file on disk.
 
 ## Module dependency graph
 
@@ -18,7 +39,6 @@ flowchart TD
   AppModule --> WalletsModule["WalletsModule"]
   AppModule --> FxModule["FxModule"]
   AppModule --> LedgerModule["LedgerModule"]
-  AppModule --> ComplianceModule["ComplianceModule"]
   AppModule --> MetricsModule["MetricsModule"]
   AppModule --> HealthModule["HealthModule"]
   AppModule --> AppGraphQLModule["AppGraphQLModule"]

@@ -1,16 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, LessThanOrEqual, Between } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ExchangeRateCacheEntity } from './entities/exchange-rate-cache.entity';
 import { ExchangeRateHistoryEntity } from './entities/exchange-rate-history.entity';
 import { QueryExchangeRateHistoryDto } from './dto/query-exchange-rate-history.dto';
+import { RatesGateway } from '../rates/rates.gateway';
 
 const DEFAULT_CACHE_TTL_SECONDS = 60;
 const SUPPORTED_PAIRS = ['USD/NGN', 'USD/EUR', 'USD/GBP', 'EUR/NGN', 'GBP/NGN'];
 
 @Injectable()
-export class ExchangeRatesService {
+export class ExchangeRatesService implements OnModuleInit {
   private readonly logger = new Logger(ExchangeRatesService.name);
   private readonly cacheTtlSeconds: number;
 
@@ -19,11 +20,25 @@ export class ExchangeRatesService {
     private readonly cacheRepo: Repository<ExchangeRateCacheEntity>,
     @InjectRepository(ExchangeRateHistoryEntity)
     private readonly historyRepo: Repository<ExchangeRateHistoryEntity>,
+    private readonly ratesGateway: RatesGateway,
   ) {
     this.cacheTtlSeconds = parseInt(
       process.env.EXCHANGE_RATE_CACHE_TTL || String(DEFAULT_CACHE_TTL_SECONDS),
       10,
     );
+  }
+
+  async onModuleInit(): Promise<void> {
+    try {
+      const rates = await this.getRates();
+      this.ratesGateway.seedCurrentRates(
+        rates.map((r) => ({ currencyPair: r.pair, rate: Number(r.rate) })),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Unable to seed live rate snapshot at startup: ${error.message}`,
+      );
+    }
   }
 
   async getRates(): Promise<ExchangeRateCacheEntity[]> {
@@ -123,6 +138,9 @@ export class ExchangeRatesService {
         recordedAt: now,
       });
       await this.historyRepo.save(historyEntry);
+
+      // Push the new rate to clients subscribed to the /rates namespace.
+      this.ratesGateway.broadcastRateUpdate(pair, rate);
     }
 
     return rates;
