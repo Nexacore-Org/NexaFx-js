@@ -28,6 +28,21 @@ their real locations under `src/ledger`, `src/kyc` and `src/fx`.
 `npm run check:app-module-imports` (run in CI and on `prebuild`) fails the build if a relative
 import in `src/app.module.ts` stops resolving to a file on disk.
 
+## Removed dead code
+
+- **`BlockchainModule`/`BlockchainService`** (`src/blockchain/`) — removed. Its entire
+  implementation was Ethereum JSON-RPC (`eth_getBalance`, `eth_getTransactionReceipt`,
+  `eth_blockNumber`, `0x...` address validation), inconsistent with this platform's actual
+  Stellar-based architecture, and it was never injected anywhere outside its own module.
+  No multi-chain/Ethereum support is currently planned; `src/blockchain/qr/stellar-qr.service.ts`
+  is unrelated to this module and was left in place.
+- **`BackupCodesService`** (`src/auth/2fa/backup-codes.service.ts`) — removed. It compared
+  2FA recovery codes as plaintext (`storedCodes: string[]`), unlike the bcrypt/HMAC hashing
+  standard used elsewhere in `src/auth` and `src/otp`, and was imported into `auth.module.ts`
+  but never registered as a provider or called from any controller. Backup-code-based account
+  recovery isn't an actual planned feature right now; if it's added later it should hash codes
+  the same way `OtpService.hmac()` does before this was removed, not compare them raw.
+
 ## Module dependency graph
 
 ```mermaid
