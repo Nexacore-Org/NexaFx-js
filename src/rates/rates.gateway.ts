@@ -55,6 +55,18 @@ export class RatesGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /**
+   * Seeds the current-rate snapshot without emitting or buffering an update.
+   * Used at startup so clients connecting before the first refresh cycle still
+   * receive real rates in `rates.current` rather than an empty array.
+   */
+  seedCurrentRates(rates: Array<{ currencyPair: string; rate: number }>): void {
+    for (const { currencyPair, rate } of rates) {
+      this.currentRates.set(currencyPair, rate);
+    }
+    this.logger.log(`Seeded ${rates.length} current rate(s)`);
+  }
+
   broadcastRateUpdate(currencyPair: string, rate: number): void {
     const event: BufferedEvent = { currencyPair, rate, timestamp: Date.now() };
 

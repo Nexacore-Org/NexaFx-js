@@ -29,6 +29,10 @@ jobs:
 
       - name: Check controller route prefixes
         run: npm run check:controller-prefixes
+      - name: Check .env.example covers the env schema
+        run: npm run check:env-example
+      - name: Check AppModule imports resolve
+        run: npm run check:app-module-imports
 
       - name: Run Linter
         run: npm run lint || true

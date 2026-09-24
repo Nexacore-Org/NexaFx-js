@@ -7,9 +7,11 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ActivityFeedService, ActivityFeedFilters } from './activity-feed.service';
 import { ActivityType } from './activity-feed-item.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 interface AuthenticatedRequest {
   user?: {
@@ -17,7 +19,8 @@ interface AuthenticatedRequest {
   };
 }
 
-@Controller('activity-feed')
+@UseGuards(JwtAuthGuard)
+@Controller('api/v1/activity-feed')
 export class ActivityFeedController {
   constructor(private readonly activityFeedService: ActivityFeedService) {}
 

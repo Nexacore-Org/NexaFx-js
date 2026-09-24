@@ -67,3 +67,38 @@ WALLET_ENCRYPTION_KEY_V1=<old-32-byte-hex>
 - Rotation progress is logged per-wallet at INFO level with `KeyRotationService`.
 - The endpoint requires `JwtAuthGuard + AdminRoleGuard + IpAllowlistGuard`.
 - Each `WalletBalanceEntity` row carries a `keyVersion` column that tracks which key encrypted it.
+
+---
+
+# Endpoint Authentication and Ownership
+
+## Principal binding
+
+Routes that act on a single user's data take the user from the verified JWT
+(`req.user.sub`), never from the request body, query string, or a path
+parameter. A `userId` sent by the caller is ignored:
+
+- `POST /api/v1/kyc/submit` — the submission is always filed for the caller.
+- `POST /api/v1/kyc/:id/appeal` — the document must belong to the caller.
+- `GET /api/v1/kyc/:userId/expiry-status` — rejected with 403 unless `:userId`
+  is the caller, matching the pattern used by `GET /statements/:userId`.
+- `POST /api/v1/devices/register` — the push token is bound to the caller.
+- `DELETE /api/v1/devices/:token` — the delete is scoped to the caller's own
+  device tokens.
+- `GET /transactions/:id/receipt` — the caller must be the sender or receiver of
+  the transaction, otherwise 403 (404 when the transaction does not exist).
+
+## Back-office routes
+
+`POST /api/v1/referrals/:id/qualify` and `POST /api/v1/referrals/:id/reward`
+credit a real wallet balance, so they require `JwtAuthGuard` plus
+`AdminRoleGuard`. A referrer cannot qualify or reward their own referral.
+
+## SEP-10 Stellar wallet login
+
+Challenge signatures are Ed25519 and are verified with Node's one-shot
+`crypto.verify(null, message, key, signature)` API over the raw challenge bytes.
+Ed25519 hashes internally, so the challenge must not be pre-hashed, and the
+streaming `crypto.createVerify()` API must not be used — it does not support
+Ed25519 keys. Public keys are accepted as Stellar StrKey addresses (`G...`,
+checksum-validated) or as a base64-encoded raw 32-byte key.

@@ -1,6 +1,8 @@
 import {
   Controller,
+  ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   Query,
   Req,
@@ -8,10 +10,13 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Response } from 'express';
 import { Readable } from 'stream';
 import { PdfService } from './pdf.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Transaction } from '../transactions/transaction.entity';
 import { StatementQueryDto } from './dto/statement-query.dto';
 import { StatementView } from '../statements/statements.types';
 
@@ -23,7 +28,11 @@ interface AuthenticatedRequest {
 
 @Controller()
 export class DocumentsController {
-  constructor(private readonly pdfService: PdfService) {}
+  constructor(
+    private readonly pdfService: PdfService,
+    @InjectRepository(Transaction)
+    private readonly transactionRepo: Repository<Transaction>,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Get('statements/:userId')
@@ -65,8 +74,28 @@ export class DocumentsController {
     Readable.from(pdf).pipe(res);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('transactions/:id/receipt')
-  async downloadReceipt(@Param('id') id: string, @Res() res: Response) {
+  async downloadReceipt(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    const transaction = await this.transactionRepo.findOne({
+      where: { id },
+      select: { id: true, senderId: true, receiverId: true },
+    });
+    if (!transaction) {
+      throw new NotFoundException(`Transaction ${id} not found`);
+    }
+    const callerId = request.user?.sub;
+    if (
+      transaction.senderId !== callerId &&
+      transaction.receiverId !== callerId
+    ) {
+      throw new ForbiddenException('You can only download your own receipts');
+    }
+
     const pdf = await this.pdfService.generateReceiptPdf(id);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
