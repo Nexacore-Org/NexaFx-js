@@ -67,3 +67,21 @@ WALLET_ENCRYPTION_KEY_V1=<old-32-byte-hex>
 - Rotation progress is logged per-wallet at INFO level with `KeyRotationService`.
 - The endpoint requires `JwtAuthGuard + AdminRoleGuard + IpAllowlistGuard`.
 - Each `WalletBalanceEntity` row carries a `keyVersion` column that tracks which key encrypted it.
+
+---
+
+# GraphQL Access Model
+
+`UserType` exposes `email`, `firstName`, `lastName`, `isActive` and `kycStatus`.
+KYC status is compliance-sensitive, so authentication alone does not grant
+access to another user's record.
+
+- `me` — self-service profile lookup. The id comes from the verified token; no
+  argument is accepted.
+- `user(id)` — admin tooling, plus the caller's own record. A caller whose `sub`
+  does not match `id` and who holds neither `role: "admin"` nor `"admin"` in
+  `roles` is rejected with 403.
+
+New resolvers that return user-scoped data follow the same rule: derive the
+subject from the request context, and require the admin role for anything
+broader.
