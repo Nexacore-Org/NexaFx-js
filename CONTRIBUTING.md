@@ -8,6 +8,9 @@ Thanks for helping improve `NexaFx-js`.
    ```bash
    cp .env.example .env
    ```
+   `.env.example` lists every key in the `src/config/env.validation.ts` schema.
+   When you add a new key to that schema, add it to `.env.example` too —
+   `npm run check:env-example` (run in CI) fails otherwise.
 2. Start the backing services with Docker Compose if you use local containers for PostgreSQL and Redis.
 3. Install dependencies and run the seed script when your environment needs sample data:
    ```bash
