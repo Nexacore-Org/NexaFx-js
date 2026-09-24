@@ -29,6 +29,8 @@ jobs:
 
       - name: Check .env.example covers the env schema
         run: npm run check:env-example
+      - name: Check AppModule imports resolve
+        run: npm run check:app-module-imports
 
       - name: Run Linter
         run: npm run lint || true

@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentsController } from './documents.controller';
 import { PdfService } from './pdf.service';
 import { S3Service } from './s3.service';
+import { Transaction } from '../transactions/transaction.entity';
 
 @Module({
+  imports: [TypeOrmModule.forFeature([Transaction])],
   controllers: [DocumentsController],
   providers: [PdfService, S3Service],
 })
