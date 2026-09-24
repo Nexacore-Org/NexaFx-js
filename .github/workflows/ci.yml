@@ -27,6 +27,9 @@ jobs:
       - name: Check wildcard dependencies
         run: npm run check:no-wildcard-deps
 
+      - name: Check AppModule imports resolve
+        run: npm run check:app-module-imports
+
       - name: Run Linter
         run: npm run lint || true
 

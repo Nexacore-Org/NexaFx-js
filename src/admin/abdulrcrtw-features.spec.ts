@@ -27,7 +27,7 @@ describe('abdulrcrtw Features (Issues #992, #991, #990, #989)', () => {
   });
 
   it('ExchangeRatesService provides lightweight currency conversion calculator', async () => {
-    const service = new ExchangeRatesService({} as any, {} as any);
+    const service = new ExchangeRatesService({} as any, {} as any, { broadcastRateUpdate: jest.fn(), seedCurrentRates: jest.fn() } as any);
     jest.spyOn(service, 'getRateByPair').mockResolvedValue({ rate: 1500 } as any);
 
     const result = await service.calculateConversion('USD', 'NGN', 10);

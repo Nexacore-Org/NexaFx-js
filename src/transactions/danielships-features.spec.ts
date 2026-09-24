@@ -4,7 +4,7 @@ import { TransactionsService } from './transactions.service';
 
 describe('danielships Features (Issues #984, #983, #982, #981)', () => {
   it('ExchangeRatesService provides public exchange rates dataset', async () => {
-    const service = new ExchangeRatesService({} as any, {} as any);
+    const service = new ExchangeRatesService({} as any, {} as any, { broadcastRateUpdate: jest.fn(), seedCurrentRates: jest.fn() } as any);
     jest.spyOn(service, 'getRates').mockResolvedValue([{ pair: 'USD/NGN', rate: 1550 } as any]);
 
     const rates = await service.getRates();

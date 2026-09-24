@@ -16,48 +16,28 @@ import { redisStore } from 'cache-manager-redis-store';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
-import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
-import { StrategyOptimizerModule } from './modules/strategy-optimizer/strategy-optimizer.module';
-import { RiskEngineModule } from './modules/risk-engine/risk-engine.module';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
-// NOTE: './modules/users/users.module' does not exist; the only UsersModule is at './users/users.module'.
-// Aliased as UpstreamUsersModule below (line 84).
+// NOTE: './modules/users/users.module' does not exist; the only UsersModule is at
+// './users/users.module', imported below as UpstreamUsersModule.
+// NOTE: every relative import below must resolve to a file on disk — `npm run
+// check:app-module-imports` enforces this in CI. Modules that were imported here but never
+// committed are listed under "Deferred modules" in docs/architecture.md.
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
-import { EnrichmentModule } from './modules/enrichment/enrichment.module';
-import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
-import { RetryModule } from './modules/retry/retry.module';
-import { ExperimentsModule } from './modules/experiments/experiments.module';
 import { FeesModule } from './modules/fee/fee.module';
-import { TransactionRiskModule } from './modules/transaction-risk/transaction-risk.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
-import { SecretsModule } from './modules/secrets/secrets.module';
-import { DataArchiveModule } from './modules/data-archive/data-archive.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
-import { GoalsModule } from './goals/goal.module';
-import { AnnouncementsModule } from './announcement/announcement.module';
-import { ComplianceModule } from './compliance-evidence/compliance.module';
-import { LedgerModule } from './double-entry-ledger/ledger.module';
-import { VersioningModule } from './versioning/versioning.module';
-import { InsightsModule } from './exxagerated/exxagerated.module';
+import { LedgerModule } from './ledger/ledger.module';
 import { AccountFreezeModule } from './modules/account-freeze/account-freeze.module';
 import { StellarFederationModule } from './modules/stellar-federation/stellar-federation.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { ExportModule } from './modules/export/export.module';
-import { InsightsForecastModule } from './modules/insights/insights-forecast.module';
-import { ReferralsModule } from './modules/referrals/referrals.module';
-import { KycModule } from './modules/kyc/kyc.module';
-import { WalletsModule as ModulesWalletsModule } from './modules/wallets/wallets.module';
-import { ScheduledTransactionsModule } from './modules/scheduled-transactions/scheduled-transactions.module';
-import { FxModule } from './modules/fx/fx.module';
+import { KycModule } from './kyc/kyc.module';
+import { FxModule } from './fx/fx.module';
 import { DisputesModule as ModulesDisputesModule } from './disputes/disputes.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
-import { CacheModule as ModulesCacheModule } from './modules/cache/cache.module';
-import { MailModule } from './modules/mail/mail.module';
-import { TransactionApprovalModule } from './multi-signature-approval/transaction-approval.module';
 import { SpendingModule } from './spending/spending.module';
 import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
 import { AuditModule } from './audit/audit.module';
@@ -96,7 +76,6 @@ import { NotificationsModule as ConsolidatedNotificationsModule } from './notifi
 import { ReferralModule } from './referral/referral.module';
 import { FeeRevenueModule } from './reports/fee-revenue.module';
 import { AmlModule } from './aml/aml.module';
-import { EscrowModule } from './modules/escrow/escrow.module';
 import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
 import { FeeReportsModule } from './modules/fee-reports/fee-reports.module';
 import { WalletHistoryModule } from './modules/wallet-history/wallet-history.module';
@@ -250,13 +229,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     HealthModule,
     UpstreamUsersModule,
     AuditModule,
-    MailModule,
     UpstreamMailModule,
-    TransactionApprovalModule,
     SpendingModule,
     FeeTiersModule,
     WalletsModule,
-    ScheduledTransactionsModule,
     ExchangeRatesModule,
     BulkPaymentsModule,
     DisputesModule,
@@ -267,21 +243,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     RateAlertHistoryModule,
     ScheduledReportsModule,
     PortfolioModule,
-    ReconciliationModule,
-    RetryModule,
-    ExperimentsModule,
     FeesModule,
-    TransactionRiskModule,
     WebhooksModule,
-    SecretsModule,
-    DataArchiveModule,
     IdempotencyModule,
-    GoalsModule,
-    AnnouncementsModule,
-    ComplianceModule,
     LedgerModule,
-    VersioningModule,
-    InsightsModule,
     AccountFreezeModule,
     StellarFederationModule,
     ApiKeysModule,
@@ -301,21 +266,11 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     ReferralModule,
     FeeRevenueModule,
     AmlModule,
-    ModulesWalletsModule,
-    ModulesCacheModule,
     AdminModule,
-    FeatureFlagsModule,
     RateLimitModule,
-    AdminAuditModule,
-    StrategyOptimizerModule,
-    RiskEngineModule,
     SessionsModule,
     TransactionsModule,
-    EnrichmentModule,
-    InsightsForecastModule,
-    ReferralsModule,
     KycModule,
-    EscrowModule,
     SupportTicketsModule,
     FeeReportsModule,
     WalletHistoryModule,
