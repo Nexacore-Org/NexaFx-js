@@ -1,3 +1,8 @@
+> **This is an internal engineering runbook, not a vulnerability-disclosure policy.** It documents
+> secret/key rotation procedures, the GraphQL access model, and endpoint ownership rules for
+> maintainers. If you're reporting a suspected security vulnerability, see
+> [`SECURITY.md`](../SECURITY.md) at the repo root instead.
+
 # JWT Secret Rotation
 
 ## Strategy
