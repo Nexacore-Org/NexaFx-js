@@ -5,12 +5,15 @@ import {
   CreateDateColumn,
   Index,
 } from 'typeorm';
+import { KycStatus } from '../users/user.entity';
 
-export enum KycStatus {
-  PENDING = 'pending',
-  VERIFIED = 'verified',
-  REJECTED = 'rejected',
-}
+// KycStatus previously redeclared its own enum here (PENDING/VERIFIED/
+// REJECTED), duplicating and conflicting with the user entity's
+// KycStatus (PENDING/APPROVED/REJECTED). Now imports the shared one.
+// This file only ever used the PENDING member below, and a repo-wide
+// search (per issue #1304) confirmed nothing outside this file
+// references the old VERIFIED value, so no other call site needed
+// updating.
 
 @Entity('organisations')
 @Index(['ownerId'])

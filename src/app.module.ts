@@ -36,7 +36,6 @@ import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { ExportModule } from './modules/export/export.module';
 import { KycModule } from './kyc/kyc.module';
 import { FxModule } from './fx/fx.module';
-import { DisputesModule as ModulesDisputesModule } from './disputes/disputes.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { SpendingModule } from './spending/spending.module';
 import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
@@ -253,7 +252,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     ExportModule,
     UpstreamReconciliationModule,
     ScheduledJobsModule,
-    ModulesDisputesModule,
     MetricsModule,
     StellarModule,
     RatesModule,

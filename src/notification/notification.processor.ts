@@ -11,6 +11,15 @@ export interface NotificationJobData {
   data?: Record<string, string>;
 }
 
+/**
+ * @deprecated (issue #1302) This processor calls the push service
+ * directly with no NotificationPreference check — a user's channel/event
+ * opt-outs are silently bypassed. `NotificationBatchingService.dispatch()`
+ * in `src/notifications/` is the canonical, preference-aware path.
+ * Nothing currently enqueues DISPATCH jobs onto this queue (tracked as
+ * dead code separately); do not wire up a new producer for this
+ * processor without adding the same preference check first.
+ */
 @Processor(QUEUE_NAMES.NOTIFICATION)
 export class NotificationProcessor {
   private readonly logger = new Logger(NotificationProcessor.name);
