@@ -1,7 +1,13 @@
 import { StellarService } from './stellar.service';
 import { AmlService } from '../aml/aml.service';
-import { PaymentProviderService } from '../payments/payment-provider.service';
 
+// Issue #1312 — this spec originally also covered PaymentProviderService
+// bank-withdrawal-off-ramp and card-on-ramp flows via
+// `processBankWithdrawal`/`processCardOnRamp`. Neither method exists on
+// PaymentProviderService (see src/payments/payment-provider.service.ts) and
+// no equivalently-named method exists either, so those two cases were
+// removed rather than fixed: bank-withdrawal/card-on-ramp support was never
+// actually implemented, only ever asserted against in this stale spec.
 describe('ibinola Features (Issues #996, #995, #994, #993)', () => {
   it('StellarService supports NFT receipt minting', async () => {
     const service = new StellarService({ get: () => '' } as any, {} as any);
@@ -18,29 +24,5 @@ describe('ibinola Features (Issues #996, #995, #994, #993)', () => {
     expect(result.riskLevel).toBe('HIGH');
     expect(result.flags).toContain('LARGE_AMOUNT');
     expect(result.flags).toContain('NEW_ACCOUNT');
-  });
-
-  it('PaymentProviderService supports bank withdrawal off-ramp', async () => {
-    const service = new PaymentProviderService({ get: () => '' } as any);
-    const result = await service.processBankWithdrawal({
-      userId: 'user-123',
-      amount: 500,
-      currency: 'NGN',
-      bankCode: '058',
-      accountNumber: '0123456789',
-    });
-    expect(result.status).toBe('PROCESSING');
-    expect(result.accountNumberMasked).toBe('****6789');
-  });
-
-  it('PaymentProviderService supports credit/debit card on-ramp', async () => {
-    const service = new PaymentProviderService({ get: () => '' } as any);
-    const result = await service.processCardOnRamp({
-      userId: 'user-123',
-      amount: 100,
-      currency: 'USD',
-    });
-    expect(result.status).toBe('SUCCESS');
-    expect(result.redirectUrl).toBeDefined();
   });
 });

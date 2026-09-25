@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { TransactionEntity } from '../transactions/entities/transaction.entity';
-import { WalletEntity } from '../users/entities/wallet.entity';
-import { TransactionsService } from '../transactions/services/transactions.service';
-import { WalletService } from '../users/wallet.service';
+import { Transaction as TransactionEntity } from '../../../transactions/transaction.entity';
+import { WalletBalanceEntity as WalletEntity } from '../../../wallet/wallet-balance.entity';
+import { TransactionsService } from '../../../transactions/transactions.service';
+import { WalletsService as WalletService } from '../../../wallet/wallets.service';
 import { ExportTransactionsDto, ExportBalancesDto } from '../dto/export.dto';
 
 @Injectable()

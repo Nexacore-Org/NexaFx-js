@@ -70,10 +70,6 @@ export class SupportTicketsService {
     if (actorId && ticket.userId !== actorId && ticket.assignedTo !== actorId) {
       throw new ForbiddenException('Access denied');
     }
-    const ticket = await this.ticketRepo.findOne({ where: { id } });
-    if (!ticket) {
-      throw new NotFoundException('Support ticket not found');
-    }
     ticket.assignedTo = assignedTo;
     if (status) {
       ticket.status = status;
