@@ -3,10 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { UserEntity } from '../users/entities/user.entity';
-import { ReferralService } from '../referrals/services/referral.service';
-import { MailService } from '../mail/services/mail.service';
+import { User as UserEntity } from '../../users/user.entity';
+import { ReferralService } from '../../referral/referral.service';
+import { MailService } from '../../mail/mail.service';
 import { ConfigService } from '@nestjs/config';
+// TODO: admin-audit and secrets modules do not exist anywhere in the
+// codebase yet (not just at the wrong path) — tracked separately, not
+// fixed here; AdminAuditService/ActorType/SecretsService usages below
+// will still fail to resolve until those modules are implemented.
 import { AdminAuditService, AuditContext } from '../admin-audit/admin-audit.service';
 import { ActorType } from '../admin-audit/entities/admin-audit-log.entity';
 import { SecretsService } from '../secrets/services/secrets.service';

@@ -11,10 +11,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { AdminRoleGuard } from '../../common/guards/admin-role.guard';
-import { IpAllowlistGuard } from '../../common/guards/ip-allowlist.guard';
-import { KeyRotationService } from '../key-rotation.service';
+import { JwtAuthGuard } from '../../../auth/jwt-auth.guard';
+import { AdminRoleGuard } from '../../../common/guards/admin-role.guard';
+import { IpAllowlistGuard } from '../../../common/guards/ip-allowlist.guard';
+import { KeyRotationService } from '../../../admin/key-rotation.service';
 
 class FundWalletDto {
   address!: string;
