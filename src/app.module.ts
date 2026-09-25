@@ -21,7 +21,7 @@ import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 // NOTE: './modules/users/users.module' does not exist; the only UsersModule is at
 // './users/users.module', imported below as UpstreamUsersModule.
-// NOTE: every relative import below must resolve to a file on disk — `npm run
+// NOTE: every relative import below must resolve to a file on disk - `npm run
 // check:app-module-imports` enforces this in CI. Modules that were imported here but never
 // committed are listed under "Deferred modules" in docs/architecture.md.
 import { SessionsModule } from './modules/sessions/sessions.module';
@@ -62,6 +62,8 @@ import { ReconciliationModule as UpstreamReconciliationModule } from './reconcil
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { BulkPaymentsModule } from './bulk-payments/bulk-payments.module';
 import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
+// DisputesModule is registered once here; the duplicate import that appeared
+// in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { RatesModule } from './rates/rates.module';
@@ -159,6 +161,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           username: database?.username,
           password: database?.password,
           database: database?.database,
+          ssl: database?.ssl,
           autoLoadEntities: true,
           synchronize: false,
           retryAttempts: 10,
