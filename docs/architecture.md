@@ -50,6 +50,29 @@ import in `src/app.module.ts` stops resolving to a file on disk.
   wanted, it should be re-added directly to the live withdrawal flow (or ported once the
   `src/transactions` vs. `src/modules/transactions` consolidation from issue #1300 lands), fixed,
   and tested before going live.
+- **`NotificationQueueModule`/`NotificationProcessor`** (`src/notification/`) — removed. The
+  `@Process(NOTIFICATION_JOB_NAMES.DISPATCH)` handler was fully implemented, but a repo-wide
+  search found zero producers ever calling `.add(NOTIFICATION_JOB_NAMES.DISPATCH, ...)` — the
+  entire push path was unreachable. Wiring it up naively would have bypassed the user
+  notification-preference checks that `NotificationBatchingService` already enforces on the real
+  delivery path, so rather than duplicate/bypass that logic this dead consumer, its queue
+  registration, and the `NOTIFICATION_JOB_NAMES` constant were removed instead.
+  `PushNotificationService`/`PushModule` (used by `NotificationBatchingService` and
+  `DevicesController`) and the `notification-queue` Bull queue monitored by
+  `queue-monitor.controller.ts` (registered separately in `src/queues/queues.module.ts`) are
+  unrelated and were left in place.
+- **`BlockchainModule`/`BlockchainService`** (`src/blockchain/`) — removed. Its entire
+  implementation was Ethereum JSON-RPC (`eth_getBalance`, `eth_getTransactionReceipt`,
+  `eth_blockNumber`, `0x...` address validation), inconsistent with this platform's actual
+  Stellar-based architecture, and it was never injected anywhere outside its own module.
+  No multi-chain/Ethereum support is currently planned; `src/blockchain/qr/stellar-qr.service.ts`
+  is unrelated to this module and was left in place.
+- **`BackupCodesService`** (`src/auth/2fa/backup-codes.service.ts`) — removed. It compared
+  2FA recovery codes as plaintext (`storedCodes: string[]`), unlike the bcrypt/HMAC hashing
+  standard used elsewhere in `src/auth` and `src/otp`, and was imported into `auth.module.ts`
+  but never registered as a provider or called from any controller. Backup-code-based account
+  recovery isn't an actual planned feature right now; if it's added later it should hash codes
+  the same way `OtpService.hmac()` does before this was removed, not compare them raw.
 
 ## Module dependency graph
 
