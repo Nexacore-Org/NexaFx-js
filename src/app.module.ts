@@ -21,7 +21,7 @@ import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 // NOTE: './modules/users/users.module' does not exist; the only UsersModule is at
 // './users/users.module', imported below as UpstreamUsersModule.
-// NOTE: every relative import below must resolve to a file on disk — `npm run
+// NOTE: every relative import below must resolve to a file on disk - `npm run
 // check:app-module-imports` enforces this in CI. Modules that were imported here but never
 // committed are listed under "Deferred modules" in docs/architecture.md.
 import { SessionsModule } from './modules/sessions/sessions.module';
@@ -36,7 +36,7 @@ import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { ExportModule } from './modules/export/export.module';
 import { KycModule } from './kyc/kyc.module';
 import { FxModule } from './fx/fx.module';
-import { DisputesModule as ModulesDisputesModule } from './disputes/disputes.module';
+import { BlockchainModule } from './blockchain/blockchain.module';
 import { SpendingModule } from './spending/spending.module';
 import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
 import { AuditModule } from './audit/audit.module';
@@ -49,6 +49,7 @@ import {
   MailModule as UpstreamMailModule,
   MailQueueModule,
 } from './mail/mail.module';
+import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
 import { StatementsModule } from './statements/statements.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
@@ -61,6 +62,8 @@ import { ReconciliationModule as UpstreamReconciliationModule } from './reconcil
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { BulkPaymentsModule } from './bulk-payments/bulk-payments.module';
 import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
+// DisputesModule is registered once here; the duplicate import that appeared
+// in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { RatesModule } from './rates/rates.module';
@@ -220,6 +223,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           }),
           BullModule.registerQueue({ name: 'default' }),
           MailQueueModule,
+          NotificationQueueModule,
           TransactionQueueModule,
           QueuesModule,
         ]
@@ -251,7 +255,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     ExportModule,
     UpstreamReconciliationModule,
     ScheduledJobsModule,
-    ModulesDisputesModule,
     MetricsModule,
     StellarModule,
     RatesModule,
@@ -275,6 +278,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     KycTiersModule,
     AppGraphQLModule,
     FxModule,
+    BlockchainModule,
   ],
   controllers: [AppController],
   providers: [
