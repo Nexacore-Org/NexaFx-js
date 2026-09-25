@@ -39,6 +39,8 @@
     "check:no-wildcard-deps": "node -e \"const pkg=require('./package.json');const w=Object.entries({...pkg.dependencies,...pkg.devDependencies}).filter(([,v])=>v==='*');if(w.length){console.error('Wildcard dependencies found:',w);process.exit(1);}\""
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/s3-request-presigner": "^3.700.0",
     "@nestjs-modules/ioredis": "^2.2.1",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bull": "^11.0.0",
