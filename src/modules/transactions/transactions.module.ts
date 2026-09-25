@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { EnrichmentModule } from '../enrichment/enrichment.module';
 import { SessionsModule } from '../sessions/sessions.module';
-import { AdminTransactionsController } from './contorllers/admin-transactions.controller';
+import { AdminTransactionsController } from './controllers/admin-transactions.controller';
 import { TransactionReplayService } from './services/transaction-replay.service';
 import { TransactionsService } from './services/transactions.service';
 import { TransactionRollbackService } from './services/transaction-rollback.service';
 import { WalletAliasService } from './services/wallet-alias.service';
-import { TransactionsController } from './contorllers/transactions.controller';
+import { TransactionsController } from './controllers/transactions.controller';
 import { WalletAliasController } from './controllers/wallet-alias.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TransactionEntity } from './entities/transaction.entity';
