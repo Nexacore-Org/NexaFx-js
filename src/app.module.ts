@@ -158,6 +158,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           username: database?.username,
           password: database?.password,
           database: database?.database,
+          ssl: database?.ssl,
           autoLoadEntities: true,
           synchronize: false,
           retryAttempts: 10,

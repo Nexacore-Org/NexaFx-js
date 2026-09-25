@@ -28,6 +28,20 @@ their real locations under `src/ledger`, `src/kyc` and `src/fx`.
 `npm run check:app-module-imports` (run in CI and on `prebuild`) fails the build if a relative
 import in `src/app.module.ts` stops resolving to a file on disk.
 
+## Database connection configuration
+
+`src/database/data-source.ts` (used by the `migration:*`/`seed` CLI scripts) and
+`src/config/configuration.ts` (consumed by `TypeOrmModule.forRootAsync` in `app.module.ts`) used
+to derive Postgres connection settings independently, each reading raw `process.env.DB_*` with
+its own inline defaults — and only `configuration.ts` computed a `DB_SSL`-derived value, which
+`app.module.ts`'s TypeORM factory then didn't even pass through. Migrations/seeds could silently
+run without TLS against a database the app itself connects to with TLS, or vice versa.
+
+Both paths now call the shared `buildPostgresConnectionOptions()` in
+`src/config/database-options.ts`, which reads `process.env` directly (it has to — `data-source.ts`
+runs as a plain TypeORM CLI script with no Nest DI context) and returns a TypeORM-ready `ssl`
+value (`false | { rejectUnauthorized: boolean }`). `app.module.ts`'s factory now passes
+`database?.ssl` through instead of dropping it. Issue #1290.
 ## Removed dead code
 
 - **`CurrencyPair` entity duplication** (issue #1296) — three distinct `@Entity('currency_pairs')`

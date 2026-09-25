@@ -8,9 +8,14 @@ Thanks for helping improve `NexaFx-js`.
    ```bash
    cp .env.example .env
    ```
-   `.env.example` lists every key in the `src/config/env.validation.ts` schema.
-   When you add a new key to that schema, add it to `.env.example` too —
-   `npm run check:env-example` (run in CI) fails otherwise.
+   `npm run check:env-example` (run in CI) fails if a key declared in the
+   `src/config/env.validation.ts` Zod schema has no entry in `.env.example`, so
+   when you add a new key to that schema, add it to `.env.example` too. This
+   only checks the schema in `env.validation.ts`, not every env var read
+   elsewhere (e.g. via `src/config/configuration.ts`) — `.env.example` may
+   still be missing some of those (tracked in #1160/#595) or contain stale
+   entries (e.g. a duplicate `JWT_SECRET`, tracked in #1244), so don't assume
+   it's a complete or authoritative list yet.
 2. Start the backing services with Docker Compose if you use local containers for PostgreSQL and Redis.
 3. Install dependencies and run the seed script when your environment needs sample data:
    ```bash
@@ -57,7 +62,11 @@ Thanks for helping improve `NexaFx-js`.
   ```bash
   npm run build
   ```
-- The repository enforces coverage thresholds in `package.json` for the highest-risk modules.
+- The repository enforces a single **global** coverage threshold in `package.json`'s Jest
+  `coverageThreshold.global` (currently 45% functions, 55% lines/statements, and a much lower
+  8% branches — see #1291 for the plan to raise branch coverage). There are no per-module or
+  per-glob thresholds for specific high-risk areas (auth, money movement); everything is judged
+  against the same global numbers.
 
 ## Pull request checklist
 
@@ -67,3 +76,5 @@ Thanks for helping improve `NexaFx-js`.
 - [ ] Coverage stays above the configured thresholds.
 - [ ] README or docs are updated when behavior changes.
 - [ ] PR description includes a short summary and testing notes.
+- [ ] If this PR changes `package.json`'s Jest config or the env schema/`.env.example`, this
+      document's descriptions of them are updated to match.
