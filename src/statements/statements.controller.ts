@@ -18,7 +18,7 @@ type RequestWithUser = {
   };
 };
 
-@Controller('api/v1/statements')
+@Controller('statements')
 export class StatementsController {
   constructor(private readonly statementsService: StatementsService) {}
 

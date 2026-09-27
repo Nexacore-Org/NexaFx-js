@@ -62,10 +62,13 @@ export class SupportTicketsService {
     return ticket;
   }
 
-  async assign(id: string, assignedTo: string, status?: TicketStatus): Promise<SupportTicketEntity> {
+  async assign(id: string, assignedTo: string, status?: TicketStatus, actorId?: string): Promise<SupportTicketEntity> {
     const ticket = await this.ticketRepo.findOne({ where: { id } });
     if (!ticket) {
       throw new NotFoundException('Support ticket not found');
+    }
+    if (actorId && ticket.userId !== actorId && ticket.assignedTo !== actorId) {
+      throw new ForbiddenException('Access denied');
     }
     ticket.assignedTo = assignedTo;
     if (status) {
@@ -80,6 +83,9 @@ export class SupportTicketsService {
     const ticket = await this.ticketRepo.findOne({ where: { id: ticketId } });
     if (!ticket) {
       throw new NotFoundException('Support ticket not found');
+    }
+    if (ticket.userId !== senderId && ticket.assignedTo !== senderId) {
+      throw new ForbiddenException('Access denied');
     }
     const msg = this.messageRepo.create({ ticketId, senderId, message });
     return this.messageRepo.save(msg);

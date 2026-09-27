@@ -20,7 +20,7 @@ const exchangeRateCacheTtlSeconds = parseInt(
   10,
 );
 
-@Controller('api/v1/fx')
+@Controller('fx')
 export class FxController {
   constructor(private readonly fxService: FxService) {}
 

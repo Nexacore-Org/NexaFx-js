@@ -24,7 +24,7 @@ import { CreateBulkPaymentDto } from './dto/create-bulk-payment.dto';
 
 @ApiTags('Bulk Payments')
 @ApiBearerAuth('access-token')
-@Controller('api/v1/bulk-payments')
+@Controller('bulk-payments')
 @UseGuards(JwtAuthGuard)
 export class BulkPaymentsController {
   constructor(private readonly bulkPaymentsService: BulkPaymentsService) {}

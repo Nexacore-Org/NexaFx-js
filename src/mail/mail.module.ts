@@ -12,6 +12,7 @@ export class MailModule {}
 
 @Module({
   imports: [
+    MailModule,
     BullModule.registerQueue({
       name: QUEUE_NAMES.EMAIL,
       defaultJobOptions: {

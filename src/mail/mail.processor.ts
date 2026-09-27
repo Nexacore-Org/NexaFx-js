@@ -2,6 +2,7 @@ import { Processor, Process, OnQueueFailed, OnQueueError } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { EMAIL_JOB_NAMES, QUEUE_NAMES } from '../queues/queue.constants';
+import { MailService } from './mail.service';
 
 export interface SendEmailJobData {
   to: string;
@@ -15,8 +16,10 @@ export interface SendEmailJobData {
 export class MailProcessor {
   private readonly logger = new Logger(MailProcessor.name);
 
+  constructor(private readonly mailService: MailService) {}
+
   @Process(EMAIL_JOB_NAMES.SEND_EMAIL)
-  handleSendEmail(job: Job<SendEmailJobData>): void {
+  async handleSendEmail(job: Job<SendEmailJobData>): Promise<void> {
     this.logger.log(
       `Processing job ${job.id} (${job.name}) — sending email to ${job.data.to}`,
     );
@@ -27,12 +30,11 @@ export class MailProcessor {
       throw new Error('Missing required email fields: to, subject');
     }
 
-    // Nodemailer / mail-service integration point.
-    // Injected transport would be called here; kept as a stub so the
-    // processor can be tested without a live SMTP connection.
-    this.logger.log(
-      `Email dispatched to ${to} with subject "${subject}" (html=${!!html}, text=${!!text})`,
-    );
+    await this.mailService.sendAdminAlert({
+      to,
+      subject,
+      body: html ?? text ?? '',
+    });
   }
 
   @OnQueueFailed()

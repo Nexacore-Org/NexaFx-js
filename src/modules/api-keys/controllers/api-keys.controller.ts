@@ -16,7 +16,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 
 @ApiTags('API Keys')
 @ApiBearerAuth('access-token')
-@Controller('api/v1/api-keys')
+@Controller('api-keys')
 @UseGuards(JwtAuthGuard)
 export class ApiKeysController {
   constructor(private readonly apiKeysService: ApiKeysService) {}

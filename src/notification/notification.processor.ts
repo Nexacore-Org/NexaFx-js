@@ -2,6 +2,7 @@ import { Processor, Process, OnQueueFailed, OnQueueError } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { NOTIFICATION_JOB_NAMES, QUEUE_NAMES } from '../queues/queue.constants';
+import { PushNotificationService } from '../notifications/push/push.service';
 
 export interface NotificationJobData {
   userId: string;
@@ -10,17 +11,28 @@ export interface NotificationJobData {
   data?: Record<string, string>;
 }
 
+/**
+ * @deprecated (issue #1302) This processor calls the push service
+ * directly with no NotificationPreference check — a user's channel/event
+ * opt-outs are silently bypassed. `NotificationBatchingService.dispatch()`
+ * in `src/notifications/` is the canonical, preference-aware path.
+ * Nothing currently enqueues DISPATCH jobs onto this queue (tracked as
+ * dead code separately); do not wire up a new producer for this
+ * processor without adding the same preference check first.
+ */
 @Processor(QUEUE_NAMES.NOTIFICATION)
 export class NotificationProcessor {
   private readonly logger = new Logger(NotificationProcessor.name);
 
+  constructor(private readonly pushService: PushNotificationService) {}
+
   @Process(NOTIFICATION_JOB_NAMES.DISPATCH)
-  handleDispatch(job: Job<NotificationJobData>): void {
+  async handleDispatch(job: Job<NotificationJobData>): Promise<void> {
     this.logger.log(
       `Processing job ${job.id} (${job.name}) — dispatching notification to user ${job.data.userId}`,
     );
 
-    const { userId, title, body } = job.data;
+    const { userId, title, body, data } = job.data;
 
     if (!userId || !title || !body) {
       throw new Error(
@@ -28,8 +40,7 @@ export class NotificationProcessor {
       );
     }
 
-    // Push notification transport integration point (FCM/APNs).
-    this.logger.log(`Notification dispatched to user ${userId}: "${title}"`);
+    await this.pushService.sendToUser(userId, { title, body, data });
   }
 
   @OnQueueFailed()

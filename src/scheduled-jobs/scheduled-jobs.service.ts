@@ -4,10 +4,19 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Repository } from 'typeorm';
+import { DataSource, LessThan, Repository } from 'typeorm';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { Otp } from '../otp/otp.entity';
 import { PasswordResetToken } from '../auth/password-reset.entity';
+import { WalletsService } from '../wallet/wallets.service';
+import { AuditService } from '../audit/audit.service';
+
+/** A balance movement that must be undone before a transaction is auto-failed. */
+interface BalanceReversal {
+  accountId: string;
+  currency: string;
+  delta: number;
+}
 
 @Injectable()
 export class ScheduledJobsService {
@@ -24,6 +33,9 @@ export class ScheduledJobsService {
     @InjectRepository(PasswordResetToken)
     private readonly passwordResetRepo: Repository<PasswordResetToken>,
     private readonly config: ConfigService,
+    private readonly dataSource: DataSource,
+    private readonly walletsService: WalletsService,
+    private readonly auditService: AuditService,
   ) {
     this.lockTtlMs = (this.config.get<number>('scheduledJobs.lockTtlMs') ?? 300_000);
     this.pendingTimeoutMinutes =
@@ -62,11 +74,7 @@ export class ScheduledJobsService {
         }
 
         try {
-          tx.status = TransactionStatus.FAILED;
-          await this.txRepo.save(tx);
-          this.logger.warn(
-            `Auto-failed timed-out pending transaction ${tx.id}`,
-          );
+          await this.failTimedOutTransaction(tx);
         } finally {
           await this.redis.del(lockKey);
         }
@@ -74,6 +82,119 @@ export class ScheduledJobsService {
     } finally {
       await this.releaseJobLock('reconcile-pending-txs');
     }
+  }
+
+  /**
+   * Marks a timed-out PENDING transaction FAILED, first undoing any balance
+   * movement that was already applied when it was created. Withdrawals, swaps
+   * and transfers all debit the wallet before the COMPLETED write, so failing
+   * them without a compensating credit permanently destroys the debited funds.
+   */
+  private async failTimedOutTransaction(tx: Transaction): Promise<void> {
+    const metadata = (tx.metadata ?? {}) as Record<string, unknown>;
+
+    if (metadata.autoFailRefundedAt) {
+      this.logger.debug(`Transaction ${tx.id} was already refunded; skipping`);
+      return;
+    }
+
+    const reversals = this.reversalsFor(tx);
+
+    if (reversals === null) {
+      this.logger.error(
+        `Cannot determine how to reverse timed-out transaction ${tx.id} ` +
+          `(type=${String(metadata.type ?? 'unknown')}). Leaving it PENDING for manual review.`,
+      );
+      return;
+    }
+
+    const refundedAt = new Date().toISOString();
+
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        for (const reversal of reversals) {
+          await this.walletsService.adjustBalance(
+            reversal.accountId,
+            reversal.currency,
+            reversal.delta,
+            manager,
+          );
+        }
+
+        tx.status = TransactionStatus.FAILED;
+        tx.metadata = {
+          ...metadata,
+          autoFailedAt: refundedAt,
+          ...(reversals.length > 0
+            ? { autoFailRefundedAt: refundedAt, autoFailReversals: reversals }
+            : {}),
+        };
+        await manager.save(Transaction, tx);
+      });
+    } catch (err) {
+      // A reversal can legitimately fail — e.g. a transfer whose recipient has
+      // already spent the credited funds. Leave the row PENDING so the next run
+      // (or an operator) can retry rather than failing it with funds unreturned.
+      this.logger.error(
+        `Failed to reverse timed-out transaction ${tx.id}; leaving it PENDING. ` +
+          `${(err as Error).message}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      return;
+    }
+
+    await this.auditService.log({
+      userId: tx.senderId,
+      action:
+        reversals.length > 0
+          ? 'transaction.auto_failed_refunded'
+          : 'transaction.auto_failed',
+      entityType: 'transaction',
+      entityId: tx.id,
+      reason: `Pending for longer than ${this.pendingTimeoutMinutes} minutes`,
+      after: { status: TransactionStatus.FAILED, reversals },
+    });
+
+    this.logger.warn(
+      reversals.length > 0
+        ? `Auto-failed timed-out pending transaction ${tx.id} and reversed ${reversals.length} balance movement(s)`
+        : `Auto-failed timed-out pending transaction ${tx.id}`,
+    );
+  }
+
+  /**
+   * Returns the balance movements to undo, or `null` when the transaction's
+   * shape is unrecognised and reversing it would be guesswork.
+   */
+  private reversalsFor(tx: Transaction): BalanceReversal[] | null {
+    const metadata = (tx.metadata ?? {}) as Record<string, unknown>;
+    const type = metadata.type;
+    // Withdrawals and swaps debit amount + fee up front.
+    const debited = Number(tx.amount) + Number(tx.fee ?? 0);
+
+    if (type === 'withdrawal' || type === 'swap') {
+      return [
+        { accountId: tx.senderId, currency: tx.currency, delta: debited },
+      ];
+    }
+
+    if (type === 'deposit') {
+      // Deposits only credit on the success path, so there is nothing owed back.
+      // A deposit stuck PENDING may have credited before the confirming write,
+      // which is a clawback decision for an operator rather than this job.
+      return [];
+    }
+
+    if (!type && tx.senderId !== tx.receiverId) {
+      // Peer transfer: the sender was debited and the receiver credited.
+      const amount = Number(tx.amount);
+      return [
+        { accountId: tx.senderId, currency: tx.currency, delta: amount },
+        { accountId: tx.receiverId, currency: tx.currency, delta: -amount },
+      ];
+    }
+
+    return null;
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)

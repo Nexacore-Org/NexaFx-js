@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { LessThanOrEqual, Repository } from 'typeorm';
 import {
   ScheduledReport,
   ReportType,
@@ -42,6 +43,22 @@ export class ScheduledReportsService {
     }
     report.isActive = false;
     return this.reportRepo.save(report);
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async processDueReports(): Promise<void> {
+    const now = new Date();
+    const due = await this.reportRepo.find({
+      where: { isActive: true, nextRunAt: LessThanOrEqual(now) },
+      order: { nextRunAt: 'ASC' },
+    });
+
+    for (const report of due) {
+      await this.generateReport(report.reportType);
+      report.lastRunAt = new Date();
+      report.nextRunAt = this.computeNextRun(report.frequency);
+      await this.reportRepo.save(report);
+    }
   }
 
   async generateReport(_reportType: ReportType): Promise<Record<string, unknown>> {

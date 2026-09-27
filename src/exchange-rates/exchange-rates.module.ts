@@ -7,12 +7,14 @@ import { ExchangeRateHistoryEntity } from './entities/exchange-rate-history.enti
 import { ExchangeRateCache } from './cache/exchange-rates.cache';
 import { ExchangeRatesService } from './exchange-rates.service';
 import { ExchangeRatesController } from './exchange-rates.controller';
+import { RatesModule } from '../rates/rates.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ExchangeRateCacheEntity, ExchangeRateHistoryEntity]),
     ScheduleModule.forRoot(),
     HttpModule,
+    RatesModule,
   ],
   controllers: [ExchangeRatesController],
   providers: [ExchangeRatesService, ExchangeRateCache],

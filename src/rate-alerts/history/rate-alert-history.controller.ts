@@ -14,7 +14,7 @@ interface AuthenticatedRequest {
   };
 }
 
-@Controller('api/v1/rate-alerts/history')
+@Controller('rate-alerts/history')
 @UseGuards(JwtAuthGuard)
 export class RateAlertHistoryController {
   constructor(private readonly historyService: RateAlertHistoryService) {}

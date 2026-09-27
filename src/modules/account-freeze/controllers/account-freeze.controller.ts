@@ -17,7 +17,7 @@ import { AdminGuard } from '../../auth/guards/admin.guard';
 
 @ApiTags('Account Freeze')
 @ApiBearerAuth('access-token')
-@Controller('api/v1/admin/account-freeze')
+@Controller('admin/account-freeze')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AccountFreezeController {
   constructor(private readonly freezeService: AccountFreezeService) {}

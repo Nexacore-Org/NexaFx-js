@@ -104,9 +104,16 @@ export class KycService {
     return saved;
   }
 
-  async appeal(id: string, reason: string): Promise<KycDocument> {
+  async appeal(
+    id: string,
+    reason: string,
+    userId: string,
+  ): Promise<KycDocument> {
     const doc = await this.kycRepo.findOne({ where: { id } });
     if (!doc) throw new NotFoundException(`KYC document ${id} not found`);
+    if (doc.userId !== userId) {
+      throw new ForbiddenException('You can only appeal your own KYC document');
+    }
     if (doc.status !== KycDocumentStatus.REJECTED) {
       throw new ForbiddenException('Only rejected documents can be appealed');
     }

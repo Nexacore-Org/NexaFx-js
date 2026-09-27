@@ -5,7 +5,7 @@ import { User, UserRole } from '../users/user.entity';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
 import { KycDocumentStatus } from '../kyc/kyc-document.entity';
-import { SupportTicket } from '../support/support-ticket.entity';
+import { SupportTicketEntity } from '../modules/support-tickets/entities/support-ticket.entity';
 import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
 import { AuditService } from '../audit/audit.service';
@@ -30,8 +30,8 @@ export class AdminService {
     private readonly transactionsRepository: Repository<Transaction>,
     @InjectRepository(KycDocument)
     private readonly kycRepository: Repository<KycDocument>,
-    @InjectRepository(SupportTicket)
-    private readonly supportTicketsRepository: Repository<SupportTicket>,
+    @InjectRepository(SupportTicketEntity)
+    private readonly supportTicketsRepository: Repository<SupportTicketEntity>,
     @InjectRepository(WebhookEndpoint)
     private readonly webhooksRepository: Repository<WebhookEndpoint>,
     @InjectRepository(AmlAlert)

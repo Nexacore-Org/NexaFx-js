@@ -7,11 +7,14 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   NotificationPreferencesService,
-  UpdatePreferenceDto,
+  UpdatePreferenceDto as UpdatePreferenceBody,
 } from './notification-preferences.service';
+import { UpdatePreferencesRequestDto } from './dto/update-preferences.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 interface AuthenticatedRequest {
   user?: {
@@ -19,6 +22,7 @@ interface AuthenticatedRequest {
   };
 }
 
+@UseGuards(JwtAuthGuard)
 @Controller('api/v1/notification-preferences')
 export class NotificationPreferencesController {
   constructor(
@@ -35,7 +39,7 @@ export class NotificationPreferencesController {
   @HttpCode(HttpStatus.OK)
   updatePreferences(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { preferences: UpdatePreferenceDto[] },
+    @Body() body: UpdatePreferencesRequestDto,
   ) {
     const userId = req.user?.sub ?? '';
     return this.preferencesService.updatePreferences(userId, body.preferences);
@@ -45,7 +49,7 @@ export class NotificationPreferencesController {
   @HttpCode(HttpStatus.OK)
   patchPreferences(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { preferences: UpdatePreferenceDto[] },
+    @Body() body: { preferences: UpdatePreferenceBody[] },
   ) {
     const userId = req.user?.sub ?? '';
     return this.preferencesService.updatePreferences(userId, body.preferences);

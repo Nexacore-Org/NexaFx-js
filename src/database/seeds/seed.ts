@@ -12,7 +12,7 @@ const dataSource = new DataSource({
   logging: false,
 });
 
-const CURRENCIES = [
+export const CURRENCIES = [
   { code: 'USD', name: 'US Dollar', symbol: '$' },
   { code: 'EUR', name: 'Euro', symbol: '€' },
   { code: 'GBP', name: 'British Pound', symbol: '£' },
@@ -22,7 +22,7 @@ const CURRENCIES = [
 ];
 
 // [fromCurrency, toCurrency, spreadPercent]
-const CURRENCY_PAIRS: Array<[string, string, number]> = [
+export const CURRENCY_PAIRS: Array<[string, string, number]> = [
   ['XLM', 'USDC', 0.005],
   ['XLM', 'USD', 0.005],
   ['USD', 'NGN', 0.005],
@@ -35,11 +35,13 @@ const CURRENCY_PAIRS: Array<[string, string, number]> = [
   ['USD', 'USDC', 0.002],
 ];
 
-const ROLES = ['admin', 'user', 'compliance'];
+export const ROLES = ['admin', 'user', 'compliance'];
 
-async function seed(): Promise<void> {
-  await dataSource.initialize();
-  const queryRunner = dataSource.createQueryRunner();
+export async function seed(ds: DataSource = dataSource): Promise<void> {
+  if (!ds.isInitialized) {
+    await ds.initialize();
+  }
+  const queryRunner = ds.createQueryRunner();
 
   try {
     await queryRunner.connect();
@@ -122,8 +124,11 @@ async function seed(): Promise<void> {
     process.exit(1);
   } finally {
     await queryRunner.release();
-    await dataSource.destroy();
+    await ds.destroy();
   }
 }
 
-seed();
+if (process.env.NODE_ENV !== 'test') {
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  seed();
+}

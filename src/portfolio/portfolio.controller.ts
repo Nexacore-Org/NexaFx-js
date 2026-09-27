@@ -20,7 +20,7 @@ interface AuthenticatedRequest {
   };
 }
 
-@Controller('api/v1/portfolio')
+@Controller('portfolio')
 @UseGuards(JwtAuthGuard)
 export class PortfolioController {
   constructor(private readonly portfolioService: PortfolioService) {}

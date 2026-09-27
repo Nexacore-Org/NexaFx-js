@@ -44,7 +44,7 @@ interface AuthenticatedRequest {
   };
 }
 
-@Controller('api/v1/transactions')
+@Controller('transactions')
 export class TransactionsController {
   constructor(
     private readonly txService: TransactionsService,

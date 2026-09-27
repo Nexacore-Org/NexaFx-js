@@ -27,7 +27,7 @@ interface AuthenticatedRequest {
   };
 }
 
-@Controller('api/v1')
+@Controller()
 export class AmlController {
   constructor(private readonly screeningService: AmlScreeningService) {}
 

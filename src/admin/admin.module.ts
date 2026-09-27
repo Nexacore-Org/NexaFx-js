@@ -14,7 +14,7 @@ import { SystemAdminController } from '../modules/admin/controllers/system-admin
 import { User } from '../users/user.entity';
 import { Transaction } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
-import { SupportTicket } from '../support/support-ticket.entity';
+import { SupportTicketEntity } from '../modules/support-tickets/entities/support-ticket.entity';
 import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
 import { WalletBalanceEntity } from '../wallet/wallet-balance.entity';
@@ -31,7 +31,7 @@ import { AdminApproval } from './admin-approval.entity';
       User,
       Transaction,
       KycDocument,
-      SupportTicket,
+      SupportTicketEntity,
       WebhookEndpoint,
       AmlAlert,
       WalletBalanceEntity,

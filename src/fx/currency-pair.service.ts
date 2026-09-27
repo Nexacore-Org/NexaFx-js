@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CurrencyPair } from './entities/currency-pair.entity';
+import { CurrencyPair } from './currency-pair.entity';
 import { UpsertCurrencyPairDto } from './dto/upsert-currency-pair.dto';
 import { CurrenciesService } from '../currencies/currencies.service';
 

@@ -9,14 +9,14 @@ import {
   HttpStatus,
   NotFoundException,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../guards/jwt.guard';
-import { RefreshTokensService } from '../../../tokens/refresh-tokens.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RefreshTokensService } from '../../tokens/refresh-tokens.service';
 
 interface AuthenticatedRequest {
   user: { sub: string };
 }
 
-@Controller('api/v1/auth/sessions')
+@Controller('auth/sessions')
 @UseGuards(JwtAuthGuard)
 export class SessionsController {
   constructor(private readonly refreshTokensService: RefreshTokensService) {}
