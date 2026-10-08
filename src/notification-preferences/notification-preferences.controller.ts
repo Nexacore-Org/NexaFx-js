@@ -23,7 +23,7 @@ interface AuthenticatedRequest {
 }
 
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/notification-preferences')
+@Controller('notification-preferences')
 export class NotificationPreferencesController {
   constructor(
     private readonly preferencesService: NotificationPreferencesService,

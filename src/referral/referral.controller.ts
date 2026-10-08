@@ -21,7 +21,7 @@ interface AuthenticatedRequest {
 }
 
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/referrals')
+@Controller('referrals')
 export class ReferralController {
   constructor(private readonly referralService: ReferralService) {}
 

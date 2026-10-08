@@ -9,9 +9,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "prebuild": "npm run check:no-wildcard-deps && npm run check:controller-prefixes",
-    "prebuild": "npm run check:no-wildcard-deps && npm run check:env-example",
-    "prebuild": "npm run check:no-wildcard-deps && npm run check:app-module-imports",
+    "prebuild": "npm run check:no-wildcard-deps && npm run check:controller-prefixes && npm run check:env-example && npm run check:app-module-imports",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
