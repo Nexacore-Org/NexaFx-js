@@ -23,7 +23,7 @@ interface AuthenticatedRequest {
 }
 
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/kyc')
+@Controller('kyc')
 export class KycController {
   constructor(private readonly kycService: KycService) {}
 

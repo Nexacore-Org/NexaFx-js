@@ -20,7 +20,7 @@ interface AuthenticatedRequest {
 }
 
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/activity-feed')
+@Controller('activity-feed')
 export class ActivityFeedController {
   constructor(private readonly activityFeedService: ActivityFeedService) {}
 

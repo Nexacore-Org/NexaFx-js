@@ -25,7 +25,7 @@ interface AuthenticatedRequest {
 }
 
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/devices')
+@Controller('devices')
 export class DevicesController {
   constructor(private readonly pushService: PushNotificationService) {}
 

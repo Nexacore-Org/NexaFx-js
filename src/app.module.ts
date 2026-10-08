@@ -36,7 +36,6 @@ import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { ExportModule } from './modules/export/export.module';
 import { KycModule } from './kyc/kyc.module';
 import { FxModule } from './fx/fx.module';
-import { BlockchainModule } from './blockchain/blockchain.module';
 import { SpendingModule } from './spending/spending.module';
 import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
 import { AuditModule } from './audit/audit.module';
@@ -49,7 +48,6 @@ import {
   MailModule as UpstreamMailModule,
   MailQueueModule,
 } from './mail/mail.module';
-import { NotificationQueueModule } from './notification/notification.module';
 import { TermsModule } from './terms/terms.module';
 import { StatementsModule } from './statements/statements.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
@@ -223,7 +221,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           }),
           BullModule.registerQueue({ name: 'default' }),
           MailQueueModule,
-          NotificationQueueModule,
           TransactionQueueModule,
           QueuesModule,
         ]
@@ -278,7 +275,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     KycTiersModule,
     AppGraphQLModule,
     FxModule,
-    BlockchainModule,
   ],
   controllers: [AppController],
   providers: [
