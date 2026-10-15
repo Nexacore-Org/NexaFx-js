@@ -8,9 +8,13 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { IS_PUBLIC_KEY } from './decorators/public.decorator';
+import { AuthenticatedUser } from './authenticated-user.interface';
+import { TokenType } from './token-types';
 
 interface JwtPayload {
-  sub: string;
+  sub?: string;
+  typ?: string;
+  isEmailVerified?: boolean;
   email?: string;
   role?: string;
   roles?: string[];
@@ -20,7 +24,7 @@ interface AuthenticatedRequest {
   headers: {
     authorization?: string | string[];
   };
-  user?: JwtPayload;
+  user?: AuthenticatedUser;
 }
 
 @Injectable()
@@ -74,7 +78,16 @@ export class JwtAuthGuard implements CanActivate {
     try {
       const secret = String(this.config.get('jwt.secret') ?? '');
       const payload = this.jwtService.verify<JwtPayload>(token, { secret });
-      request.user = payload;
+      if (payload.typ !== TokenType.ACCESS || !payload.sub) {
+        throw new UnauthorizedException('Invalid authentication token');
+      }
+      request.user = {
+        id: payload.sub,
+        sub: payload.sub,
+        email: payload.email ?? '',
+        role: payload.role ?? '',
+        isEmailVerified: payload.isEmailVerified,
+      };
       return true;
     } catch {
       throw new UnauthorizedException('Invalid authentication token');

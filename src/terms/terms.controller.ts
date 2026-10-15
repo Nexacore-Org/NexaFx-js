@@ -24,7 +24,7 @@ export class TermsController {
   @UseGuards(JwtAuthGuard)
   @Post('accept')
   accept(@Req() request: AuthenticatedRequest) {
-    const userId = request.user?.sub ?? request.user?.id;
+    const userId = request.user?.id;
     if (!userId) {
       throw new UnauthorizedException('Authenticated user is required');
     }

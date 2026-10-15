@@ -9,21 +9,17 @@ import {
   Param,
   Post,
   Query,
-  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import { Queue } from 'bull';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { AdminRoleGuard } from '../../common/guards/admin-role.guard';
 import { IpAllowlistGuard } from '../../common/guards/ip-allowlist.guard';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { ExportTransactionsDto } from '../dto/export-transactions.dto';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ExportStorageService } from './export-storage.service';
-
-interface AuthenticatedRequest extends Request {
-  user: { id: string; email: string; role: string };
-}
 
 @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
 @Controller('admin/exports')
@@ -38,7 +34,7 @@ export class AdminExportsController {
   @Post('transactions')
   async createExport(
     @Body() dto: ExportTransactionsDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('email') requestedByEmail: string,
   ) {
     if (dto.format !== 'csv') {
       throw new BadRequestException(
@@ -49,7 +45,7 @@ export class AdminExportsController {
     const job = this.exportsQueue
       ? await this.exportsQueue.add('export-transactions', {
           ...dto,
-          requestedByEmail: req.user.email,
+          requestedByEmail,
         })
       : { id: 'export-queued' };
 

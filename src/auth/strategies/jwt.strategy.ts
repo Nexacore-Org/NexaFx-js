@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { UsersService } from '../../users/users.service';
+import { AuthenticatedUser } from '../authenticated-user.interface';
+import { TokenType } from '../token-types';
 
 export interface JwtPayload {
   sub: string;
@@ -10,6 +12,7 @@ export interface JwtPayload {
   role: string;
   isEmailVerified: boolean;
   iat: number;
+  typ?: string;
 }
 
 @Injectable()
@@ -31,7 +34,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    if (payload.typ !== TokenType.ACCESS || !payload.sub) {
+      throw new UnauthorizedException('Invalid authentication token');
+    }
     const user = await this.usersService.findById(payload.sub);
     if (!user) {
       throw new UnauthorizedException('User no longer exists');
@@ -44,6 +50,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
     return {
       id: payload.sub,
+      sub: payload.sub,
       email: payload.email,
       role: payload.role,
       isEmailVerified: payload.isEmailVerified,

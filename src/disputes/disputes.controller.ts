@@ -6,10 +6,8 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import {
   ApiTags,
@@ -22,6 +20,7 @@ import {
 import { DisputesService } from './disputes.service';
 import { DisputeStatus } from './dispute.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import {
   FileDisputeDto,
@@ -38,10 +37,6 @@ class ResolveDisputeBody {
   resolution!: string;
 }
 
-interface AuthenticatedRequest extends Request {
-  user: { id: string };
-}
-
 @ApiTags('Disputes')
 @ApiBearerAuth('access-token')
 @Controller()
@@ -53,10 +48,9 @@ export class DisputesController {
   @ApiOperation({ summary: 'File a new dispute' })
   @ApiCreatedResponse({ description: 'Dispute filed successfully' })
   async fileDispute(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') userId: string,
     @Body() dto: FileDisputeDto,
   ) {
-    const userId = req.user.id;
     return this.disputesService.fileDispute(userId, dto);
   }
 
@@ -64,11 +58,10 @@ export class DisputesController {
   @ApiOperation({ summary: 'List disputes for the authenticated user' })
   @ApiOkResponse({ description: 'Paginated list of disputes' })
   async findAll(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') userId: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    const userId = req.user.id;
     return this.disputesService.findAllByUser(userId, page, limit);
   }
 
@@ -76,8 +69,7 @@ export class DisputesController {
   @ApiOperation({ summary: 'Get a specific dispute with messages' })
   @ApiParam({ name: 'id', description: 'Dispute UUID' })
   @ApiOkResponse({ description: 'Dispute details with messages' })
-  async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const userId = req.user.id;
+  async findOne(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.disputesService.findOne(id, userId);
   }
 
@@ -87,10 +79,9 @@ export class DisputesController {
   @ApiOkResponse({ description: 'Dispute escalated' })
   async escalate(
     @Param('id') id: string,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') userId: string,
     @Body() dto: EscalateDisputeDto,
   ) {
-    const userId = req.user.id;
     return this.disputesService.escalate(id, userId, dto);
   }
 
@@ -100,10 +91,9 @@ export class DisputesController {
   @ApiCreatedResponse({ description: 'Message added' })
   async addMessage(
     @Param('id') id: string,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') userId: string,
     @Body() dto: DisputeMessageDto,
   ) {
-    const userId = req.user.id;
     return this.disputesService.addMessage(id, userId, 'user', dto);
   }
 
@@ -111,8 +101,7 @@ export class DisputesController {
   @ApiOperation({ summary: 'Resolve a dispute' })
   @ApiParam({ name: 'id', description: 'Dispute UUID' })
   @ApiOkResponse({ description: 'Dispute resolved' })
-  async resolve(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const userId = req.user.id;
+  async resolve(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.disputesService.resolve(id, userId);
   }
 
@@ -120,8 +109,7 @@ export class DisputesController {
   @ApiOperation({ summary: 'Reject a dispute' })
   @ApiParam({ name: 'id', description: 'Dispute UUID' })
   @ApiOkResponse({ description: 'Dispute rejected' })
-  async reject(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const userId = req.user.id;
+  async reject(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.disputesService.reject(id, userId);
   }
 
