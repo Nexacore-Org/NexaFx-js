@@ -23,8 +23,15 @@ export class EndpointRateLimitGuard implements CanActivate {
     const endpoint = request.route?.path || request.url;
     const method = request.method;
 
+    const userId = request.user?.sub ?? request.user?.id;
+    const clientId = userId ? `user:${userId}` : `ip:${request.ip ?? 'unknown'}`;
+
     try {
-      const result = await this.endpointRateLimitService.checkRateLimit(endpoint, method);
+      const result = await this.endpointRateLimitService.checkRateLimit(
+        endpoint,
+        method,
+        clientId,
+      );
 
       response.setHeader('X-RateLimit-Remaining', result.remaining);
 

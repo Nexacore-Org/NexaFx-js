@@ -35,6 +35,14 @@ Thanks for helping improve `NexaFx-js`.
 - Reference the issue number in the PR description with `Closes #123`.
 - Keep PR titles concise and action-oriented.
 
+## Database transactions
+
+Inside any `dataSource.transaction(async (manager) => { ... })` callback, pass
+`manager` to every repository or service call that touches the database (for
+example `walletsService.adjustBalance(accountId, currency, delta, manager)`).
+Without it, the call opens its own independent transaction and commits even if
+the surrounding block later rolls back.
+
 ## Routing
 
 - `src/main.ts` applies a single global prefix (`api/v1`) to every route.

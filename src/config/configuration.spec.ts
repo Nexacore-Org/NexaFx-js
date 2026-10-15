@@ -18,6 +18,7 @@ describe('configuration factory', () => {
       JWT_SECRET: 'a'.repeat(32),
       REFRESH_TOKEN_SECRET: 'b'.repeat(32),
       OTP_SECRET: 'c'.repeat(32),
+      PROVIDER_WEBHOOK_SECRET: 'd'.repeat(32),
       MAIL_HOST: 'smtp.example.com',
       MAIL_PORT: '587',
       MAIL_USER: 'mailer@example.com',

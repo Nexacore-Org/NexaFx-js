@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
+import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 import {
   EndpointRateLimitConfigEntity,
@@ -10,23 +12,52 @@ import {
   UpdateEndpointRateLimitDto,
 } from '../dto/endpoint-rate-limit.dto';
 
-interface SlidingWindowEntry {
-  timestamps: number[];
-}
+export const ENDPOINT_RATE_LIMIT_REDIS = 'ENDPOINT_RATE_LIMIT_REDIS';
 
+/**
+ * Atomic sliding-window check against a Redis sorted set.
+ * KEYS[1] = bucket key; ARGV = now, windowMs, maxRequests, unique member.
+ * Returns {allowed (1/0), remaining, oldestTimestampInWindow}.
+ */
+const SLIDING_WINDOW_SCRIPT = `
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local windowMs = tonumber(ARGV[2])
+local maxRequests = tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', key, 0, now - windowMs)
+local count = redis.call('ZCARD', key)
+if count >= maxRequests then
+  local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+  return {0, 0, tonumber(oldest[2])}
+end
+redis.call('ZADD', key, now, ARGV[4])
+redis.call('PEXPIRE', key, windowMs)
+return {1, maxRequests - count - 1, 0}
+`;
+
+/**
+ * Rate-limit key strategy: each bucket is scoped by `method:endpoint:clientId`.
+ * `clientId` is the authenticated user id when the request carries one
+ * (`user:<sub>`), otherwise the caller's IP (`ip:<address>`), so one client's
+ * burst never consumes another client's allowance. Counters live in Redis so
+ * limits hold across app instances. New endpoints should pass the same
+ * `clientId` shape (see EndpointRateLimitGuard).
+ */
 @Injectable()
 export class EndpointRateLimitService {
   private readonly logger = new Logger(EndpointRateLimitService.name);
-  private readonly slidingWindows = new Map<string, SlidingWindowEntry>();
 
   constructor(
     @InjectRepository(EndpointRateLimitConfigEntity)
     private readonly configRepo: Repository<EndpointRateLimitConfigEntity>,
+    @Inject(ENDPOINT_RATE_LIMIT_REDIS)
+    private readonly redis: Redis,
   ) {}
 
   async checkRateLimit(
     endpoint: string,
     method: string,
+    clientId = 'anonymous',
   ): Promise<{ allowed: boolean; remaining: number; retryAfterMs: number }> {
     const config = await this.configRepo.findOne({
       where: { endpoint, method: method.toUpperCase() as HttpMethod, isActive: true },
@@ -36,30 +67,25 @@ export class EndpointRateLimitService {
       return { allowed: true, remaining: Infinity, retryAfterMs: 0 };
     }
 
-    const key = `${method.toUpperCase()}:${endpoint}`;
+    const key = `endpoint-rate-limit:${method.toUpperCase()}:${endpoint}:${clientId}`;
     const now = Date.now();
-    const windowStart = now - config.windowMs;
 
-    let entry = this.slidingWindows.get(key);
-    if (!entry) {
-      entry = { timestamps: [] };
-      this.slidingWindows.set(key, entry);
-    }
+    const [allowed, remaining, oldest] = (await this.redis.eval(
+      SLIDING_WINDOW_SCRIPT,
+      1,
+      key,
+      now,
+      config.windowMs,
+      config.maxRequests,
+      `${now}:${randomUUID()}`,
+    )) as [number, number, number];
 
-    entry.timestamps = entry.timestamps.filter((ts) => ts > windowStart);
-
-    if (entry.timestamps.length >= config.maxRequests) {
-      const oldestInWindow = entry.timestamps[0];
-      const retryAfterMs = oldestInWindow + config.windowMs - now;
+    if (!allowed) {
+      const retryAfterMs = oldest + config.windowMs - now;
       return { allowed: false, remaining: 0, retryAfterMs: Math.max(retryAfterMs, 1) };
     }
 
-    entry.timestamps.push(now);
-    return {
-      allowed: true,
-      remaining: config.maxRequests - entry.timestamps.length,
-      retryAfterMs: 0,
-    };
+    return { allowed: true, remaining, retryAfterMs: 0 };
   }
 
   async listConfigs(): Promise<EndpointRateLimitConfigEntity[]> {

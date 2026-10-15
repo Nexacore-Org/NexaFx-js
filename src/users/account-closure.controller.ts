@@ -5,11 +5,15 @@ import {
   Get,
   Headers,
   Post,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AccountClosureService } from './account-closure.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiTags('Users')
+@UseGuards(JwtAuthGuard)
 @Controller('users/me')
 export class AccountClosureController {
   constructor(private readonly accountClosureService: AccountClosureService) {}
@@ -42,7 +46,8 @@ export class AccountClosureController {
   }
 
   @Get('export-data')
-  exportData(@Headers('x-user-id') userId: string) {
+  exportData(@Req() req: { user: { sub: string } }) {
+    const userId = req.user.sub;
     return {
       exportId: `exp_${Date.now()}_${userId?.slice(0, 6) ?? 'usr'}`,
       requestedAt: new Date().toISOString(),
