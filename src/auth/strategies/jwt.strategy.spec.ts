@@ -18,6 +18,7 @@ const basePayload = (iat: number): JwtPayload => ({
   email: 'user@example.com',
   role: 'user',
   isEmailVerified: true,
+  typ: 'access',
   iat,
 });
 
@@ -33,10 +34,28 @@ describe('JwtStrategy.validate', () => {
     const result = await strategy.validate(basePayload(1000));
     expect(result).toEqual({
       id: 'user-1',
+      sub: 'user-1',
       email: 'user@example.com',
       role: 'user',
       isEmailVerified: true,
     });
+  });
+
+  it.each(['refresh', 'sep10', 'export-download', undefined])(
+    'rejects a token with typ=%s',
+    async (typ) => {
+      const strategy = makeStrategy({ findById: jest.fn().mockResolvedValue({ id: 'user-1' }) });
+      await expect(
+        strategy.validate({ ...basePayload(1000), typ } as JwtPayload),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    },
+  );
+
+  it('rejects a token without sub', async () => {
+    const strategy = makeStrategy({ findById: jest.fn() });
+    await expect(
+      strategy.validate({ ...basePayload(1000), sub: '' } as JwtPayload),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('rejects token issued before password change', async () => {

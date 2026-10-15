@@ -122,3 +122,22 @@ Ed25519 hashes internally, so the challenge must not be pre-hashed, and the
 streaming `crypto.createVerify()` API must not be used — it does not support
 Ed25519 keys. Public keys are accepted as Stellar StrKey addresses (`G...`,
 checksum-validated) or as a base64-encoded raw 32-byte key.
+
+## Token types
+
+Every JWT the app signs carries a `typ` claim naming its purpose. Only
+`typ: "access"` tokens (with a `sub`) authenticate API requests; the global
+`JwtAuthGuard` and `JwtStrategy` reject everything else with 401.
+
+| `typ`             | Issued by                         | Signed with                              | Authenticates API calls |
+| ----------------- | --------------------------------- | ---------------------------------------- | ----------------------- |
+| `access`          | login / register / refresh        | `jwt.secret`                             | yes                     |
+| `refresh`         | `AuthService.rotateRefreshToken`  | `refreshToken.secret`                    | no (refresh endpoint only) |
+| `sep10`           | `Sep10AuthService`                | `jwt.secret`                             | no                      |
+| `export-download` | `ExportStorageService`            | HMAC-derived from `jwt.secret`           | no (download link only) |
+
+Refreshing loads the user from the database and takes `email`/`role` from
+there, so a demoted admin gets the new role on the next refresh.
+
+`request.user` has one shape everywhere (`AuthenticatedUser`): `id` always
+equals `sub`. Read the caller with `@CurrentUser('id')`.

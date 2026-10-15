@@ -6,10 +6,8 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import {
   ApiTags,
@@ -22,6 +20,7 @@ import {
 import { DisputesService } from './disputes.service';
 import { DisputeStatus } from './dispute.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import {
   FileDisputeDto,
@@ -53,7 +52,7 @@ export class DisputesController {
   @ApiOperation({ summary: 'File a new dispute' })
   @ApiCreatedResponse({ description: 'Dispute filed successfully' })
   async fileDispute(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') userId: string,
     @Body() dto: FileDisputeDto,
   ) {
     const userId = (req.user.sub ?? req.user.id) as string;
@@ -64,7 +63,7 @@ export class DisputesController {
   @ApiOperation({ summary: 'List disputes for the authenticated user' })
   @ApiOkResponse({ description: 'Paginated list of disputes' })
   async findAll(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') userId: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
@@ -87,7 +86,7 @@ export class DisputesController {
   @ApiOkResponse({ description: 'Dispute escalated' })
   async escalate(
     @Param('id') id: string,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') userId: string,
     @Body() dto: EscalateDisputeDto,
   ) {
     const userId = (req.user.sub ?? req.user.id) as string;
@@ -100,7 +99,7 @@ export class DisputesController {
   @ApiCreatedResponse({ description: 'Message added' })
   async addMessage(
     @Param('id') id: string,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') userId: string,
     @Body() dto: DisputeMessageDto,
   ) {
     const userId = (req.user.sub ?? req.user.id) as string;
@@ -111,6 +110,7 @@ export class DisputesController {
   @ApiOperation({ summary: 'Resolve a dispute' })
   @ApiParam({ name: 'id', description: 'Dispute UUID' })
   @ApiOkResponse({ description: 'Dispute resolved' })
+  async resolve(@Param('id') id: string, @CurrentUser('id') userId: string) {
   async resolve(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.resolve(id, userId);
@@ -120,6 +120,7 @@ export class DisputesController {
   @ApiOperation({ summary: 'Reject a dispute' })
   @ApiParam({ name: 'id', description: 'Dispute UUID' })
   @ApiOkResponse({ description: 'Dispute rejected' })
+  async reject(@Param('id') id: string, @CurrentUser('id') userId: string) {
   async reject(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.reject(id, userId);

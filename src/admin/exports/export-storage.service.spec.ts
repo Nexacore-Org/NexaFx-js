@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { writeFileSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -7,7 +8,8 @@ import { ExportStorageService } from './export-storage.service';
 
 describe('ExportStorageService', () => {
   const jwtService = new JwtService({ secret: 'test-secret' });
-  const service = new ExportStorageService(jwtService);
+  const config = { get: jest.fn(() => 'test-jwt-secret') } as unknown as ConfigService;
+  const service = new ExportStorageService(jwtService, config);
 
   it('issues a download URL that resolves back to the stored file', () => {
     const sourcePath = join(tmpdir(), `export-test-${Date.now()}.csv`);

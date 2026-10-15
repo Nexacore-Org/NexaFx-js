@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password.service';
 import { PasswordPolicyService } from './password-policy.service';
+import { TokenType } from './token-types';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 30;
@@ -182,16 +183,23 @@ export class AuthService {
       throw new ForbiddenException('Refresh token has already been used (token rotation policy)');
     }
     try {
-      const payload = this.jwtService.verify(refreshToken);
+      // Refresh tokens are signed with their own secret and must carry
+      // typ=refresh, so an access token can never be replayed here (and a
+      // refresh token can never verify as an access token).
+      const refreshSecret = this.configService.get<string>('refreshToken.secret');
+      const payload = this.jwtService.verify(refreshToken, { secret: refreshSecret });
+      if (payload.typ !== TokenType.REFRESH || !payload.sub) {
+        throw new UnauthorizedException('Invalid or expired refresh token');
+      }
       this.usedRefreshTokens.add(refreshToken);
-      const newAccessToken = this.jwtService.sign({
-        sub: payload.sub,
-        email: payload.email,
-        role: payload.role,
-      });
+
+      // Take identity and role from the database, not the presented token, so
+      // demotions and deactivations take effect on the next refresh.
+      const user = await this.usersService.findById(payload.sub);
+      const newAccessToken = this.issueToken(user.id, user.email, user.role).accessToken;
       const newRefreshToken = this.jwtService.sign(
-        { sub: payload.sub, email: payload.email, role: payload.role, type: 'refresh' },
-        { expiresIn: '7d' },
+        { sub: user.id, typ: TokenType.REFRESH },
+        { secret: refreshSecret, expiresIn: '7d' },
       );
       return { accessToken: newAccessToken, refreshToken: newRefreshToken };
     } catch (err) {
@@ -202,7 +210,7 @@ export class AuthService {
 
   private issueToken(userId: string, email: string, role: string) {
     return {
-      accessToken: this.jwtService.sign({ sub: userId, email, role }),
+      accessToken: this.jwtService.sign({ sub: userId, email, role, typ: TokenType.ACCESS }),
     };
   }
 }

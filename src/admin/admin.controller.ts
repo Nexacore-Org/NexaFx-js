@@ -8,14 +8,14 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   Res,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { join, resolve, normalize } from 'path';
 import { AdminService } from './admin.service';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
@@ -31,15 +31,6 @@ const adminStatsTtlSeconds = parseInt(
 );
 
 const KYC_UPLOAD_BASE = resolve(process.cwd(), 'uploads', 'kyc');
-
-interface AuthenticatedRequest extends Request {
-  user: {
-    id: string;
-    email: string;
-    role: string;
-    isEmailVerified: boolean;
-  };
-}
 
 function assertSafePathSegment(segment: string, paramName: string): void {
   if (/[/\\]/.test(segment) || segment.includes('..')) {
@@ -93,12 +84,12 @@ export class AdminController {
   overrideTransactionStatus(
     @Param('id') id: string,
     @Body() dto: UpdateTransactionStatusDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') adminId: string,
   ) {
     return this.adminService.overrideTransactionStatus(
       id,
       dto.status,
-      req.user.id,
+      adminId,
       dto.reason,
     );
   }
@@ -108,12 +99,12 @@ export class AdminController {
   updateUserStatus(
     @Param('id') id: string,
     @Body() dto: UpdateUserStatusDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') adminId: string,
   ) {
     return this.adminService.updateUserStatus(
       id,
       dto.isActive,
-      req.user.id,
+      adminId,
       dto.reason,
     );
   }
@@ -123,20 +114,20 @@ export class AdminController {
   updateUserRole(
     @Param('id') id: string,
     @Body() dto: UpdateUserRoleDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') adminId: string,
   ) {
     return this.adminService.updateUserRole(
       id,
       dto.role,
-      req.user.id,
+      adminId,
       dto.reason,
     );
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('users/:id/impersonate')
-  impersonateUser(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.adminService.impersonateUser(id, req.user.id);
+  impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
+    return this.adminService.impersonateUser(id, adminId);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
@@ -184,25 +175,25 @@ export class AdminController {
   updateSpread(
     @Body('pair') pair: string,
     @Body('spreadPercentage') spreadPercentage: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') adminId: string,
   ) {
-    return this.adminService.updateSpread(pair, spreadPercentage, req.user.id);
+    return this.adminService.updateSpread(pair, spreadPercentage, adminId);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('users/:id/impersonate')
-  impersonateUser(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.adminService.impersonateUser(id, req.user.id);
+  impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
+    return this.adminService.impersonateUser(id, adminId);
   }
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('approvals/request')
-  requestApproval(@Body() dto: { actionType: string; actionData: any }, @Req() req: AuthenticatedRequest) {
-    return this.adminService.requestAdminApproval(dto.actionType, dto.actionData, req.user.id);
+  requestApproval(@Body() dto: { actionType: string; actionData: any }, @CurrentUser('id') adminId: string) {
+    return this.adminService.requestAdminApproval(dto.actionType, dto.actionData, adminId);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('approvals/:id/approve')
-  approveRequest(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.adminService.approveAdminRequest(id, req.user.id);
+  approveRequest(@Param('id') id: string, @CurrentUser('id') adminId: string) {
+    return this.adminService.approveAdminRequest(id, adminId);
   }
 }

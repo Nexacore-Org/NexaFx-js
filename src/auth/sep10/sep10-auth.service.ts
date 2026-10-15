@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { TokenType } from '../token-types';
 import { randomBytes, createPublicKey, verify as cryptoVerify } from 'crypto';
 
 const CHALLENGE_TTL_MS = 600_000;
@@ -89,6 +90,7 @@ export class Sep10AuthService {
       {
         sub: publicKey,
         type: 'stellar',
+        typ: TokenType.SEP10,
       },
       { expiresIn: 3600 },
     );

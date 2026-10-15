@@ -1,5 +1,8 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { createHmac } from 'crypto';
+import { TokenType } from '../../auth/token-types';
 import { existsSync, mkdirSync, renameSync } from 'fs';
 import { join } from 'path';
 
@@ -8,6 +11,7 @@ const EXPORTS_DIR =
 const DOWNLOAD_TTL_SECONDS = 900;
 
 interface DownloadTokenPayload {
+  typ: TokenType.EXPORT_DOWNLOAD;
   jobId: string;
   filename: string;
 }
@@ -20,7 +24,17 @@ interface DownloadTokenPayload {
  */
 @Injectable()
 export class ExportStorageService {
-  constructor(private readonly jwtService: JwtService) {
+  private readonly downloadSecret: string;
+
+  constructor(
+    private readonly jwtService: JwtService,
+    config: ConfigService,
+  ) {
+    // Download links use a secret derived from (but distinct from) the access
+    // token secret, so a download token can never verify as an access token.
+    this.downloadSecret = createHmac('sha256', config.get<string>('jwt.secret') ?? '')
+      .update('export-download')
+      .digest('hex');
     if (!existsSync(EXPORTS_DIR)) {
       mkdirSync(EXPORTS_DIR, { recursive: true });
     }
@@ -35,8 +49,8 @@ export class ExportStorageService {
     renameSync(sourcePath, join(EXPORTS_DIR, filename));
 
     const token = this.jwtService.sign(
-      { jobId, filename } as DownloadTokenPayload,
-      { expiresIn: DOWNLOAD_TTL_SECONDS },
+      { jobId, filename, typ: TokenType.EXPORT_DOWNLOAD } as DownloadTokenPayload,
+      { secret: this.downloadSecret, expiresIn: DOWNLOAD_TTL_SECONDS },
     );
     return {
       downloadUrl: `/api/v1/admin/exports/${jobId}/download?token=${token}`,
@@ -47,11 +61,13 @@ export class ExportStorageService {
   resolve(jobId: string, token: string): string {
     let payload: DownloadTokenPayload;
     try {
-      payload = this.jwtService.verify<DownloadTokenPayload>(token);
+      payload = this.jwtService.verify<DownloadTokenPayload>(token, {
+        secret: this.downloadSecret,
+      });
     } catch {
       throw new ForbiddenException('Download link is invalid or has expired');
     }
-    if (payload.jobId !== jobId) {
+    if (payload.typ !== TokenType.EXPORT_DOWNLOAD || payload.jobId !== jobId) {
       throw new ForbiddenException('Download link is invalid or has expired');
     }
     return join(EXPORTS_DIR, payload.filename);

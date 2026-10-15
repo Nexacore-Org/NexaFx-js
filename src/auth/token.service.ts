@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { TokenType } from './token-types';
 
 export interface TokenPayload {
   sub: string;
@@ -16,7 +17,7 @@ export class TokenService {
   ) {}
 
   sign(payload: TokenPayload): string {
-    return this.jwtService.sign(payload, {
+    return this.jwtService.sign({ ...payload, typ: TokenType.ACCESS }, {
       secret: this.configService.get<string>('JWT_SECRET'),
       expiresIn: this.configService.get<string>('JWT_EXPIRES_IN', '1h'),
     });
