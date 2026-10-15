@@ -57,6 +57,13 @@ export const envSchema = z.object({
     .default(() => false),
 
   // ============================================
+  // Payment Provider Configuration
+  // ============================================
+  PROVIDER_WEBHOOK_SECRET: z
+    .string()
+    .min(32, 'PROVIDER_WEBHOOK_SECRET must be at least 32 characters for security'),
+
+  // ============================================
   // JWT Configuration
   // ============================================
   JWT_SECRET: z

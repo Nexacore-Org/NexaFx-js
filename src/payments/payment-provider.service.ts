@@ -1,12 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class PaymentProviderService {
   private readonly logger = new Logger(PaymentProviderService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  private readonly webhookSecret: string;
+
+  constructor(private readonly config: ConfigService) {
+    const secret = this.config.get<string>('PROVIDER_WEBHOOK_SECRET');
+    if (!secret) {
+      throw new Error(
+        '[STARTUP BLOCKED] PROVIDER_WEBHOOK_SECRET is not configured. ' +
+          'Set it in your environment variables before starting the server.',
+      );
+    }
+    this.webhookSecret = secret;
+  }
 
   async initiateDeposit(
     userId: string,
@@ -22,9 +33,12 @@ export class PaymentProviderService {
   }
 
   verifyWebhook(payload: string, signature: string): boolean {
-    const secret = this.config.get<string>('PROVIDER_WEBHOOK_SECRET', 'secret');
-    const expected = createHmac('sha256', secret).update(payload).digest('hex');
-    return expected === signature;
+    const expected = createHmac('sha256', this.webhookSecret).update(payload).digest('hex');
+    // Hash both values to fixed-length digests so differing lengths never reach
+    // timingSafeEqual (which throws) and no early-exit path leaks timing.
+    const expectedDigest = createHash('sha256').update(expected).digest();
+    const providedDigest = createHash('sha256').update(String(signature ?? '')).digest();
+    return timingSafeEqual(expectedDigest, providedDigest);
   }
 
   async processDeposit(event: Record<string, unknown>): Promise<void> {
