@@ -29,6 +29,8 @@ const VALID_ENV: Record<string, string> = {
   REFRESH_TOKEN_EXPIRY: '604800',
   // OTP
   OTP_SECRET: 'c'.repeat(32),
+  // Payment provider
+  PROVIDER_WEBHOOK_SECRET: 'd'.repeat(32),
   OTP_EXPIRY: '300',
   // Wallet Encryption Key
   WALLET_ENCRYPTION_KEY: VALID_KEY_64,
@@ -139,6 +141,22 @@ describe('validateEnv', () => {
     it('applies RATE_LIMIT_MAX_REQUESTS default of 100 when absent', () => {
       const result = validateEnv(env({ RATE_LIMIT_MAX_REQUESTS: undefined }));
       expect(result.RATE_LIMIT_MAX_REQUESTS).toBe(100);
+    });
+  });
+
+  // ── PROVIDER_WEBHOOK_SECRET ───────────────────────────────────────────────
+
+  describe('PROVIDER_WEBHOOK_SECRET', () => {
+    it('fails startup validation when PROVIDER_WEBHOOK_SECRET is missing', () => {
+      expect(() => validateEnv(env({ PROVIDER_WEBHOOK_SECRET: undefined }))).toThrow(
+        'PROVIDER_WEBHOOK_SECRET',
+      );
+    });
+
+    it('fails when PROVIDER_WEBHOOK_SECRET is shorter than 32 characters', () => {
+      expect(() => validateEnv(env({ PROVIDER_WEBHOOK_SECRET: 'secret' }))).toThrow(
+        'PROVIDER_WEBHOOK_SECRET must be at least 32 characters for security',
+      );
     });
   });
 

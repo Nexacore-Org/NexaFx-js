@@ -19,6 +19,7 @@ export function setRequiredTestEnv(): void {
   process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars';
   process.env.REFRESH_TOKEN_SECRET =
     'test-refresh-secret-must-be-at-least-32';
+  process.env.PROVIDER_WEBHOOK_SECRET = 'test-provider-webhook-secret-min-32-chars';
   process.env.OTP_SECRET = 'test-otp-secret-must-be-at-least-32-chars';
   process.env.MAIL_HOST = 'smtp.example.com';
   process.env.MAIL_PORT = '587';
