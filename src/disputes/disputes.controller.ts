@@ -39,7 +39,7 @@ class ResolveDisputeBody {
 }
 
 interface AuthenticatedRequest extends Request {
-  user: { id: string };
+  user: { id?: string; sub?: string };
 }
 
 @ApiTags('Disputes')
@@ -56,7 +56,7 @@ export class DisputesController {
     @Req() req: AuthenticatedRequest,
     @Body() dto: FileDisputeDto,
   ) {
-    const userId = req.user.id;
+    const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.fileDispute(userId, dto);
   }
 
@@ -68,7 +68,7 @@ export class DisputesController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    const userId = req.user.id;
+    const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.findAllByUser(userId, page, limit);
   }
 
@@ -77,7 +77,7 @@ export class DisputesController {
   @ApiParam({ name: 'id', description: 'Dispute UUID' })
   @ApiOkResponse({ description: 'Dispute details with messages' })
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const userId = req.user.id;
+    const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.findOne(id, userId);
   }
 
@@ -90,7 +90,7 @@ export class DisputesController {
     @Req() req: AuthenticatedRequest,
     @Body() dto: EscalateDisputeDto,
   ) {
-    const userId = req.user.id;
+    const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.escalate(id, userId, dto);
   }
 
@@ -103,7 +103,7 @@ export class DisputesController {
     @Req() req: AuthenticatedRequest,
     @Body() dto: DisputeMessageDto,
   ) {
-    const userId = req.user.id;
+    const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.addMessage(id, userId, 'user', dto);
   }
 
@@ -112,7 +112,7 @@ export class DisputesController {
   @ApiParam({ name: 'id', description: 'Dispute UUID' })
   @ApiOkResponse({ description: 'Dispute resolved' })
   async resolve(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const userId = req.user.id;
+    const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.resolve(id, userId);
   }
 
@@ -121,7 +121,7 @@ export class DisputesController {
   @ApiParam({ name: 'id', description: 'Dispute UUID' })
   @ApiOkResponse({ description: 'Dispute rejected' })
   async reject(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const userId = req.user.id;
+    const userId = (req.user.sub ?? req.user.id) as string;
     return this.disputesService.reject(id, userId);
   }
 
