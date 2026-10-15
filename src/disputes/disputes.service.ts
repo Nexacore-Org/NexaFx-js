@@ -157,8 +157,14 @@ export class DisputesService {
   }
 
   async addMessage(disputeId: string, userId: string, senderRole: 'user' | 'admin', dto: DisputeMessageDto) {
+    if (!userId) {
+      throw new NotFoundException('Dispute not found');
+    }
+
+    // Users may only post into their own disputes; admin senders are not
+    // scoped by owner. Anything not accessible to the caller is a 404.
     const dispute = await this.disputeRepo.findOne({
-      where: { id: disputeId },
+      where: senderRole === 'admin' ? { id: disputeId } : { id: disputeId, userId },
     });
 
     if (!dispute) {
@@ -181,12 +187,19 @@ export class DisputesService {
   }
 
   async resolve(id: string, userId: string) {
+    if (!userId) {
+      throw new NotFoundException('Dispute not found');
+    }
     const dispute = await this.disputeRepo.findOne({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!dispute) {
       throw new NotFoundException('Dispute not found');
+    }
+
+    if (dispute.status === 'resolved' || dispute.status === 'rejected') {
+      throw new BadRequestException('Dispute is already closed');
     }
 
     dispute.status = 'resolved';
@@ -202,12 +215,19 @@ export class DisputesService {
   }
 
   async reject(id: string, userId: string) {
+    if (!userId) {
+      throw new NotFoundException('Dispute not found');
+    }
     const dispute = await this.disputeRepo.findOne({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!dispute) {
       throw new NotFoundException('Dispute not found');
+    }
+
+    if (dispute.status === 'resolved' || dispute.status === 'rejected') {
+      throw new BadRequestException('Dispute is already closed');
     }
 
     dispute.status = 'rejected';
