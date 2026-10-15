@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BadRequestException } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { ScheduledJobsService } from './scheduled-jobs.service';
@@ -37,6 +38,7 @@ describe('ScheduledJobsService', () => {
   let dataSource: DataSource;
   let wallets: { adjustBalance: jest.Mock };
   let audit: { log: jest.Mock };
+  let events: { emit: jest.Mock };
   let svc: ScheduledJobsService;
 
   beforeEach(() => {
@@ -59,6 +61,7 @@ describe('ScheduledJobsService', () => {
 
     wallets = { adjustBalance: jest.fn().mockResolvedValue(undefined) };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
+    events = { emit: jest.fn() };
 
     svc = new ScheduledJobsService(
       redis,
@@ -69,6 +72,7 @@ describe('ScheduledJobsService', () => {
       dataSource,
       wallets as unknown as WalletsService,
       audit as unknown as AuditService,
+      events as unknown as EventEmitter2,
     );
   });
 
@@ -153,6 +157,21 @@ describe('ScheduledJobsService', () => {
       const saved = manager.save.mock.calls[0][1] as Transaction;
       expect(saved.status).toBe(TransactionStatus.FAILED);
       expect(saved.metadata.autoFailRefundedAt).toEqual(expect.any(String));
+    });
+
+    it('notifies the user when a transaction times out and is refunded', async () => {
+      txRepo.find.mockResolvedValue([makeTx('tx-n')]);
+
+      await svc.reconcilePendingTransactions();
+
+      expect(events.emit).toHaveBeenCalledWith(
+        'transaction.timed_out',
+        expect.objectContaining({
+          transactionId: 'tx-n',
+          userId: 'user-1',
+          refunded: true,
+        }),
+      );
     });
 
     it('credits back amount + fee for a timed-out swap', async () => {

@@ -109,6 +109,13 @@ export class TransactionsService implements OnModuleInit {
     private readonly termsService: TermsAcceptanceService,
   ) {}
 
+  /** Deadline after which the scheduled job times out a still-PENDING transaction. */
+  private nextPendingTimeoutAt(): Date {
+    const minutes =
+      this.configService.get<number>('scheduledJobs.pendingTxTimeoutMinutes') ?? 30;
+    return new Date(Date.now() + minutes * 60 * 1000);
+  }
+
   async onModuleInit(): Promise<void> {
     const secret = this.configService.get<string>('STELLAR_HOT_WALLET_SECRET');
     if (!secret) {
@@ -151,14 +158,14 @@ export class TransactionsService implements OnModuleInit {
     }
 
     // Phase 1: persist PENDING record before any blockchain/balance changes
-    const tx = this.txRepo.create({ ...dto, status: TransactionStatus.PENDING });
+    const tx = this.txRepo.create({ ...dto, status: TransactionStatus.PENDING, pendingTimeoutAt: this.nextPendingTimeoutAt() });
     await this.txRepo.save(tx);
     await this.generateReceiptNumber(tx);
 
     try {
       await this.dataSource.transaction(async (manager) => {
-        await this.walletsService.adjustBalance(dto.senderId, dto.currency, -dto.amount);
-        await this.walletsService.adjustBalance(dto.receiverId, dto.currency, dto.amount);
+        await this.walletsService.adjustBalance(dto.senderId, dto.currency, -dto.amount, manager);
+        await this.walletsService.adjustBalance(dto.receiverId, dto.currency, dto.amount, manager);
 
         tx.status = TransactionStatus.COMPLETED;
         tx.completedAt = new Date();
@@ -312,6 +319,7 @@ export class TransactionsService implements OnModuleInit {
       reference: dto.reference,
       metadata: { ...dto.metadata, type: 'deposit' },
       status: TransactionStatus.PENDING,
+      pendingTimeoutAt: this.nextPendingTimeoutAt(),
     });
     tx.metadata = { ...tx.metadata, fullTransactionId: tx.id };
     await this.txRepo.save(tx);
@@ -375,6 +383,7 @@ export class TransactionsService implements OnModuleInit {
       reference: dto.reference,
       metadata: { ...dto.metadata, type: 'withdrawal', destinationAddress: dto.destinationAddress },
       status: TransactionStatus.PENDING,
+      pendingTimeoutAt: this.nextPendingTimeoutAt(),
     });
     await this.txRepo.save(tx);
     await this.generateReceiptNumber(tx);
@@ -437,6 +446,7 @@ export class TransactionsService implements OnModuleInit {
       reference: dto.reference,
       metadata: { ...dto.metadata, type: 'swap', toAmount: serverToAmount, toCurrency: dto.toCurrency },
       status: TransactionStatus.PENDING,
+      pendingTimeoutAt: this.nextPendingTimeoutAt(),
       retryCount: 0,
     });
     await this.txRepo.save(tx);
@@ -601,11 +611,13 @@ export class TransactionsService implements OnModuleInit {
         transaction.senderId,
         transaction.currency,
         Number(new Big(transaction.amount).toFixed(8)),
+        manager,
       );
       await this.walletsService.adjustBalance(
         transaction.receiverId,
         transaction.currency,
         Number(new Big(transaction.amount).neg().toFixed(8)),
+        manager,
       );
 
       const reversal = manager.create(Transaction, {
