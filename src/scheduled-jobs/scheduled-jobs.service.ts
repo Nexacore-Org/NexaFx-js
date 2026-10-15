@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import Redis from 'ioredis';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, LessThan, Repository } from 'typeorm';
@@ -10,6 +11,7 @@ import { Otp } from '../otp/otp.entity';
 import { PasswordResetToken } from '../auth/password-reset.entity';
 import { WalletsService } from '../wallet/wallets.service';
 import { AuditService } from '../audit/audit.service';
+import { TransactionTimedOutEvent } from '../common/events/transaction-timed-out.event';
 
 /** A balance movement that must be undone before a transaction is auto-failed. */
 interface BalanceReversal {
@@ -36,6 +38,7 @@ export class ScheduledJobsService {
     private readonly dataSource: DataSource,
     private readonly walletsService: WalletsService,
     private readonly auditService: AuditService,
+    private readonly events: EventEmitter2,
   ) {
     this.lockTtlMs = (this.config.get<number>('scheduledJobs.lockTtlMs') ?? 300_000);
     this.pendingTimeoutMinutes =
@@ -48,14 +51,14 @@ export class ScheduledJobsService {
     if (!acquiredJobLock) return;
 
     try {
-      const cutoff = new Date(
-        Date.now() - this.pendingTimeoutMinutes * 60 * 1000,
-      );
+      // pendingTimeoutAt is the deadline stamped when the transaction entered
+      // PENDING, so anything whose deadline has passed is timed out.
+      const now = new Date();
 
       const timedOut = await this.txRepo.find({
         where: {
           status: TransactionStatus.PENDING,
-          pendingTimeoutAt: LessThan(cutoff),
+          pendingTimeoutAt: LessThan(now),
         },
       });
 
@@ -154,6 +157,16 @@ export class ScheduledJobsService {
       reason: `Pending for longer than ${this.pendingTimeoutMinutes} minutes`,
       after: { status: TransactionStatus.FAILED, reversals },
     });
+
+    const timedOutEvent: TransactionTimedOutEvent = {
+      transactionId: tx.id,
+      userId: tx.senderId,
+      amount: String(tx.amount),
+      currency: tx.currency,
+      refunded: reversals.length > 0,
+      timestamp: new Date(),
+    };
+    this.events.emit('transaction.timed_out', timedOutEvent);
 
     this.logger.warn(
       reversals.length > 0

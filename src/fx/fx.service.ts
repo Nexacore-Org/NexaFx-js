@@ -54,8 +54,8 @@ export class FxService {
     const toAmount = parseFloat((dto.fromAmount * rate).toFixed(8));
 
     return this.dataSource.transaction(async (manager) => {
-      await this.wallets.adjustBalance(dto.userId, dto.fromCurrency, -dto.fromAmount);
-      await this.wallets.adjustBalance(dto.userId, dto.toCurrency, toAmount);
+      await this.wallets.adjustBalance(dto.userId, dto.fromCurrency, -dto.fromAmount, manager);
+      await this.wallets.adjustBalance(dto.userId, dto.toCurrency, toAmount, manager);
 
       const trade = manager.create(FxTrade, {
         userId: dto.userId,
@@ -89,8 +89,8 @@ export class FxService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      await this.wallets.adjustBalance(trade.userId, trade.fromCurrency, trade.fromAmount);
-      await this.wallets.adjustBalance(trade.userId, trade.toCurrency, -trade.toAmount);
+      await this.wallets.adjustBalance(trade.userId, trade.fromCurrency, trade.fromAmount, manager);
+      await this.wallets.adjustBalance(trade.userId, trade.toCurrency, -trade.toAmount, manager);
 
       trade.reversedAt = new Date();
       return manager.save(FxTrade, trade);
