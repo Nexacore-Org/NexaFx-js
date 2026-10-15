@@ -15,6 +15,7 @@ import { AdminAuditService, AuditContext } from '../admin-audit/admin-audit.serv
 import { ActorType } from '../admin-audit/entities/admin-audit-log.entity';
 import { SecretsService } from '../secrets/services/secrets.service';
 import * as jwt from 'jsonwebtoken';
+import { constantTimeEquals } from '../../common/utils/constant-time';
 
 @Injectable()
 export class AuthService {
@@ -192,7 +193,7 @@ export class AuthService {
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    if (tokenHash !== user.passwordResetTokenHash) {
+    if (!constantTimeEquals(tokenHash, user.passwordResetTokenHash)) {
       throw new BadRequestException('Invalid or expired reset token');
     }
 
@@ -226,7 +227,7 @@ export class AuthService {
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    if (tokenHash !== user.emailVerificationTokenHash) {
+    if (!constantTimeEquals(tokenHash, user.emailVerificationTokenHash)) {
       throw new BadRequestException('Invalid verification token');
     }
 
