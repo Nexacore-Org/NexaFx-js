@@ -3,6 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OnEvent } from '@nestjs/event-emitter';
 import { AuditLog } from './audit-log.entity';
+import { maskBody } from '../common/utils/redact';
+
+const AUDIT_MASK_DEPTH = 10;
 
 export interface AuditEvent {
   userId?: string;
@@ -24,7 +27,16 @@ export class AuditService {
   ) {}
 
   async log(event: AuditEvent): Promise<AuditLog> {
-    const entry = this.auditRepo.create(event);
+    // Never persist secrets/PII into the (exportable) audit trail.
+    const entry = this.auditRepo.create({
+      ...event,
+      ...(event.before !== undefined && {
+        before: maskBody(event.before, 0, AUDIT_MASK_DEPTH) as Record<string, unknown>,
+      }),
+      ...(event.after !== undefined && {
+        after: maskBody(event.after, 0, AUDIT_MASK_DEPTH) as Record<string, unknown>,
+      }),
+    });
     return this.auditRepo.save(entry);
   }
 

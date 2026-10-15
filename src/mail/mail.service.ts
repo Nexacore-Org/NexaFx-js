@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
-import { compile, TemplateDelegate } from 'handlebars';
+import { compile, TemplateDelegate, Utils } from 'handlebars';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { plainToInstance } from 'class-transformer';
@@ -203,6 +203,16 @@ export class MailService {
     );
   }
 
+  /** Escapes interpolated content the same way the Handlebars-based emails do. */
+  renderAdminAlertHtml(payload: AdminAlertEmail): string {
+    const escape = (value: unknown) => Utils.escapeExpression(String(value ?? ''));
+    return `<h2>${escape(payload.subject)}</h2><p>${escape(payload.body)}</p>${
+      payload.metadata
+        ? `<pre>${escape(JSON.stringify(payload.metadata, null, 2))}</pre>`
+        : ''
+    }`;
+  }
+
   async sendAdminAlert(payload: AdminAlertEmail): Promise<void> {
     if (process.env.NODE_ENV === 'test') return;
     try {
@@ -210,11 +220,7 @@ export class MailService {
         from: process.env.MAIL_FROM,
         to: payload.to,
         subject: payload.subject,
-        html: `<h2>${payload.subject}</h2><p>${payload.body}</p>${
-          payload.metadata
-            ? `<pre>${JSON.stringify(payload.metadata, null, 2)}</pre>`
-            : ''
-        }`,
+        html: this.renderAdminAlertHtml(payload),
       });
     } catch (err) {
       this.logger.error(`Failed to send admin alert email: ${(err as Error).message}`);

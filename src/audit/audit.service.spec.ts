@@ -12,6 +12,26 @@ describe('AuditService', () => {
   });
 
   describe('log()', () => {
+    it('redacts sensitive fields in before/after snapshots before persisting', async () => {
+      auditRepo.create.mockImplementation((e: any) => e);
+      auditRepo.save.mockImplementation(async (e: any) => e);
+
+      const saved = await service.log({
+        action: 'user.update',
+        entityType: 'user',
+        before: { email: 'a@b.com', passwordHash: 'abc' },
+        after: { email: 'c@d.com', refreshToken: 'tok', nested: { totpSecret: 's' } },
+      });
+
+      expect(saved.before).toEqual({ email: 'a@b.com', passwordHash: '[REDACTED]' });
+      expect(saved.after).toEqual({
+        email: 'c@d.com',
+        refreshToken: '[REDACTED]',
+        nested: { totpSecret: '[REDACTED]' },
+      });
+      expect(JSON.stringify(saved)).not.toMatch(/"abc"|"tok"|"s"/);
+    });
+
     it('creates and saves a log entry with correct fields', async () => {
       const event: AuditEvent = {
         userId: 'user-1',
