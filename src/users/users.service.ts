@@ -3,8 +3,9 @@ import { Inject, Injectable, NotFoundException, ConflictException } from '@nestj
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { User, UserRole, KycStatus } from './user.entity';
+import { normalizeEmail } from '../common/decorators/normalize-email.decorator';
 
 export interface CreateUserDto {
   email: string;
@@ -72,12 +73,32 @@ export class UsersService {
     await this.cacheManager.del(this.getCacheKey(userId));
   }
 
-  async create(dto: CreateUserDto): Promise<User> {
-    const existing = await this.usersRepository.findOne({ where: { email: dto.email } });
+  async create(dto: CreateUserDto, manager?: EntityManager): Promise<User> {
+    const repo = manager ? manager.getRepository(User) : this.usersRepository;
+    // Defence in depth: DTOs normalise, but other callers (seeds, admin tools)
+    // must not be able to create a mixed-case duplicate either.
+    const email = normalizeEmail(dto.email) as string;
+
+    const existing = await repo.findOne({ where: { email } });
     if (existing) throw new ConflictException('Email already in use');
 
-    const user = this.usersRepository.create({ ...dto, role: dto.role ?? UserRole.USER });
-    return this.usersRepository.save(user);
+    const user = repo.create({ ...dto, email, role: dto.role ?? UserRole.USER });
+    return repo.save(user);
+  }
+
+  /**
+   * Run `work` in one database transaction together with the creation of the
+   * user, so a failure in `work` (terms acceptance, audit) leaves no orphan.
+   */
+  async createWithin<T>(
+    dto: CreateUserDto,
+    work: (user: User, manager: EntityManager) => Promise<T>,
+  ): Promise<{ user: User; result: T }> {
+    return this.usersRepository.manager.transaction(async (manager) => {
+      const user = await this.create(dto, manager);
+      const result = await work(user, manager);
+      return { user, result };
+    });
   }
 
   async findById(id: string): Promise<User> {
@@ -128,7 +149,7 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    return this.usersRepository.findOne({ where: { email: normalizeEmail(email) as string } });
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<User> {

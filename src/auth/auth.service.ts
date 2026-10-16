@@ -49,28 +49,41 @@ export class AuthService {
       lastName: dto.lastName,
     });
     const passwordHash = await this.passwordService.hash(dto.password);
-    const user = await this.usersService.create({
-      email: dto.email,
-      passwordHash,
-      firstName: dto.firstName,
-      lastName: dto.lastName,
-    });
 
-    await this.termsService.accept({
-      userId: user.id,
-      ipAddress: context.ip ?? null,
-      userAgent: context.userAgent ?? null,
-    });
+    // User, terms acceptance and audit entry commit together: a failure in
+    // any of them leaves no orphan account that can neither log in nor
+    // re-register.
+    const { user } = await this.usersService.createWithin(
+      {
+        email: dto.email,
+        passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+      },
+      async (created, manager) => {
+        await this.termsService.accept(
+          {
+            userId: created.id,
+            ipAddress: context.ip ?? null,
+            userAgent: context.userAgent ?? null,
+          },
+          manager,
+        );
 
-    await this.auditService.log({
-      userId: user.id,
-      action: 'auth.register',
-      entityType: 'user',
-      entityId: user.id,
-      ipAddress: context.ip,
-      userAgent: context.userAgent,
-      after: { email: user.email },
-    });
+        await this.auditService.log(
+          {
+            userId: created.id,
+            action: 'auth.register',
+            entityType: 'user',
+            entityId: created.id,
+            ipAddress: context.ip,
+            userAgent: context.userAgent,
+            after: { email: created.email },
+          },
+          manager,
+        );
+      },
+    );
 
     return this.issueToken(user.id, user.email, user.role);
   }
@@ -175,13 +188,11 @@ export class AuthService {
       });
     }
 
-    // #910: Check if 2FA enforcement is enabled for admin accounts
-    if (user.role === 'admin' && user.require2fa && !dto.totpCode) {
-      throw new ForbiddenException({
-        code: 'requires_2fa',
-        message: '2FA code required for admin accounts',
-      });
-    }
+    // Missing acceptance of the current terms must not lock the user out:
+    // otherwise bumping the terms version would stop everyone from logging in
+    // to accept it. The token is issued with a `requiresAction` flag, and the
+    // money-moving flows enforce acceptance themselves (ensureAccepted).
+    const termsAccepted = await this.termsService.hasAcceptedCurrent(user.id);
 
     // Suspended (isActive=false) and deactivated users get the same response.
     const isDeactivated = await this.deactivationService?.isUserDeactivated(user.id);
@@ -206,7 +217,10 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.issueToken(user.id, user.email, user.role);
+    const token = this.issueToken(user.id, user.email, user.role);
+    return termsAccepted
+      ? token
+      : { ...token, requiresAction: 'accept_terms', version: this.termsService.currentVersion() };
   }
 
   private readonly usedRefreshTokens = new Set<string>();
