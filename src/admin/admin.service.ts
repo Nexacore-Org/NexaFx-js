@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { ApprovalService } from '../multi-signature-approval/approval.service';
+import { ApprovalActionType } from '../multi-signature-approval/dto/approval.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { EntityManager, Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
@@ -9,7 +11,6 @@ import { SupportTicketEntity } from '../modules/support-tickets/entities/support
 import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
 import { AuditService } from '../audit/audit.service';
-import { AdminApproval, AdminApprovalStatus } from './admin-approval.entity';
 
 export interface AdminStats {
   users: number;
@@ -22,7 +23,7 @@ export interface AdminStats {
 }
 
 @Injectable()
-export class AdminService {
+export class AdminService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
@@ -36,10 +37,23 @@ export class AdminService {
     private readonly webhooksRepository: Repository<WebhookEndpoint>,
     @InjectRepository(AmlAlert)
     private readonly alertsRepository: Repository<AmlAlert>,
-    @InjectRepository(AdminApproval)
-    private readonly approvalsRepository: Repository<AdminApproval>,
     private readonly auditService: AuditService,
+    @Optional() private readonly approvalService?: ApprovalService,
   ) {}
+
+  /** Tell the approval workflow how to run the actions this service owns. */
+  onModuleInit(): void {
+    this.approvalService?.registerHandler(
+      ApprovalActionType.OVERRIDE_TRANSACTION_STATUS,
+      (data, approvedBy, manager) =>
+        this.overrideTransactionStatus(data.transactionId, data.newStatus, approvedBy, data.reason, manager),
+    );
+    this.approvalService?.registerHandler(
+      ApprovalActionType.UPDATE_USER_STATUS,
+      (data, approvedBy, manager) =>
+        this.updateUserStatus(data.targetUserId, data.isActive, approvedBy, data.reason, manager),
+    );
+  }
 
   async getStats(): Promise<AdminStats> {
     const [
@@ -135,8 +149,10 @@ export class AdminService {
     newStatus: TransactionStatus,
     adminUserId: string,
     reason?: string,
+    manager?: EntityManager,
   ): Promise<Transaction> {
-    const transaction = await this.transactionsRepository.findOne({
+    const transactionsRepo = manager ? manager.getRepository(Transaction) : this.transactionsRepository;
+    const transaction = await transactionsRepo.findOne({
       where: { id: transactionId },
     });
     if (!transaction) {
@@ -153,7 +169,7 @@ export class AdminService {
     };
 
     transaction.status = newStatus;
-    const updated = await this.transactionsRepository.save(transaction);
+    const updated = await transactionsRepo.save(transaction);
 
     await this.auditService.log({
       userId: adminUserId,
@@ -180,8 +196,10 @@ export class AdminService {
     isActive: boolean,
     adminUserId: string,
     reason?: string,
+    manager?: EntityManager,
   ): Promise<User> {
-    const user = await this.usersRepository.findOne({
+    const usersRepo = manager ? manager.getRepository(User) : this.usersRepository;
+    const user = await usersRepo.findOne({
       where: { id: targetUserId },
     });
     if (!user) {
@@ -196,7 +214,7 @@ export class AdminService {
     };
 
     user.isActive = isActive;
-    const updated = await this.usersRepository.save(user);
+    const updated = await usersRepo.save(user);
 
     await this.auditService.log({
       userId: adminUserId,
@@ -301,46 +319,5 @@ export class AdminService {
       impersonatedBy: adminUserId,
       token: `impersonated-session-token-${user.id}`,
     };
-  }
-  async requestAdminApproval(actionType: string, actionData: any, requestedBy: string) {
-    const approval = this.approvalsRepository.create({
-      actionType,
-      actionData,
-      requestedBy,
-    });
-    return this.approvalsRepository.save(approval);
-  }
-
-  async approveAdminRequest(approvalId: string, approvedBy: string) {
-    const approval = await this.approvalsRepository.findOne({ where: { id: approvalId } });
-    if (!approval) throw new NotFoundException(`Approval request ${approvalId} not found`);
-    if (approval.status !== AdminApprovalStatus.PENDING) {
-      throw new Error(`Approval is not pending`);
-    }
-    if (approval.requestedBy === approvedBy) {
-      throw new Error('Admin cannot approve their own request');
-    }
-
-    approval.status = AdminApprovalStatus.APPROVED;
-    approval.approvedBy = approvedBy;
-    const saved = await this.approvalsRepository.save(approval);
-    
-    // Execute logic based on actionType
-    if (saved.actionType === 'override_transaction_status') {
-      await this.overrideTransactionStatus(
-        saved.actionData.transactionId,
-        saved.actionData.newStatus,
-        approvedBy,
-        saved.actionData.reason,
-      );
-    } else if (saved.actionType === 'update_user_status') {
-      await this.updateUserStatus(
-        saved.actionData.targetUserId,
-        saved.actionData.isActive,
-        approvedBy,
-        saved.actionData.reason,
-      );
-    }
-    return saved;
   }
 }

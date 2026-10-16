@@ -7,6 +7,19 @@ This repository is an enterprise NestJS financial technology platform organized 
 - **Compliance & Risk**: `AmlModule`, `KycModule`, `KycTiersModule`.
 - **Infrastructure & Observability**: `ConfigModule`, `HealthModule`, `MetricsModule`, `QueuesModule`, `AuditModule`, `AppGraphQLModule`.
 
+## Escrow, approvals and feature flags
+
+Three modules that were empty placeholders are now real and registered in `AppModule`:
+
+- `EscrowModule` (`src/modules/escrow/`): hold, release and refund of funds between two users, moved
+  only through `WalletsService.adjustBalance(..., manager)` in one transaction (`POST/GET /escrow`,
+  `POST /escrow/:id/release|refund`).
+- `TransactionApprovalModule` (`src/multi-signature-approval/`): the four-eyes admin approval
+  workflow (`POST /admin/approvals/request`, `POST /admin/approvals/:id/approve`). `AdminService`
+  registers handlers for the action types it owns.
+- `FeatureFlagsModule` (`src/modules/feature-flags/`): `FEATURE_*` environment flags, a
+  `@RequireFeature()` decorator with `FeatureFlagGuard` (404 when off), and `GET /feature-flags`.
+
 ## Deferred modules
 
 `AppModule` previously imported the module files below, none of which were ever committed to the
@@ -14,10 +27,10 @@ repository. The imports have been removed so the root module compiles; each name
 deferred scope rather than as working functionality:
 
 `AdminAuditModule`, `AnnouncementsModule`, `ComplianceModule`, `DataArchiveModule`,
-`EnrichmentModule`, `EscrowModule`, `ExperimentsModule`, `FeatureFlagsModule`, `GoalsModule`,
+`EnrichmentModule`, `ExperimentsModule`, `GoalsModule`,
 `InsightsModule`, `InsightsForecastModule`, `ModulesCacheModule`, `RetryModule`, `RiskEngineModule`,
 `ScheduledTransactionsModule`, `SecretsModule`, `StrategyOptimizerModule`,
-`TransactionApprovalModule`, `TransactionRiskModule`, `VersioningModule`.
+`TransactionRiskModule`, `VersioningModule`.
 
 A further set of dangling imports duplicated modules that do exist under a different path, and were
 dropped in favour of the real ones: `./modules/reconciliation` (use `ReconciliationModule` from

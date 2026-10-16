@@ -1,15 +1,15 @@
-// Starting skeleton for the multi-admin approval workflow module (issue
-// #1270). NOTE: src/app.module.ts does not currently import anything
-// from src/multi-signature-approval/ — the issue's premise that it does
-// and fails to compile does not match the current main branch. This is
-// provided as foundational scaffolding, not a fix for an active
-// compile error, and is not yet registered in app.module.ts.
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { SecurityModule } from '../common/security.module';
+import { SharedJwtModule } from '../common/jwt/jwt.module';
+import { AdminApproval } from './admin-approval.entity';
+import { ApprovalService } from './approval.service';
+import { ApprovalController } from './approval.controller';
 
 @Module({
-  imports: [],
-  providers: [],
-  controllers: [],
-  exports: [],
+  imports: [TypeOrmModule.forFeature([AdminApproval]), SecurityModule, SharedJwtModule],
+  controllers: [ApprovalController],
+  providers: [ApprovalService],
+  exports: [ApprovalService],
 })
 export class TransactionApprovalModule {}

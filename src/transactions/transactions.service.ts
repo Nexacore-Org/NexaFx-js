@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Repository, DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import Big from 'big.js';
+import { CsvValue, toCsv } from '../common/csv/csv.util';
 import { Transaction, TransactionStatus } from './transaction.entity';
 import { WalletsService } from '../wallet/wallets.service';
 import { StellarService } from '../stellar/stellar.service';
@@ -222,6 +223,8 @@ export class TransactionsService implements OnModuleInit {
     const qb = this.txRepo
       .createQueryBuilder('tx')
       .orderBy('tx.createdAt', 'DESC')
+      // createdAt is not unique; the id tie-breaker keeps paging stable.
+      .addOrderBy('tx.id', 'DESC')
       .skip((page - 1) * effectiveLimit)
       .take(effectiveLimit)
       .leftJoinAndSelect('tx.sender', 'sender')
@@ -536,16 +539,35 @@ export class TransactionsService implements OnModuleInit {
   // Cancel Transaction — #905: cancel PENDING transactions
   // ---------------------------------------------------------------------------
 
+  /**
+   * Every transaction the user took part in as a CSV (no row cap). History is
+   * read page by page so a large account is exported completely, and all cells
+   * go through the shared escaper (quote doubling, formula neutralisation).
+   */
   async exportTransactionsCsv(userId: string): Promise<string> {
-    const { items } = await this.findHistory({ userId, limit: 1000 });
-    const header = 'id,reference,senderId,receiverId,amount,currency,status,createdAt\n';
-    const rows = items
-      .map(
-        (tx) =>
-          `"${tx.id}","${tx.reference}","${tx.senderId}","${tx.receiverId}",${tx.amount},"${tx.currency}","${tx.status}","${tx.createdAt?.toISOString?.() || tx.createdAt}"`,
-      )
-      .join('\n');
-    return header + rows;
+    const header = ['id', 'reference', 'senderId', 'receiverId', 'amount', 'currency', 'status', 'createdAt'];
+    const pageSize = TransactionsService.MAX_LIMIT;
+    const rows: CsvValue[][] = [];
+
+    for (let page = 1; ; page += 1) {
+      const result = await this.findHistory({ userId, page, limit: pageSize });
+      for (const tx of result.items) {
+        rows.push([
+          tx.id,
+          tx.reference,
+          tx.senderId,
+          tx.receiverId,
+          tx.amount,
+          tx.currency,
+          tx.status,
+          tx.createdAt,
+        ]);
+      }
+      // Stop on a short page or once everything reported by the count is read.
+      if (result.items.length < pageSize || rows.length >= result.total) break;
+    }
+
+    return toCsv(header, rows);
   }
 
   async createInternalTransfer(dto: { senderId: string; recipientEmail: string; amount: number; currency: string }): Promise<Transaction> {

@@ -185,15 +185,4 @@ export class AdminController {
   impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
     return this.adminService.impersonateUser(id, adminId);
   }
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('approvals/request')
-  requestApproval(@Body() dto: { actionType: string; actionData: any }, @CurrentUser('id') adminId: string) {
-    return this.adminService.requestAdminApproval(dto.actionType, dto.actionData, adminId);
-  }
-
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('approvals/:id/approve')
-  approveRequest(@Param('id') id: string, @CurrentUser('id') adminId: string) {
-    return this.adminService.approveAdminRequest(id, adminId);
-  }
 }

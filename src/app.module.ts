@@ -55,6 +55,9 @@ import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history
 import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { UsersModule as UpstreamUsersModule } from './users/users.module';
+import { EscrowModule } from './modules/escrow/escrow.module';
+import { TransactionApprovalModule } from './multi-signature-approval/multi-signature-approval.module';
+import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
@@ -227,6 +230,9 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
       : []),
     HealthModule,
     UpstreamUsersModule,
+    EscrowModule,
+    TransactionApprovalModule,
+    FeatureFlagsModule,
     AuditModule,
     UpstreamMailModule,
     SpendingModule,
