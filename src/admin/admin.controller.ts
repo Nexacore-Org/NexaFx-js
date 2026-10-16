@@ -207,34 +207,8 @@ export class AdminController {
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('approvals/request')
-  requestApproval(@Body() dto: CreateAdminApprovalDto, @CurrentUser('id') adminId: string) {
-    return this.adminService.requestAdminApproval(dto.actionType, dto.actionData, adminId);
-  }
-
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Get('approvals')
-  listApprovals(@Query('status') status?: string) {
-    const allowed = Object.values(AdminApprovalStatus) as string[];
-    if (status !== undefined && !allowed.includes(status)) {
-      throw new BadRequestException(`status must be one of: ${allowed.join(', ')}`);
-    }
-    return this.adminService.listAdminApprovals(status as AdminApprovalStatus | undefined);
-  }
-
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('approvals/:id/approve')
-  approveRequest(@Param('id') id: string, @CurrentUser('id') adminId: string) {
-    return this.adminService.approveAdminRequest(id, adminId);
-  }
-
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('approvals/:id/reject')
-  rejectRequest(
-    @Param('id') id: string,
-    @Body() dto: RejectAdminApprovalDto,
-    @CurrentUser('id') adminId: string,
-  ) {
-    return this.adminService.rejectAdminRequest(id, adminId, dto.reason);
+  @Post('users/:id/impersonate')
+  impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
+    return this.adminService.impersonateUser(id, adminId);
   }
 }

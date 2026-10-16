@@ -13,6 +13,9 @@ import {
 import { ReferralService } from './referral.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
+import { FeatureFlagGuard } from '../modules/feature-flags/feature-flag.guard';
+import { RequireFeature } from '../modules/feature-flags/require-feature.decorator';
+import { FeatureFlag } from '../modules/feature-flags/feature-flags.catalog';
 
 interface AuthenticatedRequest {
   user?: {
@@ -20,7 +23,9 @@ interface AuthenticatedRequest {
   };
 }
 
-@UseGuards(JwtAuthGuard)
+// Reference usage of @RequireFeature: the whole referral API disappears (404) while FEATURE_REFERRALS is off.
+@RequireFeature(FeatureFlag.REFERRALS)
+@UseGuards(JwtAuthGuard, FeatureFlagGuard)
 @Controller('referrals')
 export class ReferralController {
   constructor(private readonly referralService: ReferralService) {}

@@ -23,8 +23,7 @@ import { EncryptionModule } from '../common/encryption/encryption.module';
 import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 import { SharedJwtModule } from '../common/jwt/jwt.module';
-import { AdminApproval } from './admin-approval.entity';
-import { FxModule } from '../fx/fx.module';
+import { TransactionApprovalModule } from '../multi-signature-approval/multi-signature-approval.module';
 
 @Module({
   imports: [
@@ -36,8 +35,6 @@ import { FxModule } from '../fx/fx.module';
       WebhookEndpoint,
       AmlAlert,
       WalletBalanceEntity,
-      AdminApproval,
-      AdminAlertEntity,
     ]),
     BullModule.registerQueue({ name: 'admin-exports' }),
     SecurityModule,
@@ -46,7 +43,7 @@ import { FxModule } from '../fx/fx.module';
     AuditModule,
     MailModule,
     SharedJwtModule,
-    FxModule,
+    TransactionApprovalModule,
   ],
   controllers: [AdminController, SystemAdminController, AdminExportsController],
   providers: [

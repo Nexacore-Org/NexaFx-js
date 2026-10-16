@@ -30,6 +30,30 @@ export const envSchema = z.object({
     .default(() => false),
 
   // ============================================
+  // Feature flags ("true" enables; default off). Catalog: src/modules/feature-flags/feature-flags.catalog.ts
+  // ============================================
+  FEATURE_FX_TRADING: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
+  FEATURE_REFERRALS: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
+  FEATURE_BLOCKCHAIN: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
+  FEATURE_TWO_FA: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
+  FEATURE_PUSH_NOTIFICATIONS: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
+
+  // ============================================
   // Request Body Size Limits (environment-configurable)
   // ============================================
   BODY_LIMIT_JSON: z
