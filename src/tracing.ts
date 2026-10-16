@@ -15,12 +15,18 @@ import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { context, trace } from '@opentelemetry/api';
 
 const exporterUrl = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+// No endpoint means no exporter: stop NodeSDK defaulting to localhost:4318 (issue #1404).
+if (!process.env.OTEL_TRACES_EXPORTER) {
+  process.env.OTEL_TRACES_EXPORTER = exporterUrl ? 'otlp' : 'none';
+}
 
 const sdk = new NodeSDK({
   resource: new Resource({
     [SEMRESATTRS_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? 'nexafx-api',
   }),
-  traceExporter: exporterUrl ? new OTLPTraceExporter({ url: exporterUrl }) : undefined,
+  traceExporter: exporterUrl
+    ? new OTLPTraceExporter({ url: `${exporterUrl.replace(/\/+$/, '')}/v1/traces` })
+    : undefined,
   instrumentations: [
     getNodeAutoInstrumentations({
       '@opentelemetry/instrumentation-fs': { enabled: false },
@@ -29,6 +35,11 @@ const sdk = new NodeSDK({
 });
 
 sdk.start();
+
+// Flush buffered spans before exiting on SIGTERM (issue #1404).
+process.once('SIGTERM', () => {
+  void sdk.shutdown().finally(() => process.exit(0));
+});
 
 /**
  * Returns the current W3C trace ID or an empty string when no active span exists.

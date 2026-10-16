@@ -24,7 +24,11 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 
 # Install only production dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
+
+# Writable runtime dirs for the non-root user (exports and KYC uploads), kept on volumes (issue #1406)
+RUN mkdir -p /app/tmp/exports /app/uploads/kyc && chown -R app:app /app
+VOLUME ["/app/tmp/exports", "/app/uploads"]
 
 # Drop privileges
 USER app

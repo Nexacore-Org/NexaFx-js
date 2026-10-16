@@ -20,6 +20,14 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
 
+  // Behind a proxy or load balancer, trust an explicit hop count or CIDR list so req.ip is the
+  // client (issue #1407). TRUST_PROXY=false (default) | <hops> | <comma-separated CIDRs/names>.
+  const trustProxy = process.env.TRUST_PROXY ?? 'false';
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .set('trust proxy', trustProxy === 'false' ? false : /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+
   const configService = app.get(ConfigService<Configuration>);
   const port = configService.get<number>('app.port');
   if (!port || isNaN(port)) {
