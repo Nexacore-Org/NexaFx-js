@@ -7,6 +7,7 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ImpersonationGuard } from './auth/impersonation.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -282,6 +283,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ImpersonationGuard,
     },
     {
       provide: APP_GUARD,

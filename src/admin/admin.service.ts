@@ -1,4 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ExchangeRateService } from '../fx/exchange-rate.service';
+import { CbnReportPeriod } from './dto/cbn-report-query.dto';
+import { TokenType } from '../auth/token-types';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
@@ -39,6 +49,8 @@ export class AdminService {
     @InjectRepository(AdminApproval)
     private readonly approvalsRepository: Repository<AdminApproval>,
     private readonly auditService: AuditService,
+    @Optional() private readonly jwtService?: JwtService,
+    @Optional() private readonly rateService?: ExchangeRateService,
   ) {}
 
   async getStats(): Promise<AdminStats> {
@@ -71,20 +83,108 @@ export class AdminService {
     };
   }
 
-  async generateCbnComplianceReport(period = 'monthly') {
-    const totalTx = await this.transactionsRepository.count();
-    const amlAlerts = await this.alertsRepository.count();
+  /** `[from, to)` UTC window for a CBN filing. */
+  cbnReportWindow(
+    period: CbnReportPeriod = 'monthly',
+    periodStart?: string,
+    now: Date = new Date(),
+  ): { from: Date; to: Date } {
+    const months = period === 'quarterly' ? 3 : 1;
+    let from: Date;
+    if (periodStart) {
+      const parsed = new Date(periodStart);
+      from = new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()));
+    } else if (period === 'quarterly') {
+      from = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1));
+    } else {
+      from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    }
+    const to = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + months, from.getUTCDate()));
+    return { from, to };
+  }
+
+  /**
+   * Regulatory filing figures computed from the database for the requested
+   * window. Volumes are converted to USD with the live rate from the exchange
+   * rate service at generation time (the per-transaction execution rate is not
+   * stored); currencies that cannot be converted are listed, never invented.
+   */
+  async generateCbnComplianceReport(period: CbnReportPeriod = 'monthly', periodStart?: string) {
+    const { from, to } = this.cbnReportWindow(period, periodStart);
+
+    const completed = await this.transactionsRepository
+      .createQueryBuilder('tx')
+      .select('tx.currency', 'currency')
+      .addSelect('COUNT(*)', 'count')
+      .addSelect('SUM(tx.amount)', 'volume')
+      .where('tx.status = :status', { status: TransactionStatus.COMPLETED })
+      .andWhere('COALESCE(tx.completedAt, tx.createdAt) >= :from', { from })
+      .andWhere('COALESCE(tx.completedAt, tx.createdAt) < :to', { to })
+      .groupBy('tx.currency')
+      .getRawMany<{ currency: string; count: string; volume: string }>();
+
+    const currencyBreakdown: Array<{
+      currency: string;
+      transactionCount: number;
+      volume: number;
+      usdRate: number | null;
+      volumeUsd: number | null;
+    }> = [];
+    for (const row of completed) {
+      const volume = Number(row.volume ?? 0);
+      const usdRate = await this.usdRateFor(row.currency);
+      currencyBreakdown.push({
+        currency: row.currency,
+        transactionCount: Number(row.count ?? 0),
+        volume,
+        usdRate,
+        volumeUsd: usdRate === null ? null : Number((volume * usdRate).toFixed(2)),
+      });
+    }
+
+    const unconvertedCurrencies = currencyBreakdown.filter((c) => c.usdRate === null).map((c) => c.currency);
+    const totalTransactionVolumeUsd = Number(
+      currencyBreakdown.reduce((sum, c) => sum + (c.volumeUsd ?? 0), 0).toFixed(2),
+    );
+
+    const flaggedAmlIncidents = await this.alertsRepository.count({
+      where: { createdAt: Between(from, new Date(to.getTime() - 1)) } as any,
+    });
+
+    const kycRow = await this.kycRepository
+      .createQueryBuilder('doc')
+      .select('COUNT(DISTINCT doc.userId)', 'count')
+      .where('doc.status = :approved', { approved: KycDocumentStatus.APPROVED })
+      .andWhere('doc.reviewedAt < :to', { to })
+      .getRawOne<{ count: string }>();
+
     return {
-      reportType: 'CBN_MONTHLY_COMPLIANCE_FILING',
+      reportType:
+        period === 'quarterly' ? 'CBN_QUARTERLY_COMPLIANCE_FILING' : 'CBN_MONTHLY_COMPLIANCE_FILING',
       period,
+      window: { from: from.toISOString(), to: to.toISOString() },
       generatedAt: new Date().toISOString(),
       metrics: {
-        totalTransactionVolumeUsd: 1250000.0,
-        totalTransactionsCount: totalTx,
-        flaggedAmlIncidents: amlAlerts,
-        kycApprovedUsersCount: 450,
+        totalTransactionVolumeUsd,
+        usdVolumeComplete: unconvertedCurrencies.length === 0,
+        unconvertedCurrencies,
+        totalTransactionsCount: currencyBreakdown.reduce((sum, c) => sum + c.transactionCount, 0),
+        flaggedAmlIncidents,
+        kycApprovedUsersCount: Number(kycRow?.count ?? 0),
       },
+      currencyBreakdown,
     };
+  }
+
+  private async usdRateFor(currency: string): Promise<number | null> {
+    if (currency.toUpperCase() === 'USD') return 1;
+    if (!this.rateService) return null;
+    try {
+      const { rate } = await this.rateService.getRate(currency, 'USD');
+      return Number.isFinite(rate) && rate > 0 ? rate : null;
+    } catch {
+      return null;
+    }
   }
 
   async findAllTransactions(filters: {
@@ -97,6 +197,15 @@ export class AdminService {
     limit?: number;
   }): Promise<{ items: Transaction[]; total: number; page: number; limit: number }> {
     const { userId, status, currency, startDate, endDate, page = 1, limit = 20 } = filters;
+
+    const parsedStart = startDate ? new Date(startDate) : undefined;
+    const parsedEnd = endDate ? new Date(endDate) : undefined;
+    if ((parsedStart && Number.isNaN(parsedStart.getTime())) || (parsedEnd && Number.isNaN(parsedEnd.getTime()))) {
+      throw new BadRequestException('startDate and endDate must be valid ISO 8601 dates');
+    }
+    if (parsedStart && parsedEnd && parsedStart > parsedEnd) {
+      throw new BadRequestException('startDate must not be after endDate');
+    }
 
     const qb = this.transactionsRepository
       .createQueryBuilder('tx')
@@ -283,23 +392,58 @@ export class AdminService {
     return { pair: upperPair, spreadPercentage };
   }
 
-  async impersonateUser(targetUserId: string, adminUserId: string) {
+  /** Lifetime of an impersonation session; there is no revoke endpoint, the TTL is the limit. */
+  static readonly IMPERSONATION_TTL = '15m';
+
+  /**
+   * Start a read-only, 15-minute impersonation session. The returned JWT is an
+   * ordinary access token for the target (`sub`) that also carries the real
+   * admin as the RFC 8693 actor (`act.sub`) and `impersonation: true`;
+   * `ImpersonationGuard` then refuses every state-changing request made with it.
+   */
+  async impersonateUser(targetUserId: string, adminUserId: string, reason: string) {
+    if (!adminUserId) {
+      throw new ForbiddenException('An authenticated admin is required');
+    }
+    if (!this.jwtService) {
+      throw new ForbiddenException('Impersonation is not available');
+    }
+
     const user = await this.usersRepository.findOne({ where: { id: targetUserId } });
     if (!user) throw new NotFoundException(`User ${targetUserId} not found`);
+    if (user.role === UserRole.ADMIN || user.role === UserRole.COMPLIANCE) {
+      throw new ForbiddenException('Admin and compliance accounts cannot be impersonated');
+    }
+
+    const token = this.jwtService.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+        typ: TokenType.ACCESS,
+        act: { sub: adminUserId },
+        impersonation: true,
+      },
+      { expiresIn: AdminService.IMPERSONATION_TTL },
+    );
 
     await this.auditService.log({
       userId: adminUserId,
       action: 'admin.user.impersonate',
       entityType: 'user',
       entityId: targetUserId,
-      after: { impersonatedUserId: targetUserId, impersonatedEmail: user.email },
+      after: { impersonatedUserId: targetUserId, impersonatedEmail: user.email, ttl: AdminService.IMPERSONATION_TTL },
+      reason,
     });
 
     return {
       impersonatedUserId: user.id,
       email: user.email,
       impersonatedBy: adminUserId,
-      token: `impersonated-session-token-${user.id}`,
+      readOnly: true,
+      expiresIn: AdminService.IMPERSONATION_TTL,
+      token,
     };
   }
   async requestAdminApproval(actionType: string, actionData: any, requestedBy: string) {

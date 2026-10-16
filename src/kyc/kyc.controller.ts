@@ -11,7 +11,11 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { KycService, SubmitKycDto, ReviewKycDto } from './kyc.service';
+import { KycService } from './kyc.service';
+import { SubmitKycRequestDto } from './dto/submit-kyc.dto';
+import { ReviewKycRequestDto } from './dto/review-kyc.dto';
+import { AppealKycRequestDto } from './dto/appeal-kyc.dto';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
@@ -31,7 +35,7 @@ export class KycController {
   @HttpCode(HttpStatus.CREATED)
   submit(
     @Req() req: AuthenticatedRequest,
-    @Body() dto: Omit<SubmitKycDto, 'userId'>,
+    @Body() dto: SubmitKycRequestDto,
   ) {
     // A submission always belongs to the caller; a body-supplied userId is ignored.
     return this.kycService.submit({ ...dto, userId: req.user?.sub ?? '' });
@@ -41,15 +45,20 @@ export class KycController {
   appeal(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body('reason') reason: string,
+    @Body() dto: AppealKycRequestDto,
   ) {
-    return this.kycService.appeal(id, reason, req.user?.sub ?? '');
+    return this.kycService.appeal(id, dto.reason, req.user?.sub ?? '');
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Patch(':id/review')
-  review(@Param('id') id: string, @Body() dto: ReviewKycDto) {
-    return this.kycService.review(id, dto);
+  review(
+    @Param('id') id: string,
+    @Body() dto: ReviewKycRequestDto,
+    @CurrentUser('id') reviewerId: string,
+  ) {
+    // The reviewer is the authenticated admin; a body-supplied identity is not accepted.
+    return this.kycService.review(id, { ...dto, reviewerId });
   }
 
   @Get(':userId/expiry-status')

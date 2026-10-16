@@ -23,6 +23,8 @@ import { UpdateTransactionStatusDto } from './dto/update-transaction-status.dto'
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { AdminTransactionsQueryDto } from './dto/admin-transactions-query.dto';
+import { CbnReportQueryDto } from './dto/cbn-report-query.dto';
+import { ImpersonateUserDto } from './dto/impersonate-user.dto';
 import { TransactionStatus } from '../transactions/transaction.entity';
 
 const adminStatsTtlSeconds = parseInt(
@@ -55,8 +57,8 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Get('reports/cbn-compliance')
-  generateCbnComplianceReport(@Query('period') period?: string) {
-    return this.adminService.generateCbnComplianceReport(period);
+  generateCbnComplianceReport(@Query() query: CbnReportQueryDto) {
+    return this.adminService.generateCbnComplianceReport(query.period, query.periodStart);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
@@ -124,16 +126,19 @@ export class AdminController {
     );
   }
 
+  /**
+   * Start a read-only impersonation session (15 minutes). There is no "end"
+   * endpoint: the token's short TTL is the limit, and the session cannot make
+   * state-changing requests.
+   */
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('users/:id/impersonate')
-  impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
-    return this.adminService.impersonateUser(id, adminId);
-  }
-
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Get('reports/cbn-compliance')
-  generateCbnComplianceReport(@Query('period') period?: string) {
-    return this.adminService.generateCbnComplianceReport(period);
+  impersonateUser(
+    @Param('id') id: string,
+    @Body() dto: ImpersonateUserDto,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.adminService.impersonateUser(id, adminId, dto.reason);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
@@ -180,11 +185,6 @@ export class AdminController {
     return this.adminService.updateSpread(pair, spreadPercentage, adminId);
   }
 
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('users/:id/impersonate')
-  impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
-    return this.adminService.impersonateUser(id, adminId);
-  }
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('approvals/request')
   requestApproval(@Body() dto: { actionType: string; actionData: any }, @CurrentUser('id') adminId: string) {

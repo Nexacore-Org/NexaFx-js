@@ -24,6 +24,7 @@ import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 import { SharedJwtModule } from '../common/jwt/jwt.module';
 import { AdminApproval } from './admin-approval.entity';
+import { FxModule } from '../fx/fx.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { AdminApproval } from './admin-approval.entity';
     AuditModule,
     MailModule,
     SharedJwtModule,
+    FxModule,
   ],
   controllers: [AdminController, SystemAdminController, AdminExportsController],
   providers: [

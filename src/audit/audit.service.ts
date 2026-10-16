@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { OnEvent } from '@nestjs/event-emitter';
 import { AuditLog } from './audit-log.entity';
 import { maskBody } from '../common/utils/redact';
+import { getRequestActorId } from '../common/context/request-actor.storage';
 
 const AUDIT_MASK_DEPTH = 10;
 
@@ -27,6 +28,12 @@ export class AuditService {
   ) {}
 
   async log(event: AuditEvent): Promise<AuditLog> {
+    // During an impersonated request, every entry also names the real admin.
+    const actorId = getRequestActorId();
+    if (actorId) {
+      event = { ...event, after: { ...(event.after ?? {}), impersonatedBy: actorId } };
+    }
+
     // Never persist secrets/PII into the (exportable) audit trail.
     const entry = this.auditRepo.create({
       ...event,
