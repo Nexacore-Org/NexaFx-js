@@ -37,6 +37,7 @@ import { FxModule } from '../fx/fx.module';
       AmlAlert,
       WalletBalanceEntity,
       AdminApproval,
+      AdminAlertEntity,
     ]),
     BullModule.registerQueue({ name: 'admin-exports' }),
     SecurityModule,

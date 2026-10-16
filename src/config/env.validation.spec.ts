@@ -43,8 +43,6 @@ const VALID_ENV: Record<string, string> = {
   MAIL_SECURE: 'false',
   // Observability
   SLOW_QUERY_THRESHOLD_MS: '1000',
-  // Wallet encryption (required, 64-char hex)
-  WALLET_ENCRYPTION_KEY: VALID_KEY_64,
   // Stellar Hot Wallet
   STELLAR_HOT_WALLET_SECRET: 'S1234567890',
 };

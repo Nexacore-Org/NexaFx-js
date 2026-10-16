@@ -9,6 +9,7 @@
  * for the failure-path test.
  */
 import { TransactionsService, DepositDto } from '../../src/transactions/transactions.service';
+import { makeTransactionsService } from '../../src/transactions/testing/transactions-service.factory';
 import { Transaction, TransactionStatus } from '../../src/transactions/transaction.entity';
 import { WalletsService } from '../../src/wallet/wallets.service';
 import { AuditService } from '../../src/audit/audit.service';
@@ -63,15 +64,17 @@ describe('Deposit flow (e2e)', () => {
     auditService = { log: jest.fn().mockResolvedValue(undefined) };
     events = { emit: jest.fn() };
 
-    service = new TransactionsService(
-      txRepo as unknown as Repository<Transaction>,
-      {} as DataSource,
-      walletsService as unknown as WalletsService,
-      auditService as unknown as AuditService,
-      { sendTransactionReversalNotice: jest.fn() } as unknown as MailService,
-      { findById: jest.fn() } as unknown as UsersService,
-      events as unknown as EventEmitter2,
-    );
+    // Every constructor argument is supplied (by name) through the factory; the collaborators
+    // this flow does not exercise get inert defaults instead of `undefined`.
+    service = makeTransactionsService({
+      txRepo: txRepo as unknown as Repository<Transaction>,
+      dataSource: { options: { type: 'better-sqlite3' } } as unknown as DataSource,
+      wallets: walletsService as unknown as WalletsService,
+      audit: auditService as unknown as AuditService,
+      mail: { sendTransactionReversalNotice: jest.fn() } as unknown as MailService,
+      users: { findById: jest.fn(), invalidateWalletBalanceCache: jest.fn().mockResolvedValue(undefined) } as unknown as UsersService,
+      events: events as unknown as EventEmitter2,
+    });
   });
 
   afterEach(() => jest.clearAllMocks());

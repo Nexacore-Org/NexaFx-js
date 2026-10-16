@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserDeactivationEntity } from '../entities/user-deactivation.entity';
 import { DeactivateUserDto } from '../dto/user-deactivation.dto';
+import { USER_ACCESS_CHANGED_EVENT, UserAccessChangedEvent } from '../../../auth/account-status.service';
 
 @Injectable()
 export class UserDeactivationService {
@@ -11,7 +13,17 @@ export class UserDeactivationService {
   constructor(
     @InjectRepository(UserDeactivationEntity)
     private readonly deactivationRepo: Repository<UserDeactivationEntity>,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
+
+  private announce(userId: string, reason: UserAccessChangedEvent['reason']): void {
+    const event: UserAccessChangedEvent = {
+      userId,
+      reason,
+      revokeTokens: reason === 'deactivated',
+    };
+    this.events?.emit(USER_ACCESS_CHANGED_EVENT, event);
+  }
 
   async deactivate(
     userId: string,
@@ -34,7 +46,10 @@ export class UserDeactivationService {
       isActive: true,
     });
 
-    return this.deactivationRepo.save(record);
+    const saved = await this.deactivationRepo.save(record);
+    // Revoke refresh tokens and drop cached status so access stops now.
+    this.announce(userId, 'deactivated');
+    return saved;
   }
 
   async reactivate(
@@ -53,7 +68,9 @@ export class UserDeactivationService {
     record.reactivatedBy = adminId;
     record.reactivatedAt = new Date();
 
-    return this.deactivationRepo.save(record);
+    const saved = await this.deactivationRepo.save(record);
+    this.announce(userId, 'reactivated');
+    return saved;
   }
 
   async isUserDeactivated(userId: string): Promise<boolean> {

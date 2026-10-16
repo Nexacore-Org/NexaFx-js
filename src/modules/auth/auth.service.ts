@@ -160,55 +160,6 @@ export class AuthService {
     }
   }
 
-  async forgotPassword(email: string, auditContext?: AuditContext): Promise<void> {
-    const user = await this.userRepository.findOne({ where: { email, deletedAt: IsNull() } });
-    if (!user) return;
-
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const expiry = new Date(Date.now() + 15 * 60 * 1000);
-
-    await this.userRepository.update(user.id, {
-      passwordResetTokenHash: tokenHash,
-      passwordResetExpiry: expiry,
-    });
-
-    if (auditContext) {
-      await this.logAuthEvent(auditContext, 'PASSWORD_RESET', user.id);
-    }
-
-    const baseUrl = this.configService.get<string>('APP_URL', 'http://localhost:3000');
-    const resetUrl = `${baseUrl}/auth/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
-    await this.mailService.sendPasswordReset(email, resetUrl);
-  }
-
-  async resetPassword(email: string, token: string, newPassword: string, auditContext?: AuditContext): Promise<void> {
-    const user = await this.userRepository.findOne({ where: { email, deletedAt: IsNull() } });
-    if (!user || !user.passwordResetTokenHash || !user.passwordResetExpiry) {
-      throw new BadRequestException('Invalid or expired reset token');
-    }
-
-    if (user.passwordResetExpiry < new Date()) {
-      throw new BadRequestException('Reset token has expired');
-    }
-
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    if (!constantTimeEquals(tokenHash, user.passwordResetTokenHash)) {
-      throw new BadRequestException('Invalid or expired reset token');
-    }
-
-    const passwordHash = await bcrypt.hash(newPassword, 12);
-    await this.userRepository.update(user.id, {
-      passwordHash,
-      passwordResetTokenHash: undefined,
-      passwordResetExpiry: undefined,
-    });
-
-    if (auditContext) {
-      await this.logAuthEvent(auditContext, 'PASSWORD_RESET_COMPLETED', user.id);
-    }
-  }
-
   async sendEmailVerification(userId: string, email: string): Promise<void> {
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');

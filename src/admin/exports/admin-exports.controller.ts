@@ -4,6 +4,7 @@ import {
   Body,
   Controller,
   Get,
+  GoneException,
   NotFoundException,
   Optional,
   Param,
@@ -14,14 +15,16 @@ import {
 } from '@nestjs/common';
 import { Queue } from 'bull';
 import { Response } from 'express';
-import { AdminRoleGuard } from '../../common/guards/admin-role.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { Role } from '../../auth/enums/role.enum';
 import { IpAllowlistGuard } from '../../common/guards/ip-allowlist.guard';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { ExportTransactionsDto } from '../dto/export-transactions.dto';
+import { ExportTransactionsDto, assertExportWindow } from '../dto/export-transactions.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ExportStorageService } from './export-storage.service';
 
-@UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+@Roles(Role.ADMIN, Role.COMPLIANCE)
+@UseGuards(JwtAuthGuard, IpAllowlistGuard)
 @Controller('admin/exports')
 export class AdminExportsController {
   constructor(
@@ -36,6 +39,8 @@ export class AdminExportsController {
     @Body() dto: ExportTransactionsDto,
     @CurrentUser('email') requestedByEmail: string,
   ) {
+    assertExportWindow(dto.from, dto.to);
+
     if (dto.format !== 'csv') {
       throw new BadRequestException(
         'Only the csv format is currently supported',
@@ -76,6 +81,10 @@ export class AdminExportsController {
     @Res() res: Response,
   ) {
     const filePath = this.storage.resolve(jobId, token);
+    if (!this.storage.exists(filePath)) {
+      // The link was valid but the file has been cleaned up (or never existed).
+      throw new GoneException('This export has expired; request a new one');
+    }
     res.download(filePath);
   }
 }

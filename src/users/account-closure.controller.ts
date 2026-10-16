@@ -1,16 +1,9 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Headers,
-  Post,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AccountClosureService } from './account-closure.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CloseAccountDto } from './dto/close-account.dto';
 
 @ApiTags('Users')
 @UseGuards(JwtAuthGuard)
@@ -20,29 +13,11 @@ export class AccountClosureController {
 
   @Post('close-account')
   async closeAccount(
-    @Headers('authorization') authorization: string | undefined,
-    @Body('currentPassword') currentPassword: string,
-    @Body('twoFactorCode') twoFactorCode: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: CloseAccountDto,
   ): Promise<{ closed: true; deletedAt: Date; piiPurgeAt: Date }> {
-    const accessToken = this.extractBearerToken(authorization);
-    return this.accountClosureService.closeAccount(
-      accessToken,
-      currentPassword,
-      twoFactorCode,
-    );
-  }
-
-  private extractBearerToken(authorization: string | undefined): string {
-    if (!authorization?.startsWith('Bearer ')) {
-      throw new BadRequestException('Bearer access token is required');
-    }
-
-    const token = authorization.slice('Bearer '.length).trim();
-    if (!token) {
-      throw new BadRequestException('Bearer access token is required');
-    }
-
-    return token;
+    // Identity comes from the global JWT guard, never from a re-parsed header.
+    return this.accountClosureService.closeAccount(userId, dto.currentPassword);
   }
 
   @Get('export-data')

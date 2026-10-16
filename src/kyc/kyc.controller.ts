@@ -17,7 +17,8 @@ import { ReviewKycRequestDto } from './dto/review-kyc.dto';
 import { AppealKycRequestDto } from './dto/appeal-kyc.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AdminRoleGuard } from '../common/guards/admin-role.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
 
 interface AuthenticatedRequest {
@@ -50,7 +51,9 @@ export class KycController {
     return this.kycService.appeal(id, dto.reason, req.user?.sub ?? '');
   }
 
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  // Admins and compliance officers may review; enforced by the global RolesGuard.
+  @Roles(Role.ADMIN, Role.COMPLIANCE)
+  @UseGuards(JwtAuthGuard, IpAllowlistGuard)
   @Patch(':id/review')
   review(
     @Param('id') id: string,

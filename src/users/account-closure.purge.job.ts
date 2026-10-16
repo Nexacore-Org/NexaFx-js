@@ -1,45 +1,48 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHash, randomBytes } from 'crypto';
-import { LessThanOrEqual, IsNull, Repository } from 'typeorm';
-import { UserAccount } from './user-account.entity';
+import { randomBytes } from 'crypto';
+import { IsNull, LessThanOrEqual, Repository } from 'typeorm';
+import { User } from './user.entity';
 
+/**
+ * Anonymises closed accounts once the retention period has passed. Only
+ * personal fields on `users` are scrubbed; transaction, ledger and KYC records
+ * keep pointing at the (now anonymous) row as the retention policy requires.
+ */
 @Injectable()
 export class AccountClosurePurgeJob {
   private readonly logger = new Logger(AccountClosurePurgeJob.name);
 
   constructor(
-    @InjectRepository(UserAccount)
-    private readonly userAccountRepository: Repository<UserAccount>,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async purgeExpiredPersonalData(): Promise<void> {
+  async purgeExpiredPersonalData(): Promise<number> {
     const now = new Date();
-    const accountsToPurge = await this.userAccountRepository.find({
-      where: {
-        piiPurgeAt: LessThanOrEqual(now),
-        piiPurgedAt: IsNull(),
-      },
+    // Soft-deleted rows are hidden by default, so ask for them explicitly.
+    const due = await this.usersRepository.find({
+      withDeleted: true,
+      where: { piiPurgeAt: LessThanOrEqual(now), piiPurgedAt: IsNull() },
     });
 
-    for (const account of accountsToPurge) {
-      account.email = `deleted-${account.id}@archived.local`;
-      account.displayName = 'Deleted User';
-      account.passwordSalt = randomBytes(16).toString('hex');
-      account.passwordHash = createHash('sha256')
-        .update(account.id)
-        .digest('hex');
-      account.twoFactorSecret = randomBytes(20).toString('hex');
-      account.piiPurgedAt = now;
-      await this.userAccountRepository.save(account);
+    for (const user of due) {
+      await this.usersRepository.update(user.id, {
+        email: `deleted-${user.id}@archived.local`,
+        firstName: '[deleted]',
+        lastName: '[deleted]',
+        // Unusable credential: a random value that is not a valid bcrypt hash.
+        passwordHash: `purged:${randomBytes(24).toString('hex')}`,
+        isActive: false,
+        piiPurgedAt: now,
+      });
     }
 
-    if (accountsToPurge.length > 0) {
-      this.logger.log(
-        `Purged personal data for ${accountsToPurge.length} closed accounts`,
-      );
+    if (due.length > 0) {
+      this.logger.log(`Anonymised personal data for ${due.length} closed accounts`);
     }
+    return due.length;
   }
 }

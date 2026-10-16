@@ -24,6 +24,10 @@ export class ApiKeyEntity {
   @Column({ type: 'varchar', length: 255, unique: true })
   keyHash: string;
 
+  /** First characters of the key (e.g. `nxf_ab12cd34`), safe to display. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  keyPrefix?: string;
+
   @Column({ type: 'jsonb', default: () => "'[]'" })
   scopes: string[];
 

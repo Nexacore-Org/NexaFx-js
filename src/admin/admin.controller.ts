@@ -15,6 +15,12 @@ import {
 import { Response } from 'express';
 import { join, resolve, normalize } from 'path';
 import { AdminService } from './admin.service';
+import { AdminApprovalStatus } from './admin-approval.entity';
+import {
+  AdminApprovalActionType,
+  CreateAdminApprovalDto,
+  RejectAdminApprovalDto,
+} from './dto/create-admin-approval.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
@@ -88,6 +94,14 @@ export class AdminController {
     @Body() dto: UpdateTransactionStatusDto,
     @CurrentUser('id') adminId: string,
   ) {
+    // With dual control on, a single admin can only *request* the change.
+    if (this.adminService.isDualControlEnabled()) {
+      return this.adminService.requestAdminApproval(
+        AdminApprovalActionType.OVERRIDE_TRANSACTION_STATUS,
+        { transactionId: id, newStatus: dto.status, reason: dto.reason },
+        adminId,
+      );
+    }
     return this.adminService.overrideTransactionStatus(
       id,
       dto.status,
@@ -103,6 +117,13 @@ export class AdminController {
     @Body() dto: UpdateUserStatusDto,
     @CurrentUser('id') adminId: string,
   ) {
+    if (this.adminService.isDualControlEnabled()) {
+      return this.adminService.requestAdminApproval(
+        AdminApprovalActionType.UPDATE_USER_STATUS,
+        { targetUserId: id, isActive: dto.isActive, reason: dto.reason },
+        adminId,
+      );
+    }
     return this.adminService.updateUserStatus(
       id,
       dto.isActive,
@@ -187,13 +208,33 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('approvals/request')
-  requestApproval(@Body() dto: { actionType: string; actionData: any }, @CurrentUser('id') adminId: string) {
+  requestApproval(@Body() dto: CreateAdminApprovalDto, @CurrentUser('id') adminId: string) {
     return this.adminService.requestAdminApproval(dto.actionType, dto.actionData, adminId);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Get('approvals')
+  listApprovals(@Query('status') status?: string) {
+    const allowed = Object.values(AdminApprovalStatus) as string[];
+    if (status !== undefined && !allowed.includes(status)) {
+      throw new BadRequestException(`status must be one of: ${allowed.join(', ')}`);
+    }
+    return this.adminService.listAdminApprovals(status as AdminApprovalStatus | undefined);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('approvals/:id/approve')
   approveRequest(@Param('id') id: string, @CurrentUser('id') adminId: string) {
     return this.adminService.approveAdminRequest(id, adminId);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  @Post('approvals/:id/reject')
+  rejectRequest(
+    @Param('id') id: string,
+    @Body() dto: RejectAdminApprovalDto,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.adminService.rejectAdminRequest(id, adminId, dto.reason);
   }
 }

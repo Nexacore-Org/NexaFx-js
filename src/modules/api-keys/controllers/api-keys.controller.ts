@@ -10,7 +10,8 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { ApiKeysService } from '../services/api-keys.service';
+import { ApiKeysService, toApiKeyView } from '../services/api-keys.service';
+import { ApiKeyAllowed } from '../api-key-scopes';
 import { CreateApiKeyDto } from '../dto/create-api-key.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 
@@ -33,12 +34,26 @@ export class ApiKeysController {
     });
     return {
       success: true,
+      // The hash is never returned; the plain key is shown exactly once.
       data: {
-        ...apiKey,
+        ...toApiKeyView(apiKey),
         key: plainKey,
       },
       message: 'Store this key securely. It will not be shown again.',
     };
+  }
+
+  /**
+   * Introspect the key used for this request. Routes opt in to API-key access
+   * with `@ApiKeyAllowed(<scopes>)`; only do that for handlers that derive the
+   * acting user from `request.user` and not from a body/query parameter.
+   */
+  @Get('me')
+  @ApiKeyAllowed()
+  @ApiOperation({ summary: 'Describe the authenticated principal (JWT or API key)' })
+  me(@Request() req: any) {
+    const { id, authMethod, scopes, apiKeyId } = req.user ?? {};
+    return { success: true, data: { userId: id, authMethod: authMethod ?? 'jwt', scopes: scopes ?? [], apiKeyId: apiKeyId ?? null } };
   }
 
   @Get()
@@ -46,7 +61,7 @@ export class ApiKeysController {
   async list(@Request() req: any) {
     const userId = req.user?.id || req.user?.sub;
     const keys = await this.apiKeysService.getApiKeysByUser(userId);
-    return { success: true, data: keys };
+    return { success: true, data: keys.map(toApiKeyView) };
   }
 
   @Patch(':id/revoke')
@@ -54,6 +69,6 @@ export class ApiKeysController {
   async revoke(@Param('id', new ParseUUIDPipe()) id: string, @Request() req: any) {
     const userId = req.user?.id || req.user?.sub;
     const key = await this.apiKeysService.revokeApiKey(id, userId);
-    return { success: true, data: key };
+    return { success: true, data: toApiKeyView(key) };
   }
 }
