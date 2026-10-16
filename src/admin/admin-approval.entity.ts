@@ -30,6 +30,19 @@ export class AdminApproval {
   })
   status!: AdminApprovalStatus;
 
+  @Column({ type: 'uuid', nullable: true })
+  rejectedBy?: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  rejectionReason?: string | null;
+
+  /** Requests not approved before this moment can no longer be approved. */
+  @Column({ type: 'timestamp', nullable: true })
+  expiresAt?: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  executedAt?: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }
