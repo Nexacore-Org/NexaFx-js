@@ -20,6 +20,14 @@ export enum KycStatus {
   REJECTED = 'rejected',
 }
 
+/** Verification tier that determines transaction limits and fees. */
+export enum KycTier {
+  NONE = 'NONE',
+  BASIC = 'BASIC',
+  ADVANCED = 'ADVANCED',
+  VERIFIED = 'VERIFIED',
+}
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')

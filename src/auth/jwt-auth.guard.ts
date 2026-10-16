@@ -66,6 +66,12 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const request = this.getRequest(context);
+
+    // Already authenticated by the API-key guard on an `@ApiKeyAllowed` route.
+    if (request.user?.authMethod === 'api_key') {
+      return true;
+    }
+
     const authorization = request.headers.authorization;
     const bearerToken = Array.isArray(authorization)
       ? authorization[0]
