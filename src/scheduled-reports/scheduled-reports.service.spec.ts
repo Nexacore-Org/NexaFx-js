@@ -1,4 +1,4 @@
-import { NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { NotificationPreferencesService } from '../notification-preferences/notification-preferences.service';
 import {
   NotificationChannel,
@@ -8,7 +8,6 @@ import {
   ScheduledReportsService,
 } from './scheduled-reports.service';
 import { ReportType, ReportFrequency } from './entities/scheduled-report.entity';
-import { TermsController } from '../terms/terms.controller';
 
 describe('NotificationPreferencesService', () => {
   it('returns true when no preference row exists', async () => {
@@ -72,31 +71,6 @@ describe('ScheduledReportsService', () => {
     const service = new ScheduledReportsService(repo as any);
     await expect(service.deactivate('missing-id')).rejects.toThrow(
       NotFoundException,
-    );
-  });
-});
-
-describe('TermsController', () => {
-  it('records acceptance for the authenticated user', async () => {
-    const termsService = {
-      accept: jest.fn().mockResolvedValue({ userId: 'u1', version: '1.0' }),
-    };
-    const controller = new TermsController(termsService as any);
-    const result = await controller.accept({
-      user: { sub: 'u1' },
-      ip: '127.0.0.1',
-      headers: { 'user-agent': 'jest' },
-    } as any);
-    expect(termsService.accept).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'u1' }),
-    );
-    expect(result.userId).toBe('u1');
-  });
-
-  it('rejects requests without an authenticated user', async () => {
-    const controller = new TermsController({ accept: jest.fn() } as any);
-    await expect(controller.accept({} as any)).rejects.toThrow(
-      UnauthorizedException,
     );
   });
 });

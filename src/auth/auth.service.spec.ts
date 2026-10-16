@@ -1,157 +1,222 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { AuditService } from '../audit/audit.service';
+import { UserDeactivationService } from '../modules/user-deactivation/services/user-deactivation.service';
+import { MailService } from '../mail/mail.service';
+import { PasswordService } from './password.service';
+import { PasswordPolicyService } from './password-policy.service';
+
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const BCRYPT_HASH = '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz0123';
+const STRONG_PASSWORD = 'Correct-Horse-Battery-42!';
+
+/** Builds AuthService through Nest DI so constructor order can never drift out of sync with this spec. */
+async function build() {
+  const mocks = {
+    users: { create: jest.fn(), findByEmail: jest.fn(), update: jest.fn(), findById: jest.fn() },
+    terms: { accept: jest.fn(), ensureAccepted: jest.fn() },
+    jwt: { sign: jest.fn().mockReturnValue('signed-token'), verify: jest.fn() },
+    audit: { log: jest.fn() },
+    deactivation: { isUserDeactivated: jest.fn().mockResolvedValue(false) },
+    mail: { sendAdminAlert: jest.fn().mockResolvedValue(undefined) },
+    events: { emit: jest.fn() },
+    config: { get: jest.fn() },
+    passwords: { hash: jest.fn().mockResolvedValue(BCRYPT_HASH), verify: jest.fn() },
+    policy: { validate: jest.fn() },
+  };
+  const module = await Test.createTestingModule({
+    providers: [
+      AuthService,
+      { provide: UsersService, useValue: mocks.users },
+      { provide: TermsAcceptanceService, useValue: mocks.terms },
+      { provide: JwtService, useValue: mocks.jwt },
+      { provide: AuditService, useValue: mocks.audit },
+      { provide: UserDeactivationService, useValue: mocks.deactivation },
+      { provide: MailService, useValue: mocks.mail },
+      { provide: EventEmitter2, useValue: mocks.events },
+      { provide: ConfigService, useValue: mocks.config },
+      { provide: PasswordService, useValue: mocks.passwords },
+      { provide: PasswordPolicyService, useValue: mocks.policy },
+    ],
+  }).compile();
+  return { service: module.get(AuthService), mocks };
+}
+
+const baseUser = (over: Record<string, unknown> = {}) => ({
+  id: 'user-1',
+  email: 'user@example.com',
+  role: 'user',
+  require2fa: false,
+  failedLoginAttempts: 0,
+  lockedUntil: null as Date | null,
+  passwordHash: BCRYPT_HASH,
+  ...over,
+});
 
 describe('AuthService', () => {
-  const usersService = {
-    create: jest.fn(),
-    findByEmail: jest.fn(),
-  } as unknown as UsersService;
-  const termsService = {
-    accept: jest.fn(),
-    ensureAccepted: jest.fn(),
-  } as unknown as TermsAcceptanceService;
-  const jwtService = {
-    sign: jest.fn(),
-  } as unknown as JwtService;
-  const auditService = {
-    log: jest.fn(),
-  } as unknown as AuditService;
-  const service = new AuthService(
-    usersService,
-    termsService,
-    jwtService,
-    auditService,
-  );
+  describe('register', () => {
+    const dto = { email: 'new@example.com', password: STRONG_PASSWORD, firstName: 'Ada', lastName: 'Lovelace' };
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+    it('validates the policy, hashes the password, accepts terms and audits', async () => {
+      const { service, mocks } = await build();
+      mocks.users.create.mockResolvedValue({ id: 'u2', email: dto.email, role: 'user' });
 
-  // ── register ──────────────────────────────────────────────────────────────
+      await expect(service.register(dto, { ip: '1.2.3.4', userAgent: 'jest' })).resolves.toEqual({
+        accessToken: 'signed-token',
+      });
 
-  it('registers a user and issues an access token', async () => {
-    (usersService.create as jest.Mock).mockResolvedValue({
-      id: 'user-1',
-      email: 'user@example.com',
-      role: 'user',
-    });
-    (jwtService.sign as jest.Mock).mockReturnValue('token-1');
-
-    await expect(
-      service.register({
-        email: 'user@example.com',
-        password: 'secret',
-        firstName: 'Ada',
-        lastName: 'Lovelace',
-      }),
-    ).resolves.toEqual({ accessToken: 'token-1' });
-  });
-
-  it('accepts terms and logs audit event on registration', async () => {
-    (usersService.create as jest.Mock).mockResolvedValue({
-      id: 'user-2',
-      email: 'user2@example.com',
-      role: 'user',
-    });
-    (jwtService.sign as jest.Mock).mockReturnValue('token-2');
-
-    await service.register({
-      email: 'user2@example.com',
-      password: 'pass',
-      firstName: 'Bob',
-      lastName: 'Smith',
+      expect(mocks.policy.validate).toHaveBeenCalledWith(dto.password);
+      expect(mocks.passwords.hash).toHaveBeenCalledWith(dto.password);
+      expect(mocks.users.create).toHaveBeenCalledWith(expect.objectContaining({ passwordHash: BCRYPT_HASH }));
+      expect(mocks.terms.accept).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u2', ipAddress: '1.2.3.4' }));
+      expect(mocks.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'auth.register', userId: 'u2' }));
     });
 
-    expect(termsService.accept).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'user-2' }),
-    );
-    expect(auditService.log).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'auth.register', userId: 'user-2' }),
-    );
-  });
-
-  it('propagates error when user creation fails during registration', async () => {
-    (usersService.create as jest.Mock).mockRejectedValue(
-      new Error('db constraint'),
-    );
-
-    await expect(
-      service.register({
-        email: 'dup@example.com',
-        password: 'secret',
-        firstName: 'X',
-        lastName: 'Y',
-      }),
-    ).rejects.toThrow('db constraint');
-
-    expect(jwtService.sign).not.toHaveBeenCalled();
-  });
-
-  // ── login ─────────────────────────────────────────────────────────────────
-
-  it('requires terms acceptance before login', async () => {
-    (usersService.findByEmail as jest.Mock).mockResolvedValue({
-      id: 'user-1',
-      email: 'user@example.com',
-      passwordHash:
-        '2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b',
-      role: 'user',
-    });
-    (termsService.ensureAccepted as jest.Mock).mockRejectedValue(
-      new Error('accept terms'),
-    );
-
-    await expect(
-      service.login({ email: 'user@example.com', password: 'secret' }),
-    ).rejects.toThrow('accept terms');
-  });
-
-  it('throws UnauthorizedException for unknown email', async () => {
-    (usersService.findByEmail as jest.Mock).mockResolvedValue(null);
-
-    await expect(
-      service.login({ email: 'ghost@example.com', password: 'secret' }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
-  });
-
-  it('throws UnauthorizedException for wrong password', async () => {
-    (usersService.findByEmail as jest.Mock).mockResolvedValue({
-      id: 'user-1',
-      email: 'user@example.com',
-      // SHA-256 of "correct-password"
-      passwordHash:
-        'b109f3bbbc244eb82441917ed06d618b9008dd09b3befd1b5e07394c706a8bb9',
-      role: 'user',
+    it('propagates a policy failure and creates nothing', async () => {
+      const { service, mocks } = await build();
+      mocks.policy.validate.mockImplementation(() => {
+        throw new Error('too weak');
+      });
+      await expect(service.register({ ...dto, password: 'weak' })).rejects.toThrow('too weak');
+      expect(mocks.users.create).not.toHaveBeenCalled();
     });
 
-    await expect(
-      service.login({ email: 'user@example.com', password: 'wrong-password' }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    it('propagates user-creation errors without issuing a token', async () => {
+      const { service, mocks } = await build();
+      mocks.users.create.mockRejectedValue(new Error('db constraint'));
+      await expect(service.register(dto)).rejects.toThrow('db constraint');
+      expect(mocks.jwt.sign).not.toHaveBeenCalled();
+    });
   });
 
-  it('issues a token and logs audit event on successful login', async () => {
-    (usersService.findByEmail as jest.Mock).mockResolvedValue({
-      id: 'user-3',
-      email: 'user3@example.com',
-      passwordHash:
-        '2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b',
-      role: 'user',
-    });
-    (termsService.ensureAccepted as jest.Mock).mockResolvedValue(undefined);
-    (jwtService.sign as jest.Mock).mockReturnValue('token-3');
+  describe('login', () => {
+    const creds = { email: 'user@example.com', password: STRONG_PASSWORD };
 
-    const result = await service.login({
-      email: 'user3@example.com',
-      password: 'secret',
+    it('rejects an unknown email with 401', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(null);
+      await expect(service.login(creds)).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
-    expect(result).toEqual({ accessToken: 'token-3' });
-    expect(auditService.log).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'auth.login', userId: 'user-3' }),
-    );
+    it('counts a wrong password', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser({ failedLoginAttempts: 1 }));
+      mocks.passwords.verify.mockResolvedValue(false);
+
+      await expect(service.login(creds)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(mocks.users.update).toHaveBeenCalledWith('user-1', { failedLoginAttempts: 2 });
+    });
+
+    it('locks the account on the 5th failure, mails the user and raises the admin alert', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser({ failedLoginAttempts: 4 }));
+      mocks.passwords.verify.mockResolvedValue(false);
+
+      await expect(service.login(creds)).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(mocks.users.update).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ failedLoginAttempts: 5, lockedUntil: expect.any(Date) }),
+      );
+      const lockedUntil = (mocks.users.update.mock.calls[0][1] as { lockedUntil: Date }).lockedUntil;
+      expect(lockedUntil.getTime()).toBeGreaterThan(Date.now() + 29 * 60_000);
+      expect(mocks.mail.sendAdminAlert).toHaveBeenCalledWith(expect.objectContaining({ to: 'user@example.com' }));
+      expect(mocks.events.emit).toHaveBeenCalledWith(
+        'admin.alert.account-lockout',
+        expect.objectContaining({ type: 'account-lockout' }),
+      );
+    });
+
+    it('rejects a locked account with 403', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser({ lockedUntil: new Date(Date.now() + 60_000) }));
+      await expect(service.login(creds)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mocks.passwords.verify).not.toHaveBeenCalled();
+    });
+
+    it('resets the counters after a successful login', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser({ failedLoginAttempts: 3 }));
+      mocks.passwords.verify.mockResolvedValue(true);
+      mocks.terms.ensureAccepted.mockResolvedValue(undefined);
+
+      await expect(service.login(creds)).resolves.toEqual({ accessToken: 'signed-token' });
+      expect(mocks.users.update).toHaveBeenCalledWith('user-1', { failedLoginAttempts: 0, lockedUntil: null });
+      expect(mocks.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'auth.login', userId: 'user-1' }));
+    });
+
+    it('requires terms acceptance', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser());
+      mocks.passwords.verify.mockResolvedValue(true);
+      mocks.terms.ensureAccepted.mockRejectedValue(new Error('accept terms'));
+      await expect(service.login(creds)).rejects.toThrow('accept terms');
+    });
+  });
+
+  describe('login - legacy SHA-256 hashes', () => {
+    it('migrates a correct legacy password to bcrypt via usersService.update', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser({ passwordHash: sha256(STRONG_PASSWORD) }));
+      mocks.terms.ensureAccepted.mockResolvedValue(undefined);
+
+      await expect(service.login({ email: 'user@example.com', password: STRONG_PASSWORD })).resolves.toEqual({
+        accessToken: 'signed-token',
+      });
+      expect(mocks.passwords.hash).toHaveBeenCalledWith(STRONG_PASSWORD);
+      expect(mocks.users.update).toHaveBeenCalledWith('user-1', { passwordHash: BCRYPT_HASH });
+      expect(mocks.passwords.verify).not.toHaveBeenCalled();
+    });
+
+    it('does not migrate when the legacy password is wrong', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser({ passwordHash: sha256('another-password') }));
+
+      await expect(service.login({ email: 'user@example.com', password: STRONG_PASSWORD })).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(mocks.passwords.hash).not.toHaveBeenCalled();
+      expect(mocks.users.update).not.toHaveBeenCalledWith('user-1', expect.objectContaining({ passwordHash: expect.anything() }));
+    });
+  });
+
+  describe('login - account state', () => {
+    it('rejects a deactivated user with 401', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser());
+      mocks.passwords.verify.mockResolvedValue(true);
+      mocks.terms.ensureAccepted.mockResolvedValue(undefined);
+      mocks.deactivation.isUserDeactivated.mockResolvedValue(true);
+
+      await expect(service.login({ email: 'user@example.com', password: STRONG_PASSWORD })).rejects.toThrow(
+        'Account has been deactivated by an administrator',
+      );
+    });
+
+    it('requires a TOTP code for an admin with require2fa', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser({ role: 'admin', require2fa: true }));
+      await expect(service.login({ email: 'user@example.com', password: STRONG_PASSWORD })).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(mocks.passwords.verify).not.toHaveBeenCalled();
+    });
+
+    it('lets an admin with require2fa continue once a TOTP code is supplied', async () => {
+      const { service, mocks } = await build();
+      mocks.users.findByEmail.mockResolvedValue(baseUser({ role: 'admin', require2fa: true }));
+      mocks.passwords.verify.mockResolvedValue(true);
+      mocks.terms.ensureAccepted.mockResolvedValue(undefined);
+      await expect(
+        service.login({ email: 'user@example.com', password: STRONG_PASSWORD, totpCode: '123456' }),
+      ).resolves.toEqual({ accessToken: 'signed-token' });
+    });
   });
 });

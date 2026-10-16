@@ -48,7 +48,9 @@ describe('AppModule', () => {
     const mockForRootAsync = jest.fn(() => ({ module: 'BullModule' }));
     const mockRegisterQueue = jest.fn(() => ({ queue: 'default' }));
 
+    // Keep the real package (InjectQueue, Processor, Process, ...) and replace only BullModule.
     jest.doMock('@nestjs/bull', () => ({
+      ...jest.requireActual('@nestjs/bull'),
       BullModule: {
         forRootAsync: mockForRootAsync,
         registerQueue: mockRegisterQueue,

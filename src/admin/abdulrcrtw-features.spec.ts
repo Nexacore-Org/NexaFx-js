@@ -1,11 +1,43 @@
+import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { AdminService } from '../admin/admin.service';
+import { AuditService } from '../audit/audit.service';
+import { User } from '../users/user.entity';
+import { Transaction } from '../transactions/transaction.entity';
+import { KycDocument } from '../kyc/kyc-document.entity';
+import { SupportTicketEntity } from '../modules/support-tickets/entities/support-ticket.entity';
+import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
+import { AmlAlert } from '../aml/aml-alert.entity';
+import { AdminApproval } from './admin-approval.entity';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { MailService } from '../mail/mail.service';
+
+/**
+ * Builds AdminService through Nest DI instead of positionally, so adding or
+ * reordering constructor dependencies cannot silently put a mock in the wrong slot.
+ */
+async function buildAdminService(overrides: { users?: object; audit?: object } = {}) {
+  const repo = () => ({ findOne: jest.fn(), find: jest.fn(), count: jest.fn(), save: jest.fn() });
+  const module = await Test.createTestingModule({
+    providers: [
+      AdminService,
+      { provide: getRepositoryToken(User), useValue: overrides.users ?? repo() },
+      { provide: getRepositoryToken(Transaction), useValue: repo() },
+      { provide: getRepositoryToken(KycDocument), useValue: repo() },
+      { provide: getRepositoryToken(SupportTicketEntity), useValue: repo() },
+      { provide: getRepositoryToken(WebhookEndpoint), useValue: repo() },
+      { provide: getRepositoryToken(AmlAlert), useValue: repo() },
+      { provide: getRepositoryToken(AdminApproval), useValue: repo() },
+      { provide: AuditService, useValue: overrides.audit ?? { log: jest.fn().mockResolvedValue(undefined) } },
+    ],
+  }).compile();
+  return module.get(AdminService);
+}
 
 describe('abdulrcrtw Features (Issues #992, #991, #990, #989)', () => {
   it('AdminService supports spread configuration management and audit logging', async () => {
     const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
-    const adminService = new AdminService({} as any, {} as any, {} as any, {} as any, {} as any, {} as any, mockAudit as any);
+    const adminService = await buildAdminService({ audit: mockAudit });
 
     const spreads = adminService.getSpreads();
     expect(spreads['USD/NGN']).toBeDefined();
@@ -18,7 +50,7 @@ describe('abdulrcrtw Features (Issues #992, #991, #990, #989)', () => {
   it('AdminService impersonates user and logs audit trail', async () => {
     const mockUsers = { findOne: jest.fn().mockResolvedValue({ id: 'target-user', email: 'user@example.com' }) };
     const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
-    const adminService = new AdminService(mockUsers as any, {} as any, {} as any, {} as any, {} as any, {} as any, mockAudit as any);
+    const adminService = await buildAdminService({ users: mockUsers, audit: mockAudit });
 
     const res = await adminService.impersonateUser('target-user', 'admin-1');
     expect(res.impersonatedUserId).toBe('target-user');
