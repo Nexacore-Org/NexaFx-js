@@ -22,15 +22,15 @@ Three modules that were empty placeholders are now real and registered in `AppMo
 
 ## Deferred modules
 
-`AppModule` previously imported the module files below, none of which were ever committed to the
-repository. The imports have been removed so the root module compiles; each name is recorded here as
-deferred scope rather than as working functionality:
+These module files do not exist in the repository and are not imported by `AppModule`:
+`DataArchiveModule`, `ExperimentsModule`, `GoalsModule`, `RetryModule`,
+`StrategyOptimizerModule` and `VersioningModule`.
 
-`AdminAuditModule`, `AnnouncementsModule`, `ComplianceModule`, `DataArchiveModule`,
-`EnrichmentModule`, `ExperimentsModule`, `GoalsModule`,
-`InsightsModule`, `InsightsForecastModule`, `ModulesCacheModule`, `RetryModule`, `RiskEngineModule`,
-`ScheduledTransactionsModule`, `SecretsModule`, `StrategyOptimizerModule`,
-`TransactionRiskModule`, `VersioningModule`.
+These exist under `src/modules/` as empty stubs and are **not** registered in `AppModule`
+(some are imported by other live modules): `AdminAuditModule`, `AnnouncementsModule`,
+`ComplianceModule`, `EnrichmentModule`, `InsightsModule`, `InsightsForecastModule`,
+`ModulesCacheModule`, `RiskEngineModule`, `ScheduledTransactionsModule`, `SecretsModule` and
+`TransactionRiskModule`. Each is tracked by its own wiring issue.
 
 A further set of dangling imports duplicated modules that do exist under a different path, and were
 dropped in favour of the real ones: `./modules/reconciliation` (use `ReconciliationModule` from

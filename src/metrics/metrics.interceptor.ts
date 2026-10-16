@@ -1,6 +1,7 @@
 import {
   CallHandler,
   ExecutionContext,
+  HttpException,
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ export class MetricsInterceptor implements NestInterceptor {
     const http = context.switchToHttp();
     const req = http.getRequest<Request>();
     const res = http.getResponse<Response>();
+    const method = req.method;
     let route = 'unmatched';
     if (req.route?.path) {
       route = String(req.route.path);
@@ -29,7 +31,8 @@ export class MetricsInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap({
         next: () => this.record(method, route, res.statusCode, start),
-        error: () => this.record(method, route, res.statusCode || 500, start),
+        error: (err: unknown) =>
+          this.record(method, route, err instanceof HttpException ? err.getStatus() : 500, start),
       }),
     );
   }
