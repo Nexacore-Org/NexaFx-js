@@ -13,6 +13,7 @@ export interface JwtPayload {
   isEmailVerified: boolean;
   iat: number;
   typ?: string;
+  sid?: string;
 }
 
 @Injectable()
@@ -54,6 +55,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       role: payload.role,
       isEmailVerified: payload.isEmailVerified,
+      sid: payload.sid,
     };
   }
 }

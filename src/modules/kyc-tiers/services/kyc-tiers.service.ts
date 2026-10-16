@@ -1,25 +1,33 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { KycTierUpgradeEntity, KycTierUpgradeStatus } from '../entities/kyc-tier-upgrade.entity';
-import { UserEntity } from '../../users/entities/user.entity';
+import { KycTierUpgradeEntity } from '../entities/kyc-tier-upgrade.entity';
+import { KycTier, User } from '../../../users/user.entity';
 import { RequestKycTierUpgradeDto } from '../dto/request-kyc-tier-upgrade.dto';
 import { ListKycTierUpgradesDto } from '../dto/list-kyc-tier-upgrades.dto';
 
-const TIER_LEVELS: Record<string, number> = {
-  NONE: 0,
-  BASIC: 1,
-  ADVANCED: 2,
-  VERIFIED: 3,
+export const TIER_LEVELS: Record<KycTier, number> = {
+  [KycTier.NONE]: 0,
+  [KycTier.BASIC]: 1,
+  [KycTier.ADVANCED]: 2,
+  [KycTier.VERIFIED]: 3,
 };
+
+/** A request may move up at most this many levels at once (policy: one step at a time). */
+const MAX_TIER_JUMP = 1;
 
 @Injectable()
 export class KycTiersService {
   constructor(
     @InjectRepository(KycTierUpgradeEntity)
     private readonly upgradeRepo: Repository<KycTierUpgradeEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   async requestUpgrade(userId: string, dto: RequestKycTierUpgradeDto): Promise<KycTierUpgradeEntity> {
@@ -28,16 +36,18 @@ export class KycTiersService {
       throw new NotFoundException('User not found');
     }
 
-    const currentTier = (user.metadata?.kycTier as string) ?? 'NONE';
-    const requestedLevel = TIER_LEVELS[dto.requestedTier.toUpperCase()];
-    const currentLevel = TIER_LEVELS[currentTier.toUpperCase()] ?? 0;
+    const currentTier = user.kycTier ?? KycTier.NONE;
+    const requestedLevel = TIER_LEVELS[dto.requestedTier];
+    const currentLevel = TIER_LEVELS[currentTier] ?? 0;
 
     if (requestedLevel === undefined) {
       throw new BadRequestException(`Invalid tier: ${dto.requestedTier}`);
     }
-
     if (requestedLevel <= currentLevel) {
       throw new BadRequestException('Requested tier must be higher than current tier');
+    }
+    if (requestedLevel - currentLevel > MAX_TIER_JUMP) {
+      throw new BadRequestException('Tiers must be requested one level at a time');
     }
 
     const pending = await this.upgradeRepo.findOne({
@@ -50,7 +60,7 @@ export class KycTiersService {
     const upgrade = this.upgradeRepo.create({
       userId,
       currentTier,
-      requestedTier: dto.requestedTier.toUpperCase(),
+      requestedTier: dto.requestedTier,
       documents: dto.documents ?? {},
       status: 'pending',
     });
@@ -85,29 +95,31 @@ export class KycTiersService {
     return { data, total, page, limit };
   }
 
+  /**
+   * Approve atomically: the pending -> approved flip is one conditional UPDATE
+   * and the user's tier is written in the same transaction, so concurrent
+   * approvals (409 for the loser) and crashes cannot leave them inconsistent.
+   */
   async approve(id: string, adminId: string): Promise<KycTierUpgradeEntity> {
-    const upgrade = await this.upgradeRepo.findOne({ where: { id } });
-    if (!upgrade) {
-      throw new NotFoundException('KYC tier upgrade request not found');
-    }
-    if (upgrade.status !== 'pending') {
-      throw new BadRequestException('Only pending requests can be approved');
-    }
+    return this.upgradeRepo.manager.transaction(async (manager) => {
+      const upgrade = await manager.findOne(KycTierUpgradeEntity, { where: { id } });
+      if (!upgrade) {
+        throw new NotFoundException('KYC tier upgrade request not found');
+      }
 
-    upgrade.status = 'approved';
-    upgrade.reviewedBy = adminId;
-    upgrade.reviewedAt = new Date();
+      const claimed = await manager.update(
+        KycTierUpgradeEntity,
+        { id, status: 'pending' },
+        { status: 'approved', reviewedBy: adminId, reviewedAt: new Date() },
+      );
+      if (!claimed.affected) {
+        throw new ConflictException('This request has already been reviewed');
+      }
 
-    const saved = await this.upgradeRepo.save(upgrade);
+      await manager.update(User, { id: upgrade.userId }, { kycTier: upgrade.requestedTier as KycTier });
 
-    const user = await this.userRepo.findOne({ where: { id: upgrade.userId } });
-    if (user) {
-      user.metadata = user.metadata ?? {};
-      user.metadata.kycTier = upgrade.requestedTier;
-      await this.userRepo.save(user);
-    }
-
-    return saved;
+      return (await manager.findOne(KycTierUpgradeEntity, { where: { id } })) as KycTierUpgradeEntity;
+    });
   }
 
   async reject(id: string, adminId: string, reason?: string): Promise<KycTierUpgradeEntity> {
@@ -115,15 +127,20 @@ export class KycTiersService {
     if (!upgrade) {
       throw new NotFoundException('KYC tier upgrade request not found');
     }
-    if (upgrade.status !== 'pending') {
-      throw new BadRequestException('Only pending requests can be rejected');
+
+    const claimed = await this.upgradeRepo.update(
+      { id, status: 'pending' },
+      {
+        status: 'rejected',
+        reviewedBy: adminId,
+        reviewedAt: new Date(),
+        documents: { ...upgrade.documents, rejectionReason: reason },
+      },
+    );
+    if (!claimed.affected) {
+      throw new ConflictException('This request has already been reviewed');
     }
 
-    upgrade.status = 'rejected';
-    upgrade.reviewedBy = adminId;
-    upgrade.reviewedAt = new Date();
-    upgrade.documents = { ...upgrade.documents, rejectionReason: reason };
-
-    return this.upgradeRepo.save(upgrade);
+    return (await this.upgradeRepo.findOne({ where: { id } })) as KycTierUpgradeEntity;
   }
 }

@@ -18,6 +18,7 @@ interface JwtPayload {
   email?: string;
   role?: string;
   roles?: string[];
+  sid?: string;
 }
 
 interface AuthenticatedRequest {
@@ -62,6 +63,12 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const request = this.getRequest(context);
+
+    // Already authenticated by the API-key guard on an `@ApiKeyAllowed` route.
+    if (request.user?.authMethod === 'api_key') {
+      return true;
+    }
+
     const authorization = request.headers.authorization;
     const bearerToken = Array.isArray(authorization)
       ? authorization[0]
@@ -87,6 +94,7 @@ export class JwtAuthGuard implements CanActivate {
         email: payload.email ?? '',
         role: payload.role ?? '',
         isEmailVerified: payload.isEmailVerified,
+        sid: payload.sid,
       };
       return true;
     } catch {
