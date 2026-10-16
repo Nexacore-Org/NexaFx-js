@@ -10,8 +10,8 @@ const mockConfig = {
   },
 } as unknown as ConfigService;
 
-const makeStrategy = (usersService: Partial<UsersService>) =>
-  new JwtStrategy(mockConfig, usersService as UsersService);
+const makeStrategy = (usersService: Partial<UsersService>, accountStatus?: unknown) =>
+  new JwtStrategy(mockConfig, usersService as UsersService, accountStatus as any);
 
 const basePayload = (iat: number): JwtPayload => ({
   sub: 'user-1',
@@ -25,7 +25,7 @@ const basePayload = (iat: number): JwtPayload => ({
 describe('JwtStrategy.validate', () => {
   it('returns user data when token is valid and no password change has occurred', async () => {
     const usersService = {
-      findById: jest.fn().mockResolvedValue({
+      findByIdOrNull: jest.fn().mockResolvedValue({
         id: 'user-1',
         passwordChangedAt: null,
       }),
@@ -44,7 +44,7 @@ describe('JwtStrategy.validate', () => {
   it.each(['refresh', 'sep10', 'export-download', undefined])(
     'rejects a token with typ=%s',
     async (typ) => {
-      const strategy = makeStrategy({ findById: jest.fn().mockResolvedValue({ id: 'user-1' }) });
+      const strategy = makeStrategy({ findByIdOrNull: jest.fn().mockResolvedValue({ id: 'user-1' }) });
       await expect(
         strategy.validate({ ...basePayload(1000), typ } as JwtPayload),
       ).rejects.toBeInstanceOf(UnauthorizedException);
@@ -52,7 +52,7 @@ describe('JwtStrategy.validate', () => {
   );
 
   it('rejects a token without sub', async () => {
-    const strategy = makeStrategy({ findById: jest.fn() });
+    const strategy = makeStrategy({ findByIdOrNull: jest.fn() });
     await expect(
       strategy.validate({ ...basePayload(1000), sub: '' } as JwtPayload),
     ).rejects.toBeInstanceOf(UnauthorizedException);
@@ -62,7 +62,7 @@ describe('JwtStrategy.validate', () => {
     const changedAt = new Date('2024-01-01T12:00:00Z');
     const iatBeforeChange = Math.floor(changedAt.getTime() / 1000) - 60;
     const usersService = {
-      findById: jest.fn().mockResolvedValue({
+      findByIdOrNull: jest.fn().mockResolvedValue({
         id: 'user-1',
         passwordChangedAt: changedAt,
       }),
@@ -77,7 +77,7 @@ describe('JwtStrategy.validate', () => {
     const changedAt = new Date('2024-01-01T12:00:00Z');
     const iatAfterChange = Math.floor(changedAt.getTime() / 1000) + 60;
     const usersService = {
-      findById: jest.fn().mockResolvedValue({
+      findByIdOrNull: jest.fn().mockResolvedValue({
         id: 'user-1',
         passwordChangedAt: changedAt,
       }),
@@ -90,9 +90,21 @@ describe('JwtStrategy.validate', () => {
 
   it('rejects when user no longer exists', async () => {
     const usersService = {
-      findById: jest.fn().mockResolvedValue(null),
+      findByIdOrNull: jest.fn().mockResolvedValue(null),
     };
     const strategy = makeStrategy(usersService);
+    await expect(strategy.validate(basePayload(9999))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('rejects a suspended or deactivated user even with a valid token', async () => {
+    const usersService = {
+      findByIdOrNull: jest.fn().mockResolvedValue({ id: 'user-1', passwordChangedAt: null }),
+    };
+    const strategy = makeStrategy(usersService, {
+      isAllowedToAuthenticate: jest.fn().mockResolvedValue(false),
+    });
     await expect(strategy.validate(basePayload(9999))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );

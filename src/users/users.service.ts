@@ -86,6 +86,47 @@ export class UsersService {
     return user;
   }
 
+  /** Like {@link findById} but returns `null` instead of throwing when missing. */
+  async findByIdOrNull(id: string): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { id } });
+  }
+
+  /**
+   * Atomically count a failed login. The increment (and the lock, once the
+   * threshold is reached) happen in a single UPDATE so concurrent guesses
+   * cannot overwrite each other's count.
+   */
+  async recordFailedLogin(
+    id: string,
+    maxAttempts: number,
+    lockoutMinutes: number,
+  ): Promise<{ failedLoginAttempts: number; lockedUntil: Date | null }> {
+    const lockUntil = new Date(Date.now() + lockoutMinutes * 60_000);
+    const result = await this.usersRepository
+      .createQueryBuilder()
+      .update(User)
+      .set({
+        failedLoginAttempts: () => '"failedLoginAttempts" + 1',
+        lockedUntil: () =>
+          'CASE WHEN "failedLoginAttempts" + 1 >= :maxAttempts THEN :lockUntil ELSE "lockedUntil" END',
+      })
+      .where('id = :id', { id })
+      .setParameters({ maxAttempts, lockUntil })
+      .returning(['failedLoginAttempts', 'lockedUntil'])
+      .execute();
+
+    const row = (result.raw as Array<{ failedLoginAttempts: number; lockedUntil: Date | null }>)?.[0];
+    return {
+      failedLoginAttempts: Number(row?.failedLoginAttempts ?? 0),
+      lockedUntil: row?.lockedUntil ? new Date(row.lockedUntil) : null,
+    };
+  }
+
+  /** Clear the lockout counters without touching any other column. */
+  async resetLoginFailures(id: string): Promise<void> {
+    await this.usersRepository.update(id, { failedLoginAttempts: 0, lockedUntil: null });
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { email } });
   }
