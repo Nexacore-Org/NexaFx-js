@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { FxTrade } from './fx-trade.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { WalletsService } from '../wallet/wallets.service';
+import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
 
 import { FxQuoteCache, RedisFxQuoteStore, type RedisLikeClient } from './fx-quote-cache';
 
@@ -44,6 +45,9 @@ export class FxService {
   }
 
   async executeTrade(dto: ExecuteTradeDto): Promise<FxTrade> {
+    // A frozen account cannot swap.
+    await this.accountFreezeService?.assertNotFrozen(dto.userId);
+
     let rate: number;
     if (dto.quoteId) {
       // Single-use, bound to this user/pair/amount; invalid quotes are a 400,

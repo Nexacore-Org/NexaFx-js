@@ -5,8 +5,8 @@ import {
   CallHandler,
   Logger,
 } from '@nestjs/common';
-import { Observable, of, from } from 'rxjs';
-import { switchMap, mapTo, catchError } from 'rxjs/operators';
+import { Observable, of, defer } from 'rxjs';
+import { switchMap, map, catchError } from 'rxjs/operators';
 import { IdempotencyService } from './idempotency.service';
 
 interface IdempotencyResponsePayload {
@@ -50,16 +50,18 @@ export class IdempotencyInterceptor implements NestInterceptor {
           return of(data);
         }
 
-        return from(
-          this.idempotencyService
-            .store(
-              request.idempotencyKey,
-              requestHash,
-              data,
-              response.statusCode,
-            )
-            .then(() => data),
+        // defer(): a *synchronous* throw from store() happens inside the
+        // observable, so catchError sees it. Persisting the replay record must
+        // never turn a request that already succeeded into a 500.
+        return defer(() =>
+          this.idempotencyService.store(
+            request.idempotencyKey as string,
+            requestHash,
+            data,
+            response.statusCode,
+          ),
         ).pipe(
+          map(() => data),
           catchError((error: unknown) => {
             this.logger.error(
               'Failed to persist idempotency response',

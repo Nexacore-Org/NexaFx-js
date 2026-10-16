@@ -1,4 +1,5 @@
 import { Injectable, CanActivate, ExecutionContext, HttpException } from '@nestjs/common';
+import { normalizeEmail } from '../common/decorators/normalize-email.decorator';
 
 @Injectable()
 export class OtpThrottleGuard implements CanActivate {
@@ -7,7 +8,9 @@ export class OtpThrottleGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const ip = request.ip;
-    const email = request.body?.email || 'unknown';
+    // Normalise so changing the case of an address cannot dodge the throttle.
+    const rawEmail = normalizeEmail(request.body?.email);
+    const email = typeof rawEmail === 'string' && rawEmail ? rawEmail : 'unknown';
     const now = Date.now();
 
     const ipKey = `ip:${ip}`;

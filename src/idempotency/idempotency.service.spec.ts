@@ -1,6 +1,7 @@
 import { IdempotencyKey } from './idempotency.entity';
 import { IdempotencyService } from './idempotency.service';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 
 describe('IdempotencyService', () => {
   const repository = {
@@ -9,12 +10,16 @@ describe('IdempotencyService', () => {
     delete: jest.fn(),
   };
 
+  const config = { get: jest.fn() };
   const service = new IdempotencyService(
     repository as unknown as Repository<IdempotencyKey>,
+    config as unknown as ConfigService,
   );
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Mirror ConfigService: return the supplied default when nothing is configured.
+    config.get.mockImplementation((_key: string, fallback?: unknown) => fallback);
   });
 
   it('hashes identical requests consistently', () => {
@@ -98,5 +103,32 @@ describe('IdempotencyService', () => {
     repository.delete.mockResolvedValue({});
 
     await expect(service.cleanup()).resolves.toBe(0);
+  });
+
+  describe('store() TTL', () => {
+    const hoursUntilExpiry = () => {
+      const saved = repository.save.mock.calls[0][0] as { expiresAt: Date };
+      return (saved.expiresAt.getTime() - Date.now()) / 3_600_000;
+    };
+
+    it('defaults to 24 hours', async () => {
+      await service.store('k', 'h', {}, 201);
+      expect(hoursUntilExpiry()).toBeGreaterThan(23.9);
+      expect(hoursUntilExpiry()).toBeLessThan(24.1);
+    });
+
+    it('uses the configured idempotency.ttlHours', async () => {
+      config.get.mockImplementation((key: string) => (key === 'idempotency.ttlHours' ? 6 : undefined));
+      await service.store('k', 'h', {}, 201);
+      expect(hoursUntilExpiry()).toBeGreaterThan(5.9);
+      expect(hoursUntilExpiry()).toBeLessThan(6.1);
+    });
+
+    it('lets an explicit ttlHours argument win', async () => {
+      config.get.mockImplementation(() => 6);
+      await service.store('k', 'h', {}, 201, 2);
+      expect(hoursUntilExpiry()).toBeGreaterThan(1.9);
+      expect(hoursUntilExpiry()).toBeLessThan(2.1);
+    });
   });
 });

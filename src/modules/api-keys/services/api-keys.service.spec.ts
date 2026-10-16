@@ -9,6 +9,8 @@ const mockRepository = () => ({
   findOne: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
+  update: jest.fn(),
+  count: jest.fn().mockResolvedValue(0),
 });
 
 describe('ApiKeysService', () => {
@@ -96,7 +98,9 @@ describe('ApiKeysService', () => {
       // We need to create a known key and hash it to test validation
       const result = await service.validateApiKey('any-key');
       expect(result).toBeDefined();
-      expect(repo.save).toHaveBeenCalled();
+      // lastUsedAt is refreshed with a column-only update, not a full save().
+      expect(repo.update).toHaveBeenCalledWith('k1', { lastUsedAt: expect.any(Date) });
+      expect(repo.save).not.toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException if key not found', async () => {
