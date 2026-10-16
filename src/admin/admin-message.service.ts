@@ -20,6 +20,12 @@ export class AdminMessageService {
   }
 
   async getUserMessages(userId: string) {
-    return this.messageRepo.find({ where: { targetUserId: userId } });
+    // Broadcasts (ALL) as well as direct messages; skip ones scheduled for later (issue #1388).
+    const rows = await this.messageRepo.find({
+      where: [{ targetType: 'ALL' }, { targetType: 'USER', targetUserId: userId }],
+      order: { createdAt: 'DESC' },
+    });
+    const now = new Date();
+    return rows.filter((m) => !m.scheduledAt || m.scheduledAt <= now);
   }
 }
