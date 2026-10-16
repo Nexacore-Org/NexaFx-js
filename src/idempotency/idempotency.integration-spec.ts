@@ -82,7 +82,7 @@ describe('IdempotencyService (integration)', () => {
 
     const rows = await repo.find({ where: { key } });
     expect(rows).toHaveLength(1);
-    expect((rows[0].response as { updated?: boolean }).updated).toBe(true);
+    expect((rows[0]?.response as { updated?: boolean } | undefined)?.updated).toBe(true);
   });
 
   it('hashRequest produces the same hash for identical inputs', () => {
