@@ -9,7 +9,8 @@ describe('danielships Features (Issues #984, #983, #982, #981)', () => {
 
     const rates = await service.getRates();
     expect(rates.length).toBeGreaterThan(0);
-    expect(rates[0].pair).toBe('USD/NGN');
+    expect(rates[0]).toBeDefined();
+    expect(rates[0]!.pair).toBe('USD/NGN');
   });
 
   it('PaymentProviderService supports multi-currency invoice generation', () => {

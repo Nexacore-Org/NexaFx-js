@@ -53,7 +53,7 @@ describe('TransactionsService', () => {
   let walletsService: jest.Mocked<Pick<WalletsService, 'getBalance' | 'adjustBalance'>>;
   let auditService: jest.Mocked<Pick<AuditService, 'log'>>;
   let mailService: jest.Mocked<Pick<MailService, 'sendTransactionReversalNotice'>>;
-  let usersService: jest.Mocked<Pick<UsersService, 'findById'>>;
+  let usersService: jest.Mocked<Pick<UsersService, 'findById' | 'invalidateWalletBalanceCache'>>;
   let events: any;
   let service: TransactionsService;
   let limitService: any;

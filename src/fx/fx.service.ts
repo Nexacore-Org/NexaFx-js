@@ -1,16 +1,20 @@
 import {
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { FxTrade } from './fx-trade.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { WalletsService } from '../wallet/wallets.service';
 
-import { FxQuoteCache } from './fx-quote-cache';
+import { FxQuoteCache, RedisFxQuoteStore, type RedisLikeClient } from './fx-quote-cache';
 
 export interface ExecuteTradeDto {
   userId: string;
@@ -29,21 +33,28 @@ export class FxService {
     private readonly config: ConfigService,
     private readonly rateService: ExchangeRateService,
     private readonly wallets: WalletsService,
-  ) {}
+    @Optional() @Inject(CACHE_MANAGER) cacheManager?: Cache,
+  ) {
+    // Share locked quotes across replicas when the cache store is Redis
+    // (SET PX to store, GETDEL to redeem); otherwise keep the in-memory store.
+    const client = (cacheManager as unknown as { store?: { client?: RedisLikeClient } } | undefined)?.store?.client;
+    if (client && typeof client.set === 'function' && (typeof client.getdel === 'function' || typeof client.eval === 'function')) {
+      FxQuoteCache.use(new RedisFxQuoteStore(client));
+    }
+  }
 
   async executeTrade(dto: ExecuteTradeDto): Promise<FxTrade> {
     let rate: number;
     if (dto.quoteId) {
-      const lockedRate = FxQuoteCache.get(dto.quoteId);
-      if (lockedRate !== null) {
-        rate = lockedRate;
-      } else {
-        const rateResult = await this.rateService.getRate(
-          dto.fromCurrency,
-          dto.toCurrency,
-        );
-        rate = rateResult.rate;
-      }
+      // Single-use, bound to this user/pair/amount; invalid quotes are a 400,
+      // not a silent switch to the live rate.
+      const quote = await FxQuoteCache.redeem(dto.quoteId, {
+        userId: dto.userId,
+        fromCurrency: dto.fromCurrency,
+        toCurrency: dto.toCurrency,
+        fromAmount: dto.fromAmount,
+      });
+      rate = quote.rate;
     } else {
       const rateResult = await this.rateService.getRate(
         dto.fromCurrency,
