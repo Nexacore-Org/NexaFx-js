@@ -49,14 +49,22 @@ export function toOhlc(points: RatePoint[]): OhlcCandle[] {
     const key = truncateToHour(point.recordedAt).toISOString();
     buckets.set(key, [...(buckets.get(key) ?? []), point]);
   }
-  return Array.from(buckets, ([bucket, group]) => {
+
+  const candles: OhlcCandle[] = [];
+  for (const [bucket, group] of buckets) {
     const rates = group.map((point) => point.rate);
-    return {
+    const open = rates[0];
+    const close = rates[rates.length - 1];
+    // A bucket is only created when it has at least one point, but the checked
+    // read keeps the candle fields `number` instead of `number | undefined`.
+    if (open === undefined || close === undefined) continue;
+    candles.push({
       bucket,
-      open: rates[0],
+      open,
       high: Math.max(...rates),
       low: Math.min(...rates),
-      close: rates[rates.length - 1],
-    };
-  }).sort((a, b) => a.bucket.localeCompare(b.bucket));
+      close,
+    });
+  }
+  return candles.sort((a, b) => a.bucket.localeCompare(b.bucket));
 }

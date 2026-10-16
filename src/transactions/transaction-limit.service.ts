@@ -22,8 +22,12 @@ export class TransactionLimitService {
   /**
    * Convert `amount` in `currency` to USD using the cached rate, then check
    * daily and monthly limits for `userId`. Throws if any limit is exceeded.
+   *
+   * On success the amount is *reserved* against the accumulators and the USD
+   * value reserved is returned, so the caller can hand it back with
+   * {@link release} if the transaction ends without moving money.
    */
-  async check(userId: string, amount: number, currency: string): Promise<void> {
+  async check(userId: string, amount: number, currency: string): Promise<number> {
     const amountUsd = await this.toUsd(amount, currency);
 
     if (amountUsd > SINGLE_TX_LIMIT_USD) {
@@ -38,6 +42,30 @@ export class TransactionLimitService {
     const current = previous
       .catch(() => undefined)
       .then(() => this.checkAndCommit(userId, amountUsd));
+    userLocks.set(userId, current);
+    try {
+      await current;
+    } finally {
+      if (userLocks.get(userId) === current) userLocks.delete(userId);
+    }
+    return amountUsd;
+  }
+
+  /**
+   * Give back `amountUsd` reserved by {@link check} (a deposit, withdrawal or
+   * swap that failed or was refunded). Totals never go below zero, and it uses
+   * the same per-user lock chain as `check`, so it cannot interleave with one.
+   */
+  async release(userId: string, amountUsd: number): Promise<void> {
+    if (!(amountUsd > 0)) return;
+
+    const previous = userLocks.get(userId) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(() => {
+      const dayKey = `${userId}:${this.dateKey()}`;
+      const monKey = `${userId}:${this.monthKey()}`;
+      dailyTotals.set(dayKey, Math.max(0, (dailyTotals.get(dayKey) ?? 0) - amountUsd));
+      monthlyTotals.set(monKey, Math.max(0, (monthlyTotals.get(monKey) ?? 0) - amountUsd));
+    });
     userLocks.set(userId, current);
     try {
       await current;

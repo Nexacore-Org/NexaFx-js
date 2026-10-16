@@ -40,10 +40,28 @@ describe('mxllv Features (Issues #919, #918, #915, #912)', () => {
 
   it('AuthService supports refresh token rotation and rejects reused tokens', async () => {
     const mockJwt = {
-      verify: jest.fn().mockReturnValue({ sub: 'user-1', email: 'test@example.com', role: 'user' }),
+      verify: jest.fn().mockReturnValue({ sub: 'user-1', typ: 'refresh' }),
       sign: jest.fn().mockReturnValue('new-token-pair'),
     };
-    const authService = new AuthService({} as any, {} as any, mockJwt as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const mockUsers = {
+      findById: jest.fn().mockResolvedValue({ id: 'user-1', email: 'test@example.com', role: 'user' }),
+    };
+    const mockConfig = { get: jest.fn().mockReturnValue('refresh-secret') };
+    // Every AuthService collaborator is supplied by name, so adding a constructor argument
+    // makes this fail to compile instead of silently receiving undefined.
+    const deps: ConstructorParameters<typeof AuthService> = [
+      mockUsers as never, // usersService
+      {} as never, // termsService
+      mockJwt as never, // jwtService
+      {} as never, // auditService
+      {} as never, // deactivationService
+      {} as never, // mailService
+      {} as never, // events
+      mockConfig as never, // configService
+      {} as never, // passwordService
+      {} as never, // passwordPolicyService
+    ];
+    const authService = new AuthService(...deps);
 
     const rotated = await authService.rotateRefreshToken('valid-refresh-token');
     expect(rotated.accessToken).toBe('new-token-pair');

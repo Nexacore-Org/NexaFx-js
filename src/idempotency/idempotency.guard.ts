@@ -45,12 +45,6 @@ export class IdempotencyGuard implements CanActivate {
       );
     }
 
-    if (idempotencyKey.length > MAX_KEY_LENGTH) {
-      throw new BadRequestException(
-        `Idempotency-Key must not exceed ${MAX_KEY_LENGTH} characters`,
-      );
-    }
-
     const requestHash = this.idempotencyService.hashRequest(
       request.method,
       request.url,

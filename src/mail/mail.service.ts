@@ -38,6 +38,12 @@ export interface AdminAlertEmail {
   metadata?: Record<string, unknown>;
 }
 
+export interface AccountLockedEmail {
+  to: string;
+  lockoutMinutes: number;
+  failedAttempts: number;
+}
+
 export interface SupportTicketCreatedEmail {
   to: string;
   fullName: string;
@@ -211,6 +217,25 @@ export class MailService {
         ? `<pre>${escape(JSON.stringify(payload.metadata, null, 2))}</pre>`
         : ''
     }`;
+  }
+
+  /** Password reset link. The URL is escaped; the token inside it is single-use and short-lived. */
+  async sendPasswordResetLink(to: string, resetUrl: string): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      const url = Utils.escapeExpression(resetUrl);
+      await this.transporter.sendMail({
+        from: process.env.MAIL_FROM,
+        to,
+        subject: 'Reset your NexaFx password',
+        html:
+          `<p>We received a request to reset your NexaFx password.</p>` +
+          `<p><a href="${url}">Reset your password</a></p>` +
+          `<p>This link expires in 15 minutes and can be used once. If you did not ask for it, ignore this email.</p>`,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send password reset email: ${(err as Error).message}`);
+    }
   }
 
   async sendAdminAlert(payload: AdminAlertEmail): Promise<void> {

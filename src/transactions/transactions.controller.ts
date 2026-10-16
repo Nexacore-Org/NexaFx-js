@@ -14,7 +14,9 @@ import {
   UseInterceptors,
   Sse,
   Req,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { Observable } from 'rxjs';
 import { map, filter } from 'rxjs/operators';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -113,6 +115,18 @@ export class TransactionsController {
       fromCurrency,
       toCurrency,
     });
+  }
+
+  /** The caller's own full transaction history as a downloadable CSV. */
+  @Get('export/csv')
+  async exportCsv(
+    @CurrentUser('id') userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const csv = await this.txService.exportTransactionsCsv(userId);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="transactions.csv"');
+    return csv;
   }
 
   @Get()

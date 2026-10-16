@@ -15,6 +15,12 @@ import {
 import { Response } from 'express';
 import { join, resolve, normalize } from 'path';
 import { AdminService } from './admin.service';
+import { AdminApprovalStatus } from './admin-approval.entity';
+import {
+  AdminApprovalActionType,
+  CreateAdminApprovalDto,
+  RejectAdminApprovalDto,
+} from './dto/create-admin-approval.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
@@ -23,6 +29,8 @@ import { UpdateTransactionStatusDto } from './dto/update-transaction-status.dto'
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { AdminTransactionsQueryDto } from './dto/admin-transactions-query.dto';
+import { CbnReportQueryDto } from './dto/cbn-report-query.dto';
+import { ImpersonateUserDto } from './dto/impersonate-user.dto';
 import { TransactionStatus } from '../transactions/transaction.entity';
 
 const adminStatsTtlSeconds = parseInt(
@@ -55,8 +63,8 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Get('reports/cbn-compliance')
-  generateCbnComplianceReport(@Query('period') period?: string) {
-    return this.adminService.generateCbnComplianceReport(period);
+  generateCbnComplianceReport(@Query() query: CbnReportQueryDto) {
+    return this.adminService.generateCbnComplianceReport(query.period, query.periodStart);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
@@ -86,6 +94,14 @@ export class AdminController {
     @Body() dto: UpdateTransactionStatusDto,
     @CurrentUser('id') adminId: string,
   ) {
+    // With dual control on, a single admin can only *request* the change.
+    if (this.adminService.isDualControlEnabled()) {
+      return this.adminService.requestAdminApproval(
+        AdminApprovalActionType.OVERRIDE_TRANSACTION_STATUS,
+        { transactionId: id, newStatus: dto.status, reason: dto.reason },
+        adminId,
+      );
+    }
     return this.adminService.overrideTransactionStatus(
       id,
       dto.status,
@@ -101,6 +117,13 @@ export class AdminController {
     @Body() dto: UpdateUserStatusDto,
     @CurrentUser('id') adminId: string,
   ) {
+    if (this.adminService.isDualControlEnabled()) {
+      return this.adminService.requestAdminApproval(
+        AdminApprovalActionType.UPDATE_USER_STATUS,
+        { targetUserId: id, isActive: dto.isActive, reason: dto.reason },
+        adminId,
+      );
+    }
     return this.adminService.updateUserStatus(
       id,
       dto.isActive,
@@ -124,16 +147,19 @@ export class AdminController {
     );
   }
 
+  /**
+   * Start a read-only impersonation session (15 minutes). There is no "end"
+   * endpoint: the token's short TTL is the limit, and the session cannot make
+   * state-changing requests.
+   */
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post('users/:id/impersonate')
-  impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
-    return this.adminService.impersonateUser(id, adminId);
-  }
-
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Get('reports/cbn-compliance')
-  generateCbnComplianceReport(@Query('period') period?: string) {
-    return this.adminService.generateCbnComplianceReport(period);
+  impersonateUser(
+    @Param('id') id: string,
+    @Body() dto: ImpersonateUserDto,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.adminService.impersonateUser(id, adminId, dto.reason);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
@@ -184,16 +210,5 @@ export class AdminController {
   @Post('users/:id/impersonate')
   impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
     return this.adminService.impersonateUser(id, adminId);
-  }
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('approvals/request')
-  requestApproval(@Body() dto: { actionType: string; actionData: any }, @CurrentUser('id') adminId: string) {
-    return this.adminService.requestAdminApproval(dto.actionType, dto.actionData, adminId);
-  }
-
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('approvals/:id/approve')
-  approveRequest(@Param('id') id: string, @CurrentUser('id') adminId: string) {
-    return this.adminService.approveAdminRequest(id, adminId);
   }
 }

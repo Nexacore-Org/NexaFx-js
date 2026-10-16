@@ -37,7 +37,7 @@ async function buildAdminService(overrides: { users?: object; audit?: object } =
 describe('abdulrcrtw Features (Issues #992, #991, #990, #989)', () => {
   it('AdminService supports spread configuration management and audit logging', async () => {
     const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
-    const adminService = await buildAdminService({ audit: mockAudit });
+    const adminService = new AdminService({} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, mockAudit as any);
 
     const spreads = adminService.getSpreads();
     expect(spreads['USD/NGN']).toBeDefined();
@@ -48,14 +48,17 @@ describe('abdulrcrtw Features (Issues #992, #991, #990, #989)', () => {
   });
 
   it('AdminService impersonates user and logs audit trail', async () => {
-    const mockUsers = { findOne: jest.fn().mockResolvedValue({ id: 'target-user', email: 'user@example.com' }) };
+    const mockUsers = { findOne: jest.fn().mockResolvedValue({ id: 'target-user', email: 'user@example.com', role: 'user' }) };
     const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
-    const adminService = await buildAdminService({ users: mockUsers, audit: mockAudit });
+    const mockJwt = { sign: jest.fn().mockReturnValue('signed.jwt.token') };
+    const adminService = new AdminService(
+      mockUsers as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, mockAudit as any, mockJwt as any,
+    );
 
-    const res = await adminService.impersonateUser('target-user', 'admin-1');
+    const res = await adminService.impersonateUser('target-user', 'admin-1', 'Investigating support ticket #1234');
     expect(res.impersonatedUserId).toBe('target-user');
-    expect(res.token).toBeDefined();
-    expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'admin.user.impersonate' }));
+    expect(res.token).toBe('signed.jwt.token');
+    expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'admin.user.impersonate', userId: 'admin-1' }));
   });
 
   it('ExchangeRatesService provides lightweight currency conversion calculator', async () => {

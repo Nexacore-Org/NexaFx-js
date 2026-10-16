@@ -29,6 +29,8 @@ describe('IdempotencyInterceptor', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default: persisting succeeds.
+    storeMock.mockResolvedValue(undefined);
   });
 
   it('returns a cached response immediately when present', async () => {
@@ -144,5 +146,19 @@ describe('IdempotencyInterceptor', () => {
       'Failed to persist idempotency response',
       error,
     );
+  });
+
+  it('still emits the handler response when store() throws synchronously', async () => {
+    storeMock.mockImplementation(() => {
+      throw new Error('sync boom');
+    });
+    const logSpy = jest.spyOn(interceptor['logger'], 'error').mockImplementation(() => undefined);
+    const next: Pick<CallHandler, 'handle'> = { handle: jest.fn(() => of({ ok: true })) };
+    const request = { idempotencyKey: '1234567890abcdef', requestHash: 'hash' };
+
+    await expect(
+      lastValueFrom(interceptor.intercept(createContext(request, { statusCode: 201 }), next)),
+    ).resolves.toEqual({ ok: true });
+    expect(logSpy).toHaveBeenCalledWith('Failed to persist idempotency response', expect.any(Error));
   });
 });

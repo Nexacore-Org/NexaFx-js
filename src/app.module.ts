@@ -7,6 +7,7 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ImpersonationGuard } from './auth/impersonation.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -33,6 +34,7 @@ import { LedgerModule } from './ledger/ledger.module';
 import { AccountFreezeModule } from './modules/account-freeze/account-freeze.module';
 import { StellarFederationModule } from './modules/stellar-federation/stellar-federation.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { ApiKeyAuthGuard } from './modules/api-keys/guards/api-key-auth.guard';
 import { ExportModule } from './modules/export/export.module';
 import { KycModule } from './kyc/kyc.module';
 import { FxModule } from './fx/fx.module';
@@ -55,6 +57,9 @@ import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history
 import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { UsersModule as UpstreamUsersModule } from './users/users.module';
+import { EscrowModule } from './modules/escrow/escrow.module';
+import { TransactionApprovalModule } from './multi-signature-approval/multi-signature-approval.module';
+import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
@@ -227,6 +232,9 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
       : []),
     HealthModule,
     UpstreamUsersModule,
+    EscrowModule,
+    TransactionApprovalModule,
+    FeatureFlagsModule,
     AuditModule,
     UpstreamMailModule,
     SpendingModule,
@@ -281,7 +289,15 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     AppService,
     {
       provide: APP_GUARD,
+      useClass: ApiKeyAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ImpersonationGuard,
     },
     {
       provide: APP_GUARD,

@@ -216,7 +216,7 @@ describe('AdminService', () => {
       usersRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.updateUserRole('nonexistent', UserRole.ADMIN, adminUserId),
+        service.updateUserRole('nonexistent', UserRole.ADMIN, adminUserId, 'Needs access'),
       ).rejects.toThrow(NotFoundException);
 
       expect(auditService.log).not.toHaveBeenCalled();

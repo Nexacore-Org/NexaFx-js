@@ -1,6 +1,7 @@
 import { createHmac } from 'crypto';
 import { of, throwError } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
+import type { AxiosResponse } from 'axios';
 import { WebhooksProcessor } from './webhooks.processor';
 import {
   WebhookDelivery,
@@ -9,6 +10,11 @@ import {
 import { WebhookEndpoint } from './webhook-endpoint.entity';
 import { Repository } from 'typeorm';
 import { Job } from 'bull';
+
+/** A complete AxiosResponse, so mocks satisfy HttpService's return type without casts. */
+function axiosResponse(status = 200, data: unknown = {}): AxiosResponse {
+  return { data, status, statusText: 'OK', headers: {}, config: { headers: {} } } as AxiosResponse;
+}
 
 const makeDelivery = (overrides: Partial<WebhookDelivery> = {}): WebhookDelivery =>
   ({
@@ -74,7 +80,7 @@ describe('WebhooksProcessor', () => {
     httpService.post.mockImplementation((_url, body, config) => {
       capturedHeaders = (config as { headers: Record<string, string> }).headers;
       capturedBody = body;
-      return of({ status: 200 } as never);
+      return of(axiosResponse(200));
     });
 
     await processor.deliver(makeJob());
@@ -90,7 +96,7 @@ describe('WebhooksProcessor', () => {
   it('marks delivery DELIVERED on successful HTTP response', async () => {
     deliveriesRepo.findOne.mockResolvedValue(makeDelivery());
     endpointsRepo.findOne.mockResolvedValue(makeEndpoint());
-    httpService.post.mockReturnValue(of({ status: 200 } as never));
+    httpService.post.mockReturnValue(of(axiosResponse(200)));
 
     await processor.deliver(makeJob());
 
@@ -135,7 +141,7 @@ describe('WebhooksProcessor', () => {
     let capturedHeaders: Record<string, string> = {};
     httpService.post.mockImplementation((_url, _body, config) => {
       capturedHeaders = (config as { headers: Record<string, string> }).headers;
-      return of({ status: 200 } as never);
+      return of(axiosResponse(200));
     });
 
     await processor.deliver(makeJob());
