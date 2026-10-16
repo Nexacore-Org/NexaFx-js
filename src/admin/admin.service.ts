@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
@@ -10,6 +11,7 @@ import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
 import { AuditService } from '../audit/audit.service';
 import { AdminApproval, AdminApprovalStatus } from './admin-approval.entity';
+import { USER_ACCESS_CHANGED_EVENT, UserAccessChangedEvent } from '../auth/account-status.service';
 
 export interface AdminStats {
   users: number;
@@ -39,6 +41,7 @@ export class AdminService {
     @InjectRepository(AdminApproval)
     private readonly approvalsRepository: Repository<AdminApproval>,
     private readonly auditService: AuditService,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   async getStats(): Promise<AdminStats> {
@@ -197,6 +200,15 @@ export class AdminService {
 
     user.isActive = isActive;
     const updated = await this.usersRepository.save(user);
+
+    // Tell the auth layer immediately: suspension revokes refresh tokens and
+    // drops cached status so existing access tokens stop working.
+    const accessChanged: UserAccessChangedEvent = {
+      userId: targetUserId,
+      reason: isActive ? 'activated' : 'suspended',
+      revokeTokens: !isActive,
+    };
+    this.events?.emit(USER_ACCESS_CHANGED_EVENT, accessChanged);
 
     await this.auditService.log({
       userId: adminUserId,

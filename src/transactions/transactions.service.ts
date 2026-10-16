@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, Logger, NotFoundException, UnprocessableEntityException, OnModuleInit } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger, NotFoundException, Optional, UnprocessableEntityException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository, DataSource } from 'typeorm';
@@ -14,6 +14,7 @@ import { TransactionLimitService } from './transaction-limit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UserDeactivationService } from '../modules/user-deactivation/services/user-deactivation.service';
 import { FeesService } from '../fees/fees.service';
+import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
 
 export interface TransferDto {
   senderId: string;
@@ -107,6 +108,7 @@ export class TransactionsService implements OnModuleInit {
     private readonly feesService: FeesService,
     private readonly deactivationService: UserDeactivationService,
     private readonly termsService: TermsAcceptanceService,
+    @Optional() private readonly accountFreezeService?: AccountFreezeService,
   ) {}
 
   /** Deadline after which the scheduled job times out a still-PENDING transaction. */
@@ -141,6 +143,9 @@ export class TransactionsService implements OnModuleInit {
     if (isDeactivated) {
       throw new ForbiddenException('Account has been deactivated. Cannot perform transactions.');
     }
+
+    // A compliance freeze blocks every outgoing money movement.
+    await this.accountFreezeService?.assertNotFrozen(dto.senderId);
 
     if (dto.amount <= 0) {
       throw new BadRequestException('Transfer amount must be positive');
