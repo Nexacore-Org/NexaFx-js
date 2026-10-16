@@ -43,23 +43,6 @@ class LoginDto {
   password: string;
 }
 
-class ForgotPasswordDto {
-  @IsEmail()
-  email: string;
-}
-
-class ResetPasswordDto {
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  token: string;
-
-  @IsString()
-  @MinLength(8)
-  newPassword: string;
-}
-
 class VerifyEmailDto {
   @IsString()
   userId: string;
@@ -127,18 +110,6 @@ export class AuthController {
       },
       ...(isEmailVerified ? {} : { requiresEmailVerification: true }),
     };
-  }
-
-  @Post('forgot-password')
-  async forgotPassword(@Body(ValidationPipe) dto: ForgotPasswordDto) {
-    await this.authService.forgotPassword(dto.email);
-    return { message: 'If that email exists, a reset link has been sent.' };
-  }
-
-  @Post('reset-password')
-  async resetPassword(@Body(ValidationPipe) dto: ResetPasswordDto) {
-    await this.authService.resetPassword(dto.email, dto.token, dto.newPassword);
-    return { message: 'Password reset successfully.' };
   }
 
   @Post('verify-email')

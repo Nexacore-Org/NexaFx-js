@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
@@ -14,6 +14,8 @@ import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { TokenType } from './token-types';
+import { RefreshTokensService } from '../tokens/refresh-tokens.service';
+import { parseDeviceInfo } from './device-info';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 30;
@@ -31,6 +33,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly passwordService: PasswordService,
     private readonly passwordPolicyService: PasswordPolicyService,
+    @Optional() private readonly refreshTokens?: RefreshTokensService,
   ) {}
 
   /**
@@ -85,7 +88,7 @@ export class AuthService {
       },
     );
 
-    return this.issueToken(user.id, user.email, user.role);
+    return this.issueSession(user, context);
   }
 
   /**
@@ -217,56 +220,88 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    const token = this.issueToken(user.id, user.email, user.role);
-    return termsAccepted
-      ? token
-      : { ...token, requiresAction: 'accept_terms', version: this.termsService.currentVersion() };
+    return this.issueSession(user, context);
   }
 
-  private readonly usedRefreshTokens = new Set<string>();
+  /**
+   * Issue an access token plus a DB-backed, hashed, rotating refresh token
+   * with device metadata, so the session shows up in `GET /auth/sessions`.
+   */
+  private async issueSession(
+    user: { id: string; email: string; role: string },
+    context: { ip?: string; userAgent?: string } = {},
+  ): Promise<{ accessToken: string; refreshToken?: string; refreshTokenExpiresAt?: Date }> {
+    if (!this.refreshTokens) {
+      return this.issueToken(user.id, user.email, user.role);
+    }
+    const session = await this.refreshTokens.createToken(user.id, parseDeviceInfo(context));
+    return {
+      ...this.issueToken(user.id, user.email, user.role, session.id),
+      refreshToken: session.token,
+      refreshTokenExpiresAt: session.expiresAt,
+    };
+  }
 
-  async rotateRefreshToken(refreshToken: string) {
+  /**
+   * Rotate a refresh token: the old one is revoked, a new one is issued, and
+   * presenting an already-rotated token revokes the whole family.
+   */
+  async rotateRefreshToken(
+    refreshToken: string,
+    context: { ip?: string; userAgent?: string } = {},
+  ) {
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token required');
     }
-    if (this.usedRefreshTokens.has(refreshToken)) {
-      throw new ForbiddenException('Refresh token has already been used (token rotation policy)');
+    if (!this.refreshTokens) {
+      throw new UnauthorizedException('Refresh tokens are not available');
     }
-    try {
-      // Refresh tokens are signed with their own secret and must carry
-      // typ=refresh, so an access token can never be replayed here (and a
-      // refresh token can never verify as an access token).
-      const refreshSecret = this.configService.get<string>('refreshToken.secret');
-      const payload = this.jwtService.verify(refreshToken, { secret: refreshSecret });
-      if (payload.typ !== TokenType.REFRESH || !payload.sub) {
-        throw new UnauthorizedException('Invalid or expired refresh token');
-      }
-      this.usedRefreshTokens.add(refreshToken);
 
-      // Take identity and role from the database, not the presented token, so
-      // demotions and deactivations take effect on the next refresh.
-      const user = await this.usersService.findByIdOrNull(payload.sub);
-      if (!user || user.isActive === false) {
-        throw new UnauthorizedException('Invalid or expired refresh token');
-      }
-      if (await this.deactivationService?.isUserDeactivated(user.id)) {
-        throw new UnauthorizedException('Invalid or expired refresh token');
-      }
-      const newAccessToken = this.issueToken(user.id, user.email, user.role).accessToken;
-      const newRefreshToken = this.jwtService.sign(
-        { sub: user.id, typ: TokenType.REFRESH },
-        { secret: refreshSecret, expiresIn: '7d' },
-      );
-      return { accessToken: newAccessToken, refreshToken: newRefreshToken };
-    } catch (err) {
-      if (err instanceof ForbiddenException) throw err;
+    const rotated = await this.refreshTokens.rotateToken(refreshToken, parseDeviceInfo(context));
+
+    // Identity and role come from the database, not the presented token, so
+    // demotions and deactivations take effect on the next refresh.
+    let user;
+    try {
+      user = await this.usersService.findById(rotated.userId);
+    } catch {
+      user = null;
+    }
+    const disabled =
+      !user ||
+      user.isActive === false ||
+      (await this.deactivationService?.isUserDeactivated(user.id));
+    if (!user || disabled) {
+      await this.refreshTokens.revokeToken(rotated.userId, rotated.id);
       throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    return {
+      ...this.issueToken(user.id, user.email, user.role, rotated.id),
+      refreshToken: rotated.token,
+      refreshTokenExpiresAt: rotated.expiresAt,
+    };
+  }
+
+  /** End the caller's session: revoke the given refresh token, else the one named by `sid`. */
+  async logout(userId: string, sid?: string, refreshToken?: string): Promise<void> {
+    if (!this.refreshTokens) return;
+    if (refreshToken) {
+      await this.refreshTokens.revokeByRawToken(userId, refreshToken);
+    } else if (sid) {
+      await this.refreshTokens.revokeToken(userId, sid);
     }
   }
 
-  private issueToken(userId: string, email: string, role: string) {
+  private issueToken(userId: string, email: string, role: string, sid?: string) {
     return {
-      accessToken: this.jwtService.sign({ sub: userId, email, role, typ: TokenType.ACCESS }),
+      accessToken: this.jwtService.sign({
+        sub: userId,
+        email,
+        role,
+        typ: TokenType.ACCESS,
+        ...(sid ? { sid } : {}),
+      }),
     };
   }
 }

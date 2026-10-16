@@ -20,6 +20,7 @@ interface JwtPayload {
   email?: string;
   role?: string;
   roles?: string[];
+  sid?: string;
 }
 
 interface AuthenticatedRequest {
@@ -65,6 +66,12 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const request = this.getRequest(context);
+
+    // Already authenticated by the API-key guard on an `@ApiKeyAllowed` route.
+    if (request.user?.authMethod === 'api_key') {
+      return true;
+    }
+
     const authorization = request.headers.authorization;
     const bearerToken = Array.isArray(authorization)
       ? authorization[0]
@@ -81,7 +88,19 @@ export class JwtAuthGuard implements CanActivate {
     let payload: JwtPayload;
     try {
       const secret = String(this.config.get('jwt.secret') ?? '');
-      payload = this.jwtService.verify<JwtPayload>(token, { secret });
+      const payload = this.jwtService.verify<JwtPayload>(token, { secret });
+      if (payload.typ !== TokenType.ACCESS || !payload.sub) {
+        throw new UnauthorizedException('Invalid authentication token');
+      }
+      request.user = {
+        id: payload.sub,
+        sub: payload.sub,
+        email: payload.email ?? '',
+        role: payload.role ?? '',
+        isEmailVerified: payload.isEmailVerified,
+        sid: payload.sid,
+      };
+      return true;
     } catch {
       throw new UnauthorizedException('Invalid authentication token');
     }

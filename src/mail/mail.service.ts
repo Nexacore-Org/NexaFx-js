@@ -219,28 +219,22 @@ export class MailService {
     }`;
   }
 
-  renderAccountLockedHtml(payload: AccountLockedEmail): string {
-    const escape = (value: unknown) => Utils.escapeExpression(String(value ?? ''));
-    return (
-      `<h2>Your NexaFx account has been temporarily locked</h2>` +
-      `<p>We locked your account for ${escape(payload.lockoutMinutes)} minutes after ` +
-      `${escape(payload.failedAttempts)} failed sign-in attempts.</p>` +
-      `<p>If this was you, wait and try again. If it was not you, reset your password immediately.</p>`
-    );
-  }
-
-  /** User-facing lockout notice (not the admin alert template). */
-  async sendAccountLockedEmail(payload: AccountLockedEmail): Promise<void> {
+  /** Password reset link. The URL is escaped; the token inside it is single-use and short-lived. */
+  async sendPasswordResetLink(to: string, resetUrl: string): Promise<void> {
     if (process.env.NODE_ENV === 'test') return;
     try {
+      const url = Utils.escapeExpression(resetUrl);
       await this.transporter.sendMail({
         from: process.env.MAIL_FROM,
-        to: payload.to,
-        subject: 'Your NexaFx account has been locked',
-        html: this.renderAccountLockedHtml(payload),
+        to,
+        subject: 'Reset your NexaFx password',
+        html:
+          `<p>We received a request to reset your NexaFx password.</p>` +
+          `<p><a href="${url}">Reset your password</a></p>` +
+          `<p>This link expires in 15 minutes and can be used once. If you did not ask for it, ignore this email.</p>`,
       });
     } catch (err) {
-      this.logger.error(`Failed to send account locked email: ${(err as Error).message}`);
+      this.logger.error(`Failed to send password reset email: ${(err as Error).message}`);
     }
   }
 

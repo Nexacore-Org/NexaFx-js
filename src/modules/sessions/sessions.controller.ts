@@ -13,7 +13,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RefreshTokensService } from '../../tokens/refresh-tokens.service';
 
 interface AuthenticatedRequest {
-  user: { sub: string };
+  user: { sub: string; sid?: string };
 }
 
 @Controller('auth/sessions')
@@ -25,14 +25,14 @@ export class SessionsController {
   async listSessions(@Request() req: AuthenticatedRequest) {
     const devices = await this.refreshTokensService.findActiveDevices(req.user.sub);
     return {
-      sessions: devices.map((d, i) => ({
+      sessions: devices.map((d) => ({
         tokenId: d.tokenId,
         deviceName: d.deviceName ?? 'Unknown device',
         deviceOs: d.deviceOs ?? 'Unknown OS',
         lastUsedAt: d.lastUsedAt,
         ipAddress: d.ipAddress,
         createdAt: d.createdAt,
-        isCurrent: i === 0,
+        isCurrent: d.tokenId === req.user.sid,
       })),
     };
   }
@@ -52,9 +52,7 @@ export class SessionsController {
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
   async revokeAllSessions(@Request() req: AuthenticatedRequest) {
-    const devices = await this.refreshTokensService.findActiveDevices(req.user.sub);
-    if (devices.length > 0) {
-      await this.refreshTokensService.revokeAllExcept(req.user.sub, devices[0].tokenId);
-    }
+    // Keep the session this request is made with; revoke every other one.
+    await this.refreshTokensService.revokeAllExcept(req.user.sub, req.user.sid ?? '');
   }
 }
