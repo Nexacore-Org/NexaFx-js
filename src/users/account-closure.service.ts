@@ -1,171 +1,104 @@
 import {
   Injectable,
+  Logger,
+  Optional,
   UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { WalletsService } from '../wallet/wallets.service';
-import { RefreshToken } from '../auth/refresh-token.entity';
 import { Repository } from 'typeorm';
-import { createHmac, pbkdf2Sync, randomBytes, randomUUID } from 'crypto';
-import { UserAccount } from './user-account.entity';
+import { User } from './user.entity';
+import { PasswordService } from '../auth/password.service';
+import { RefreshTokensService } from '../tokens/refresh-tokens.service';
+import { WalletsService } from '../wallet/wallets.service';
+import { AuditService } from '../audit/audit.service';
 import { AccountClosureMailer } from './account-closure.mailer';
 
-interface AccessTokenClaims {
-  sub: string;
-  familyId: string;
-  refreshTokenId: string;
-}
-
-interface AccountClosureResult {
+export interface AccountClosureResult {
   closed: true;
   deletedAt: Date;
   piiPurgeAt: Date;
 }
 
-const TWO_FACTOR_TIME_STEP_SECONDS = 30;
-const TWO_FACTOR_DIGITS = 6;
-const PASSWORD_ITERATIONS = 120000;
-const PII_RETENTION_YEARS = 7;
+/** Personal data is kept this long after closure, then anonymised (see the purge job). */
+export const PII_RETENTION_YEARS = 7;
 
+/**
+ * Close the caller's own account on the real `users` table: verify the
+ * password, require a zero balance, soft-delete, revoke sessions and audit.
+ * There is no 2FA service in this codebase yet, so the password is the
+ * confirmation factor; wire a real second factor in here when one exists.
+ */
 @Injectable()
 export class AccountClosureService {
+  private readonly logger = new Logger(AccountClosureService.name);
+
   constructor(
-    @InjectRepository(UserAccount)
-    private readonly userAccountRepository: Repository<UserAccount>,
-    @InjectRepository(RefreshToken)
-    private readonly refreshTokenRepository: Repository<RefreshToken>,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
+    private readonly passwordService: PasswordService,
     private readonly walletsService: WalletsService,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
-    private readonly accountClosureMailer: AccountClosureMailer,
+    private readonly refreshTokens: RefreshTokensService,
+    private readonly mailer: AccountClosureMailer,
+    @Optional() private readonly auditService?: AuditService,
   ) {}
 
-  async closeAccount(
-    accessToken: string,
-    currentPassword: string,
-    twoFactorCode: string,
-  ): Promise<AccountClosureResult> {
-    if (!currentPassword || !twoFactorCode) {
-      throw new UnauthorizedException(
-        'Password and 2FA confirmation are required',
-      );
+  async closeAccount(userId: string, currentPassword: string): Promise<AccountClosureResult> {
+    if (!userId || !currentPassword) {
+      throw new UnauthorizedException('Password confirmation is required');
     }
 
-    const claims = await this.verifyAccessToken(accessToken);
-    const account = await this.userAccountRepository.findOne({
-      where: { id: claims.sub },
-    });
-
-    if (!account || !account.isActive) {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user || !user.isActive) {
       throw new UnauthorizedException('Account not found');
     }
 
-    this.assertPassword(account, currentPassword);
-    this.assertTwoFactorCode(account.twoFactorSecret, twoFactorCode);
-    await this.assertZeroBalance(account.id);
+    // bcrypt.compare is constant-time; legacy non-bcrypt hashes cannot be closed here.
+    const passwordOk =
+      user.passwordHash.startsWith('$') &&
+      (await this.passwordService.verify(currentPassword, user.passwordHash));
+    if (!passwordOk) {
+      throw new UnauthorizedException('Invalid password');
+    }
+
+    await this.assertZeroBalance(user.id);
 
     const now = new Date();
     const piiPurgeAt = this.buildPiiPurgeDate(now);
 
-    account.isActive = false;
-    account.deletedAt = now;
-    account.closedAt = now;
-    account.piiPurgeAt = piiPurgeAt;
-
-    await this.userAccountRepository.save(account);
-
-    await this.refreshTokenRepository.update(
-      { userId: account.id },
-      {
-        revokedAt: now,
-      },
-    );
-
-    try {
-      await this.accountClosureMailer.sendFinalConfirmation(
-        account.email,
-        account.displayName,
-      );
-      account.finalEmailSentAt = new Date();
-      await this.userAccountRepository.save(account);
-    } catch {
-      // The account remains closed even if email delivery fails.
-    }
-
-    return {
-      closed: true,
-      deletedAt: now,
+    await this.usersRepository.update(user.id, {
+      isActive: false,
+      closedAt: now,
       piiPurgeAt,
-    };
-  }
-
-  async findActiveAccountById(accountId: string): Promise<UserAccount | null> {
-    return this.userAccountRepository.findOne({
-      where: { id: accountId, isActive: true },
     });
-  }
+    // Soft delete sets deletedAt; the row (and its transactions, ledger and KYC
+    // history) stays for the retention period.
+    await this.usersRepository.softDelete(user.id);
 
-  async createAccount(input: {
-    email: string;
-    displayName: string;
-    password: string;
-    twoFactorSecret?: string;
-  }): Promise<UserAccount> {
-    const passwordSalt = randomBytes(16).toString('hex');
-    const twoFactorSecret =
-      input.twoFactorSecret ?? randomBytes(20).toString('hex');
-    const account = this.userAccountRepository.create({
-      id: randomUUID(),
-      email: input.email,
-      displayName: input.displayName,
-      passwordSalt,
-      passwordHash: this.hashPassword(input.password, passwordSalt),
-      twoFactorSecret,
-      isActive: true,
-      deletedAt: null,
-      closedAt: null,
-      piiPurgeAt: null,
-      piiPurgedAt: null,
-      finalEmailSentAt: null,
+    await this.refreshTokens.revokeUserTokens(user.id);
+
+    await this.auditService?.log({
+      userId: user.id,
+      action: 'account.closed',
+      entityType: 'user',
+      entityId: user.id,
+      after: { closedAt: now.toISOString(), piiPurgeAt: piiPurgeAt.toISOString() },
     });
 
-    return this.userAccountRepository.save(account);
-  }
-
-  private async verifyAccessToken(token: string): Promise<AccessTokenClaims> {
     try {
-      return await this.jwtService.verifyAsync<AccessTokenClaims>(token, {
-        secret: this.configService.get<string>('jwt.secret') ?? '',
-      });
-    } catch {
-      throw new UnauthorizedException('Invalid access token');
+      await this.mailer.sendFinalConfirmation(user.email, `${user.firstName} ${user.lastName}`.trim());
+    } catch (err) {
+      // The account stays closed even if the confirmation email fails.
+      this.logger.warn(`Closure confirmation email failed for ${user.id}: ${(err as Error).message}`);
     }
+
+    return { closed: true, deletedAt: now, piiPurgeAt };
   }
 
-  private assertPassword(account: UserAccount, currentPassword: string): void {
-    const nextHash = this.hashPassword(currentPassword, account.passwordSalt);
-    if (nextHash !== account.passwordHash) {
-      throw new UnauthorizedException('Invalid password');
-    }
-  }
-
-  private assertTwoFactorCode(secret: string, code: string): void {
-    if (!this.isTwoFactorCodeValid(secret, code)) {
-      throw new UnauthorizedException('Invalid two-factor code');
-    }
-  }
-
-  private async assertZeroBalance(accountId: string): Promise<void> {
-    const balances = await this.walletsService.getBalancesForAccount(accountId);
-    const hasFunds = balances.some((balance) => balance.balance !== 0);
-
-    if (hasFunds) {
-      throw new UnprocessableEntityException(
-        'Account balance must be zero before closure',
-      );
+  private async assertZeroBalance(userId: string): Promise<void> {
+    const balances = await this.walletsService.getBalancesForAccount(userId);
+    if (balances.some((balance) => Number(balance.balance) !== 0)) {
+      throw new UnprocessableEntityException('Account balance must be zero before closure');
     }
   }
 
@@ -173,48 +106,5 @@ export class AccountClosureService {
     const purgeDate = new Date(referenceDate);
     purgeDate.setFullYear(purgeDate.getFullYear() + PII_RETENTION_YEARS);
     return purgeDate;
-  }
-
-  private hashPassword(password: string, salt: string): string {
-    return pbkdf2Sync(
-      password,
-      salt,
-      PASSWORD_ITERATIONS,
-      64,
-      'sha512',
-    ).toString('hex');
-  }
-
-  private isTwoFactorCodeValid(secret: string, code: string): boolean {
-    const normalizedCode = code.trim();
-    if (!/^\d{6}$/.test(normalizedCode)) {
-      return false;
-    }
-
-    const currentWindow = Math.floor(
-      Date.now() / 1000 / TWO_FACTOR_TIME_STEP_SECONDS,
-    );
-    const windowsToCheck = [
-      currentWindow - 1,
-      currentWindow,
-      currentWindow + 1,
-    ];
-
-    return windowsToCheck.some(
-      (window) => this.generateTwoFactorCode(secret, window) === normalizedCode,
-    );
-  }
-
-  private generateTwoFactorCode(secret: string, window: number): string {
-    const counterBuffer = Buffer.alloc(8);
-    counterBuffer.writeBigUInt64BE(BigInt(window));
-    const hmac = createHmac('sha1', Buffer.from(secret, 'hex'))
-      .update(counterBuffer)
-      .digest();
-    const offset = hmac[hmac.length - 1] & 0x0f;
-    const binaryCode = hmac.readUInt32BE(offset) & 0x7fffffff;
-    return (binaryCode % 10 ** TWO_FACTOR_DIGITS)
-      .toString()
-      .padStart(TWO_FACTOR_DIGITS, '0');
   }
 }

@@ -88,7 +88,7 @@ export class AuthService {
       },
     );
 
-    return this.issueSession(user, context);
+    return this.issueToken(user.id, user.email, user.role, user.tokenVersion);
   }
 
   /**
@@ -220,7 +220,7 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.issueSession(user, context);
+    return this.issueToken(user.id, user.email, user.role, user.tokenVersion);
   }
 
   /**
@@ -257,22 +257,17 @@ export class AuthService {
       throw new UnauthorizedException('Refresh tokens are not available');
     }
 
-    const rotated = await this.refreshTokens.rotateToken(refreshToken, parseDeviceInfo(context));
-
-    // Identity and role come from the database, not the presented token, so
-    // demotions and deactivations take effect on the next refresh.
-    let user;
-    try {
-      user = await this.usersService.findById(rotated.userId);
-    } catch {
-      user = null;
-    }
-    const disabled =
-      !user ||
-      user.isActive === false ||
-      (await this.deactivationService?.isUserDeactivated(user.id));
-    if (!user || disabled) {
-      await this.refreshTokens.revokeToken(rotated.userId, rotated.id);
+      // Take identity and role from the database, not the presented token, so
+      // demotions and deactivations take effect on the next refresh.
+      const user = await this.usersService.findById(payload.sub);
+      const newAccessToken = this.issueToken(user.id, user.email, user.role, user.tokenVersion).accessToken;
+      const newRefreshToken = this.jwtService.sign(
+        { sub: user.id, typ: TokenType.REFRESH },
+        { secret: refreshSecret, expiresIn: '7d' },
+      );
+      return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+    } catch (err) {
+      if (err instanceof ForbiddenException) throw err;
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
@@ -293,15 +288,9 @@ export class AuthService {
     }
   }
 
-  private issueToken(userId: string, email: string, role: string, sid?: string) {
+  private issueToken(userId: string, email: string, role: string, tokenVersion = 0) {
     return {
-      accessToken: this.jwtService.sign({
-        sub: userId,
-        email,
-        role,
-        typ: TokenType.ACCESS,
-        ...(sid ? { sid } : {}),
-      }),
+      accessToken: this.jwtService.sign({ sub: userId, email, role, typ: TokenType.ACCESS, tv: tokenVersion ?? 0 }),
     };
   }
 }

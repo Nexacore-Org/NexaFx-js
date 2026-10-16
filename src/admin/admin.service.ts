@@ -1,12 +1,8 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { TOKEN_VERSION_CHANGED_EVENT } from '../auth/token-version.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, Not } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
@@ -183,28 +179,67 @@ export class AdminService {
     return updated;
   }
 
+  /** Run `fn` against the users repository inside one transaction (when a manager is available). */
+  private async inUserTransaction<T>(fn: (repo: Repository<User>) => Promise<T>): Promise<T> {
+    const manager = (this.usersRepository as unknown as { manager?: { transaction?: Function } }).manager;
+    if (manager?.transaction) {
+      return manager.transaction((m: { getRepository: (e: unknown) => Repository<User> }) =>
+        fn(m.getRepository(User)),
+      ) as Promise<T>;
+    }
+    return fn(this.usersRepository);
+  }
+
+  /**
+   * Guardrails shared by role and status changes: an admin cannot act on
+   * themselves, and the platform can never be left without an active admin.
+   * The count runs inside the same transaction as the change.
+   */
+  private async assertPrivilegeChangeAllowed(
+    repo: Repository<User>,
+    target: User,
+    actorId: string,
+    removesActiveAdmin: boolean,
+  ): Promise<void> {
+    if (target.id === actorId) {
+      throw new ForbiddenException('Admins cannot change their own role or status');
+    }
+    if (removesActiveAdmin && target.role === UserRole.ADMIN && target.isActive) {
+      const otherAdmins = await repo.count({
+        where: { role: UserRole.ADMIN, isActive: true, id: Not(target.id) },
+      });
+      if (otherAdmins === 0) {
+        throw new ConflictException('Cannot remove the last active admin');
+      }
+    }
+  }
+
   async updateUserStatus(
     targetUserId: string,
     isActive: boolean,
     adminUserId: string,
     reason?: string,
   ): Promise<User> {
-    const user = await this.usersRepository.findOne({
-      where: { id: targetUserId },
+    const { before, updated } = await this.inUserTransaction(async (repo) => {
+      const user = await repo.findOne({ where: { id: targetUserId } });
+      if (!user) {
+        throw new NotFoundException(`User ${targetUserId} not found`);
+      }
+      await this.assertPrivilegeChangeAllowed(repo, user, adminUserId, !isActive);
+
+      const snapshot = {
+        isActive: user.isActive,
+        role: user.role,
+        kycStatus: user.kycStatus,
+        email: user.email,
+      };
+      user.isActive = isActive;
+      // Invalidate tokens issued before the change.
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+      return { before: snapshot, updated: await repo.save(user) };
     });
-    if (!user) {
-      throw new NotFoundException(`User ${targetUserId} not found`);
-    }
 
-    const before = {
-      isActive: user.isActive,
-      role: user.role,
-      kycStatus: user.kycStatus,
-      email: user.email,
-    };
-
-    user.isActive = isActive;
-    const updated = await this.usersRepository.save(user);
+    this.events?.emit(TOKEN_VERSION_CHANGED_EVENT, { userId: targetUserId });
 
     // Tell the auth layer immediately: suspension revokes refresh tokens and
     // drops cached status so existing access tokens stop working.
@@ -239,22 +274,29 @@ export class AdminService {
     adminUserId: string,
     reason?: string,
   ): Promise<User> {
-    const user = await this.usersRepository.findOne({
-      where: { id: targetUserId },
-    });
-    if (!user) {
-      throw new NotFoundException(`User ${targetUserId} not found`);
+    if (!reason || reason.trim().length < 5) {
+      throw new BadRequestException('A reason of at least 5 characters is required for role changes');
     }
 
-    const before = {
-      isActive: user.isActive,
-      role: user.role,
-      kycStatus: user.kycStatus,
-      email: user.email,
-    };
+    const { before, updated } = await this.inUserTransaction(async (repo) => {
+      const user = await repo.findOne({ where: { id: targetUserId } });
+      if (!user) {
+        throw new NotFoundException(`User ${targetUserId} not found`);
+      }
+      await this.assertPrivilegeChangeAllowed(repo, user, adminUserId, newRole !== UserRole.ADMIN);
 
-    user.role = newRole;
-    const updated = await this.usersRepository.save(user);
+      const snapshot = {
+        isActive: user.isActive,
+        role: user.role,
+        kycStatus: user.kycStatus,
+        email: user.email,
+      };
+      user.role = newRole;
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+      return { before: snapshot, updated: await repo.save(user) };
+    });
+
+    this.events?.emit(TOKEN_VERSION_CHANGED_EVENT, { userId: targetUserId });
 
     await this.auditService.log({
       userId: adminUserId,

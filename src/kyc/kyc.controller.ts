@@ -13,7 +13,8 @@ import {
 } from '@nestjs/common';
 import { KycService, SubmitKycDto, ReviewKycDto } from './kyc.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AdminRoleGuard } from '../common/guards/admin-role.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
 
 interface AuthenticatedRequest {
@@ -46,7 +47,9 @@ export class KycController {
     return this.kycService.appeal(id, reason, req.user?.sub ?? '');
   }
 
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
+  // Admins and compliance officers may review; enforced by the global RolesGuard.
+  @Roles(Role.ADMIN, Role.COMPLIANCE)
+  @UseGuards(JwtAuthGuard, IpAllowlistGuard)
   @Patch(':id/review')
   review(@Param('id') id: string, @Body() dto: ReviewKycDto) {
     return this.kycService.review(id, dto);

@@ -19,16 +19,14 @@ import { JwtAuthGuard as PassportJwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { TokensModule } from '../tokens/tokens.module';
-import { PasswordResetToken } from './password-reset.entity';
-import { PasswordResetService } from './password-reset.service';
-import { PasswordResetFlowService } from './password-reset-flow.service';
+import { User } from '../users/user.entity';
+import { TokenVersionService } from './token-version.service';
+import { TokenVersionGuard } from './token-version.guard';
 
 @Module({
   imports: [
     UsersModule,
-    TokensModule,
-    TypeOrmModule.forFeature([PasswordResetToken]),
+    TypeOrmModule.forFeature([User]),
     forwardRef(() => TermsModule),
     AuditModule,
     MailModule,
@@ -53,7 +51,7 @@ import { PasswordResetFlowService } from './password-reset-flow.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, PasswordResetService, PasswordResetFlowService, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
-  exports: [AuthService, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
+  providers: [AuthService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
+  exports: [AuthService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
 })
 export class AuthModule {}
