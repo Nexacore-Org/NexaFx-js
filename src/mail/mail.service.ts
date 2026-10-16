@@ -38,6 +38,12 @@ export interface AdminAlertEmail {
   metadata?: Record<string, unknown>;
 }
 
+export interface AccountLockedEmail {
+  to: string;
+  lockoutMinutes: number;
+  failedAttempts: number;
+}
+
 export interface SupportTicketCreatedEmail {
   to: string;
   fullName: string;

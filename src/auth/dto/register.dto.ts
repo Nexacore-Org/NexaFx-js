@@ -1,14 +1,22 @@
+import { NormalizeEmail } from '../../common/decorators/normalize-email.decorator';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'user@example.com' })
+  @NormalizeEmail()
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ minLength: 8, example: 'correcthorsebatterystaple' })
+  // Length and strength are enforced by PasswordPolicyService (see GET /auth/password-policy);
+  // a second, different @MinLength here used to contradict it.
+  @ApiProperty({
+    minLength: 12,
+    maxLength: 128,
+    example: 'correct horse battery staple 42!',
+    description: 'Must satisfy the password policy; see GET /auth/password-policy',
+  })
   @IsString()
-  @MinLength(8)
   password!: string;
 
   @ApiProperty({ example: 'Ada' })

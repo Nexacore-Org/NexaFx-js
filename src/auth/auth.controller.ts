@@ -25,7 +25,16 @@ export class AuthController {
     private readonly passwordResetFlow: PasswordResetFlowService,
   ) {}
 
+  /** The rules clients should display, straight from the service that enforces them. */
   @Public()
+  @Get('password-policy')
+  @ApiOperation({ summary: 'Current password policy' })
+  getPasswordPolicy() {
+    return this.passwordPolicy.getPolicy();
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
   @ApiOperation({ summary: 'Register a new user account' })
   @ApiBody({ type: RegisterDto })
@@ -39,6 +48,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @Post('login')
   @ApiOperation({ summary: 'Authenticate and issue an access token' })

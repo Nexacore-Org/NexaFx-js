@@ -1,8 +1,10 @@
+import { NormalizeEmail } from '../../common/decorators/normalize-email.decorator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({ example: 'user@example.com' })
+  @NormalizeEmail()
   @IsEmail()
   email!: string;
 

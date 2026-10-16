@@ -4,10 +4,10 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IdempotencyGuard, MIN_KEY_LENGTH, MAX_KEY_LENGTH } from './idempotency.guard';
+import { IdempotencyGuard } from './idempotency.guard';
 import { IdempotencyService } from './idempotency.service';
 import { IDEMPOTENCY_KEY } from './idempotency.decorator';
-import { MAX_KEY_LENGTH } from './constants';
+import { MAX_KEY_LENGTH, MIN_KEY_LENGTH } from './constants';
 
 // ---------------------------------------------------------------------------
 // Helpers

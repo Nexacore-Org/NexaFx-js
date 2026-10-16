@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { FxTrade } from './fx-trade.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { WalletsService } from '../wallet/wallets.service';
+import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
 
 import { FxQuoteCache } from './fx-quote-cache';
 
@@ -29,9 +31,13 @@ export class FxService {
     private readonly config: ConfigService,
     private readonly rateService: ExchangeRateService,
     private readonly wallets: WalletsService,
+    @Optional() private readonly accountFreezeService?: AccountFreezeService,
   ) {}
 
   async executeTrade(dto: ExecuteTradeDto): Promise<FxTrade> {
+    // A frozen account cannot swap.
+    await this.accountFreezeService?.assertNotFrozen(dto.userId);
+
     let rate: number;
     if (dto.quoteId) {
       const lockedRate = FxQuoteCache.get(dto.quoteId);
