@@ -20,7 +20,13 @@ export class ApiKeyGuard implements CanActivate {
 
     try {
       const validKey = await this.apiKeysService.validateApiKey(apiKey);
-      request.user = { id: validKey.userId, apiKey: validKey };
+      request.user = {
+        id: validKey.userId,
+        sub: validKey.userId,
+        authMethod: 'api_key',
+        scopes: validKey.scopes ?? [],
+        apiKeyId: validKey.id,
+      };
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) {

@@ -217,4 +217,95 @@ describe('GlobalExceptionFilter', () => {
       expect(isSensitiveField(field)).toBe(false);
     });
   });
+
+  describe('structured payloads (#1354)', () => {
+    it('passes requiresAction and version through for a terms-acceptance 403', () => {
+      filter.catch(
+        new HttpException({ requiresAction: 'accept_terms', version: '1.1' }, HttpStatus.FORBIDDEN),
+        mockHost,
+      );
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 403,
+          requiresAction: 'accept_terms',
+          version: '1.1',
+        }),
+      );
+    });
+
+    it('keeps submissionId on a duplicate KYC submission 409', () => {
+      filter.catch(
+        new HttpException(
+          { message: 'An active KYC submission already exists for this user', submissionId: 'sub-1' },
+          HttpStatus.CONFLICT,
+        ),
+        mockHost,
+      );
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'An active KYC submission already exists for this user',
+          submissionId: 'sub-1',
+        }),
+      );
+    });
+
+    it('keeps requiresAction together with its message', () => {
+      filter.catch(
+        new HttpException(
+          { requiresAction: 'verify_email', message: 'Email verification required' },
+          HttpStatus.FORBIDDEN,
+        ),
+        mockHost,
+      );
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ requiresAction: 'verify_email', message: 'Email verification required' }),
+      );
+    });
+
+    it('forwards Nest error labels and ValidationPipe array messages', () => {
+      filter.catch(
+        new HttpException(
+          { statusCode: 400, message: ['email must be an email', 'password too short'], error: 'Bad Request' },
+          HttpStatus.BAD_REQUEST,
+        ),
+        mockHost,
+      );
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: ['email must be an email', 'password too short'],
+          error: 'Bad Request',
+        }),
+      );
+    });
+
+    it('does not forward fields outside the allow-list', () => {
+      filter.catch(
+        new HttpException({ message: 'nope', internalStack: 'secret', requiresAction: 'x' }, HttpStatus.FORBIDDEN),
+        mockHost,
+      );
+      const body = (mockResponse.json as jest.Mock).mock.calls[0][0];
+      expect(body).not.toHaveProperty('internalStack');
+    });
+
+    it('never forwards payload fields on 5xx responses', () => {
+      jest.spyOn(filter['logger'], 'error').mockImplementation(() => undefined);
+      filter.catch(
+        new HttpException({ message: 'boom', requiresAction: 'x', submissionId: 's', code: 'c' }, HttpStatus.INTERNAL_SERVER_ERROR),
+        mockHost,
+      );
+      const body = (mockResponse.json as jest.Mock).mock.calls[0][0];
+      expect(body).not.toHaveProperty('requiresAction');
+      expect(body).not.toHaveProperty('submissionId');
+      expect(body).not.toHaveProperty('code');
+    });
+
+    it('echoes the correlation id and logs the user id from user.sub', () => {
+      mockRequest.headers = { 'x-correlation-id': 'corr-1' };
+      (mockRequest as any).user = { sub: 'user-9' };
+      const warn = jest.spyOn(filter['logger'], 'warn').mockImplementation(() => undefined);
+      filter.catch(new HttpException('Nope', HttpStatus.BAD_REQUEST), mockHost);
+      expect(mockResponse.json).toHaveBeenCalledWith(expect.objectContaining({ correlationId: 'corr-1' }));
+      expect(warn).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-9' }));
+    });
+  });
 });

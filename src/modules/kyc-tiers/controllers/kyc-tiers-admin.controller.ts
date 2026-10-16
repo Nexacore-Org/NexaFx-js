@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Query,
   UseGuards,
@@ -17,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { AdminGuard } from '../../auth/guards/admin.guard';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { KycTiersService } from '../services/kyc-tiers.service';
 import { ListKycTierUpgradesDto } from '../dto/list-kyc-tier-upgrades.dto';
 import { ReviewKycTierUpgradeDto } from '../dto/review-kyc-tier-upgrade.dto';
@@ -39,7 +41,7 @@ export class KycTiersAdminController {
   @ApiOperation({ summary: 'Approve a KYC tier upgrade request' })
   @ApiParam({ name: 'id', description: 'Upgrade request UUID' })
   @ApiOkResponse({ description: 'Upgrade approved' })
-  async approve(@Param('id') id: string, @Query('adminId') adminId: string) {
+  async approve(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser('id') adminId: string) {
     return this.kycTiersService.approve(id, adminId);
   }
 
@@ -48,8 +50,8 @@ export class KycTiersAdminController {
   @ApiParam({ name: 'id', description: 'Upgrade request UUID' })
   @ApiOkResponse({ description: 'Upgrade rejected' })
   async reject(
-    @Param('id') id: string,
-    @Query('adminId') adminId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser('id') adminId: string,
     @Body(ValidationPipe) dto: ReviewKycTierUpgradeDto,
   ) {
     return this.kycTiersService.reject(id, adminId, dto.reason);

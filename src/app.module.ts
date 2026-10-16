@@ -7,6 +7,7 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ImpersonationGuard } from './auth/impersonation.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -33,6 +34,7 @@ import { LedgerModule } from './ledger/ledger.module';
 import { AccountFreezeModule } from './modules/account-freeze/account-freeze.module';
 import { StellarFederationModule } from './modules/stellar-federation/stellar-federation.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { ApiKeyAuthGuard } from './modules/api-keys/guards/api-key-auth.guard';
 import { ExportModule } from './modules/export/export.module';
 import { KycModule } from './kyc/kyc.module';
 import { FxModule } from './fx/fx.module';
@@ -287,7 +289,15 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     AppService,
     {
       provide: APP_GUARD,
+      useClass: ApiKeyAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ImpersonationGuard,
     },
     {
       provide: APP_GUARD,

@@ -87,7 +87,8 @@ describe('Sep10AuthService', () => {
       signChallenge(challenge, privateKey),
       'base64',
     );
-    signature[0] ^= 0xff;
+    expect(signature.length).toBeGreaterThan(0);
+    signature[0] = (signature[0] ?? 0) ^ 0xff;
 
     expect(
       service.validateChallenge(address, signature.toString('base64')),

@@ -9,6 +9,7 @@ import { KycDocument } from '../kyc/kyc-document.entity';
 import { SupportTicketEntity } from '../modules/support-tickets/entities/support-ticket.entity';
 import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
+import { AdminApproval } from './admin-approval.entity';
 
 const mockRepository = () => ({
   count: jest.fn(),
@@ -38,6 +39,7 @@ describe('AdminService', () => {
         { provide: getRepositoryToken(SupportTicketEntity), useFactory: mockRepository },
         { provide: getRepositoryToken(WebhookEndpoint), useFactory: mockRepository },
         { provide: getRepositoryToken(AmlAlert), useFactory: mockRepository },
+        { provide: getRepositoryToken(AdminApproval), useFactory: mockRepository },
         { provide: AuditService, useFactory: mockAuditService },
       ],
     }).compile();
@@ -214,7 +216,7 @@ describe('AdminService', () => {
       usersRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.updateUserRole('nonexistent', UserRole.ADMIN, adminUserId),
+        service.updateUserRole('nonexistent', UserRole.ADMIN, adminUserId, 'Needs access'),
       ).rejects.toThrow(NotFoundException);
 
       expect(auditService.log).not.toHaveBeenCalled();

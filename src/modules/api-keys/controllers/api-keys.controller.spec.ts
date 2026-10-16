@@ -38,7 +38,7 @@ describe('ApiKeysController', () => {
 
   describe('create', () => {
     it('should create a key and return it with the plain key', async () => {
-      const mockKey = { id: 'k1', name: 'test', userId: 'u1' } as any;
+      const mockKey = { id: 'k1', name: 'test', userId: 'u1', keyHash: 'secret-hash' } as any;
       service.createApiKey!.mockResolvedValue({ apiKey: mockKey, plainKey: 'nxf_abc123' });
 
       const req = { user: { id: 'u1' } };
@@ -46,6 +46,7 @@ describe('ApiKeysController', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.key).toBe('nxf_abc123');
+      expect(result.data).not.toHaveProperty('keyHash');
       expect(result.message).toContain('Store this key securely');
       expect(service.createApiKey).toHaveBeenCalledWith('u1', expect.objectContaining({ name: 'test' }));
     });
@@ -63,27 +64,30 @@ describe('ApiKeysController', () => {
 
   describe('list', () => {
     it('should return all keys for the user', async () => {
-      const keys = [{ id: 'k1' }, { id: 'k2' }];
+      const keys = [{ id: 'k1', keyHash: 'secret-hash' }, { id: 'k2', keyHash: 'secret-hash' }];
       service.getApiKeysByUser!.mockResolvedValue(keys);
 
       const req = { user: { id: 'u1' } };
       const result = await controller.list(req);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(keys);
+      expect(result.data.map((k: any) => k.id)).toEqual(['k1', 'k2']);
+      // The stored hash must never be returned.
+      expect(JSON.stringify(result.data)).not.toContain('secret-hash');
     });
   });
 
   describe('revoke', () => {
     it('should revoke a key', async () => {
-      const revoked = { id: 'k1', isActive: false };
+      const revoked = { id: 'k1', isActive: false, keyHash: 'secret-hash' };
       service.revokeApiKey!.mockResolvedValue(revoked);
 
       const req = { user: { id: 'u1' } };
       const result = await controller.revoke('k1', req);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(revoked);
+      expect(result.data).toMatchObject({ id: 'k1', isActive: false });
+      expect(result.data).not.toHaveProperty('keyHash');
       expect(service.revokeApiKey).toHaveBeenCalledWith('k1', 'u1');
     });
   });

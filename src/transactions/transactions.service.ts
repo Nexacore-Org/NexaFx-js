@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, Logger, NotFoundException, UnprocessableEntityException, OnModuleInit } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger, NotFoundException, Optional, UnprocessableEntityException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository, DataSource } from 'typeorm';
@@ -15,6 +15,7 @@ import { TransactionLimitService } from './transaction-limit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UserDeactivationService } from '../modules/user-deactivation/services/user-deactivation.service';
 import { FeesService } from '../fees/fees.service';
+import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
 
 export interface TransferDto {
   senderId: string;
@@ -108,6 +109,7 @@ export class TransactionsService implements OnModuleInit {
     private readonly feesService: FeesService,
     private readonly deactivationService: UserDeactivationService,
     private readonly termsService: TermsAcceptanceService,
+    @Optional() private readonly accountFreezeService?: AccountFreezeService,
   ) {}
 
   /** Deadline after which the scheduled job times out a still-PENDING transaction. */
@@ -142,6 +144,9 @@ export class TransactionsService implements OnModuleInit {
     if (isDeactivated) {
       throw new ForbiddenException('Account has been deactivated. Cannot perform transactions.');
     }
+
+    // A compliance freeze blocks every outgoing money movement.
+    await this.accountFreezeService?.assertNotFrozen(dto.senderId);
 
     if (dto.amount <= 0) {
       throw new BadRequestException('Transfer amount must be positive');
@@ -283,6 +288,16 @@ export class TransactionsService implements OnModuleInit {
   // Helpers
   // ---------------------------------------------------------------------------
 
+  /** Return reserved limit headroom after a transaction that did not move money. Never throws. */
+  private async releaseLimit(userId: string, reservedUsd: number | undefined): Promise<void> {
+    if (typeof reservedUsd !== 'number' || !(reservedUsd > 0)) return;
+    try {
+      await this.limitService.release(userId, reservedUsd);
+    } catch (err) {
+      this.logger.error(`Failed to release limit for ${userId}`, err as Error);
+    }
+  }
+
   private checkDailyLimit(_amount: number): void {
     // Superseded by TransactionLimitService.check() — kept as no-op for backward compat
   }
@@ -311,44 +326,50 @@ export class TransactionsService implements OnModuleInit {
     await this.termsService.ensureAccepted(dto.userId);
     const fee = this.feesService.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
-    await this.limitService.check(dto.userId, totalChecked, dto.currency);
-
-    const tx = this.txRepo.create({
-      senderId: dto.userId,
-      receiverId: dto.userId,
-      amount: dto.amount,
-      currency: dto.currency,
-      fee: fee.feeAmount,
-      reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'deposit' },
-      status: TransactionStatus.PENDING,
-      pendingTimeoutAt: this.nextPendingTimeoutAt(),
-    });
-    tx.metadata = { ...tx.metadata, fullTransactionId: tx.id };
-    await this.txRepo.save(tx);
-    await this.generateReceiptNumber(tx);
-
+    const reservedUsd = await this.limitService.check(dto.userId, totalChecked, dto.currency);
+    // Give the reserved limit headroom back unless the money actually moved (#1376).
+    let succeeded = false;
     try {
-      // Stellar / blockchain submission would happen here
-      await this.walletsService.adjustBalance(dto.userId, dto.currency, dto.amount);
-      tx.status = TransactionStatus.COMPLETED;
-      tx.completedAt = new Date();
-      await this.txRepo.save(tx);
-      await this.usersService.invalidateWalletBalanceCache(dto.userId);
-      this.events.emit('transactions.deposit.completed', { transactionId: tx.id, userId: dto.userId });
-      return tx;
-    } catch (err) {
-      // Deposit failed — no balance was credited, so no rollback required
-      tx.status = TransactionStatus.FAILED;
-      await this.txRepo.save(tx);
-      await this.auditService.log({
-        userId: dto.userId,
-        action: 'transaction.deposit.failed',
-        entityType: 'transaction',
-        entityId: tx.id,
-        after: { error: (err as Error).message },
+      const tx = this.txRepo.create({
+        senderId: dto.userId,
+        receiverId: dto.userId,
+        amount: dto.amount,
+        currency: dto.currency,
+        fee: fee.feeAmount,
+        reference: dto.reference,
+        metadata: { ...dto.metadata, type: 'deposit' },
+        status: TransactionStatus.PENDING,
+        pendingTimeoutAt: this.nextPendingTimeoutAt(),
       });
-      throw err;
+      tx.metadata = { ...tx.metadata, fullTransactionId: tx.id };
+      await this.txRepo.save(tx);
+      await this.generateReceiptNumber(tx);
+
+      try {
+        // Stellar / blockchain submission would happen here
+        await this.walletsService.adjustBalance(dto.userId, dto.currency, dto.amount);
+        tx.status = TransactionStatus.COMPLETED;
+        tx.completedAt = new Date();
+        await this.txRepo.save(tx);
+        await this.usersService.invalidateWalletBalanceCache(dto.userId);
+        this.events.emit('transactions.deposit.completed', { transactionId: tx.id, userId: dto.userId });
+        succeeded = true;
+        return tx;
+      } catch (err) {
+        // Deposit failed — no balance was credited, so no rollback required
+        tx.status = TransactionStatus.FAILED;
+        await this.txRepo.save(tx);
+        await this.auditService.log({
+          userId: dto.userId,
+          action: 'transaction.deposit.failed',
+          entityType: 'transaction',
+          entityId: tx.id,
+          after: { error: (err as Error).message },
+        });
+        throw err;
+      }
+    } finally {
+      if (!succeeded) await this.releaseLimit(dto.userId, reservedUsd);
     }
   }
 
@@ -370,50 +391,56 @@ export class TransactionsService implements OnModuleInit {
     }
 
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
-    await this.limitService.check(dto.userId, totalChecked, dto.currency);
-
-    const balance = await this.walletsService.getBalance(dto.userId, dto.currency);
-    if (balance.balance < totalChecked) {
-      throw new BadRequestException('Insufficient balance including fee');
-    }
-
-    const tx = this.txRepo.create({
-      senderId: dto.userId,
-      receiverId: dto.userId,
-      amount: dto.amount,
-      currency: dto.currency,
-      fee: fee.feeAmount,
-      reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'withdrawal', destinationAddress: dto.destinationAddress },
-      status: TransactionStatus.PENDING,
-      pendingTimeoutAt: this.nextPendingTimeoutAt(),
-    });
-    await this.txRepo.save(tx);
-    await this.generateReceiptNumber(tx);
-
-    await this.walletsService.adjustBalance(dto.userId, dto.currency, -totalChecked);
-
+    const reservedUsd = await this.limitService.check(dto.userId, totalChecked, dto.currency);
+    // Give the reserved limit headroom back unless the money actually moved (#1376).
+    let succeeded = false;
     try {
-      // Stellar / blockchain submission would happen here
-      tx.status = TransactionStatus.COMPLETED;
-      tx.completedAt = new Date();
-      await this.txRepo.save(tx);
-      await this.usersService.invalidateWalletBalanceCache(dto.userId);
-      this.events.emit('transactions.withdrawal.completed', { transactionId: tx.id, userId: dto.userId });
-      return tx;
-    } catch (err) {
-      // #739: Restore deducted balance on Stellar failure
-      await this.walletsService.adjustBalance(dto.userId, dto.currency, +totalChecked);
-      tx.status = TransactionStatus.FAILED;
-      await this.txRepo.save(tx);
-      await this.auditService.log({
-        userId: dto.userId,
-        action: 'transaction.withdrawal.failed_refunded',
-        entityType: 'transaction',
-        entityId: tx.id,
-        after: { refundedAmount: totalChecked, error: (err as Error).message },
+      const balance = await this.walletsService.getBalance(dto.userId, dto.currency);
+      if (balance.balance < totalChecked) {
+        throw new BadRequestException('Insufficient balance including fee');
+      }
+
+      const tx = this.txRepo.create({
+        senderId: dto.userId,
+        receiverId: dto.userId,
+        amount: dto.amount,
+        currency: dto.currency,
+        fee: fee.feeAmount,
+        reference: dto.reference,
+        metadata: { ...dto.metadata, type: 'withdrawal', destinationAddress: dto.destinationAddress },
+        status: TransactionStatus.PENDING,
+        pendingTimeoutAt: this.nextPendingTimeoutAt(),
       });
-      throw err;
+      await this.txRepo.save(tx);
+      await this.generateReceiptNumber(tx);
+
+      await this.walletsService.adjustBalance(dto.userId, dto.currency, -totalChecked);
+
+      try {
+        // Stellar / blockchain submission would happen here
+        tx.status = TransactionStatus.COMPLETED;
+        tx.completedAt = new Date();
+        await this.txRepo.save(tx);
+        await this.usersService.invalidateWalletBalanceCache(dto.userId);
+        this.events.emit('transactions.withdrawal.completed', { transactionId: tx.id, userId: dto.userId });
+        succeeded = true;
+        return tx;
+      } catch (err) {
+        // #739: Restore deducted balance on Stellar failure
+        await this.walletsService.adjustBalance(dto.userId, dto.currency, +totalChecked);
+        tx.status = TransactionStatus.FAILED;
+        await this.txRepo.save(tx);
+        await this.auditService.log({
+          userId: dto.userId,
+          action: 'transaction.withdrawal.failed_refunded',
+          entityType: 'transaction',
+          entityId: tx.id,
+          after: { refundedAmount: totalChecked, error: (err as Error).message },
+        });
+        throw err;
+      }
+    } finally {
+      if (!succeeded) await this.releaseLimit(dto.userId, reservedUsd);
     }
   }
 
@@ -426,84 +453,90 @@ export class TransactionsService implements OnModuleInit {
     await this.termsService.ensureAccepted(dto.userId);
     const fee = this.feesService.calculateFee(dto.fromAmount);
     const totalChecked = dto.fromAmount + fee.feeAmount; // #742: fee included in limit check
-    await this.limitService.check(dto.userId, totalChecked, dto.fromCurrency);
-
-    const balance = await this.walletsService.getBalance(dto.userId, dto.fromCurrency);
-    if (new Big(String(balance.balance)).lt(totalChecked)) {
-      throw new BadRequestException('Insufficient balance including fee');
-    }
-
-    // #1058: never trust the client-supplied toAmount — derive it server-side
-    // from the same rate source used for previews, so a swap can't be used
-    // to mint an arbitrary destination-currency amount.
-    const feeAdjustedAmount = dto.fromAmount - fee.feeAmount;
-    const rate = parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
-    const serverToAmount = parseFloat((feeAdjustedAmount * rate).toFixed(8));
-
-    const tx = this.txRepo.create({
-      senderId: dto.userId,
-      receiverId: dto.userId,
-      amount: dto.fromAmount,
-      currency: dto.fromCurrency,
-      fee: fee.feeAmount,
-      reference: dto.reference,
-      metadata: { ...dto.metadata, type: 'swap', toAmount: serverToAmount, toCurrency: dto.toCurrency },
-      status: TransactionStatus.PENDING,
-      pendingTimeoutAt: this.nextPendingTimeoutAt(),
-      retryCount: 0,
-    });
-    await this.txRepo.save(tx);
-
-    await this.walletsService.adjustBalance(dto.userId, dto.fromCurrency, -totalChecked);
-
-    let lastError: Error | undefined;
-
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        // Stellar / blockchain swap submission would happen here
-        await this.walletsService.adjustBalance(dto.userId, dto.toCurrency, serverToAmount);
-        tx.status = TransactionStatus.COMPLETED;
-        tx.completedAt = new Date();
-        tx.retryCount = attempt;
-        await this.txRepo.save(tx);
-        await this.feesService.recordFee({
-          transactionId: tx.id,
-          userId: dto.userId,
-          transactionType: 'swap',
-          amount: dto.fromAmount,
-          feeAmount: fee.feeAmount,
-          currency: dto.fromCurrency,
-          reason: fee.reason,
-        });
-        this.events.emit('transactions.swap.completed', { transactionId: tx.id, userId: dto.userId });
-        return tx;
-      } catch (err) {
-        lastError = err as Error;
-        tx.retryCount = attempt + 1;
-        // #741: do NOT persist FAILED status on intermediate failures — only log
-        this.logger.warn(
-          `Swap attempt ${attempt + 1}/${MAX_RETRIES} failed for tx ${tx.id}: ${lastError.message}`,
-        );
-        // Persist only retryCount, not FAILED status yet
-        await this.txRepo.save(tx);
+    const reservedUsd = await this.limitService.check(dto.userId, totalChecked, dto.fromCurrency);
+    // Give the reserved limit headroom back unless the money actually moved (#1376).
+    let succeeded = false;
+    try {
+      const balance = await this.walletsService.getBalance(dto.userId, dto.fromCurrency);
+      if (new Big(String(balance.balance)).lt(totalChecked)) {
+        throw new BadRequestException('Insufficient balance including fee');
       }
+
+      // #1058: never trust the client-supplied toAmount — derive it server-side
+      // from the same rate source used for previews, so a swap can't be used
+      // to mint an arbitrary destination-currency amount.
+      const feeAdjustedAmount = dto.fromAmount - fee.feeAmount;
+      const rate = parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
+      const serverToAmount = parseFloat((feeAdjustedAmount * rate).toFixed(8));
+
+      const tx = this.txRepo.create({
+        senderId: dto.userId,
+        receiverId: dto.userId,
+        amount: dto.fromAmount,
+        currency: dto.fromCurrency,
+        fee: fee.feeAmount,
+        reference: dto.reference,
+        metadata: { ...dto.metadata, type: 'swap', toAmount: serverToAmount, toCurrency: dto.toCurrency },
+        status: TransactionStatus.PENDING,
+        pendingTimeoutAt: this.nextPendingTimeoutAt(),
+        retryCount: 0,
+      });
+      await this.txRepo.save(tx);
+
+      await this.walletsService.adjustBalance(dto.userId, dto.fromCurrency, -totalChecked);
+
+      let lastError: Error | undefined;
+
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          // Stellar / blockchain swap submission would happen here
+          await this.walletsService.adjustBalance(dto.userId, dto.toCurrency, serverToAmount);
+          tx.status = TransactionStatus.COMPLETED;
+          tx.completedAt = new Date();
+          tx.retryCount = attempt;
+          await this.txRepo.save(tx);
+          await this.feesService.recordFee({
+            transactionId: tx.id,
+            userId: dto.userId,
+            transactionType: 'swap',
+            amount: dto.fromAmount,
+            feeAmount: fee.feeAmount,
+            currency: dto.fromCurrency,
+            reason: fee.reason,
+          });
+          this.events.emit('transactions.swap.completed', { transactionId: tx.id, userId: dto.userId });
+          succeeded = true;
+          return tx;
+        } catch (err) {
+          lastError = err as Error;
+          tx.retryCount = attempt + 1;
+          // #741: do NOT persist FAILED status on intermediate failures — only log
+          this.logger.warn(
+            `Swap attempt ${attempt + 1}/${MAX_RETRIES} failed for tx ${tx.id}: ${lastError.message}`,
+          );
+          // Persist only retryCount, not FAILED status yet
+          await this.txRepo.save(tx);
+        }
+      }
+
+      // All retries exhausted — restore balance, then write FAILED (#741)
+      await this.walletsService.adjustBalance(dto.userId, dto.fromCurrency, +totalChecked);
+      tx.status = TransactionStatus.FAILED;
+      await this.txRepo.save(tx);
+
+      await this.auditService.log({
+        userId: dto.userId,
+        action: 'transaction.swap.failed_refunded',
+        entityType: 'transaction',
+        entityId: tx.id,
+        after: { retryCount: tx.retryCount, refundedAmount: totalChecked, error: lastError?.message },
+      });
+      this.events.emit('transactions.swap.failed', { transactionId: tx.id, userId: dto.userId });
+
+      throw lastError;
+    } finally {
+      if (!succeeded) await this.releaseLimit(dto.userId, reservedUsd);
     }
-
-    // All retries exhausted — restore balance, then write FAILED (#741)
-    await this.walletsService.adjustBalance(dto.userId, dto.fromCurrency, +totalChecked);
-    tx.status = TransactionStatus.FAILED;
-    await this.txRepo.save(tx);
-
-    await this.auditService.log({
-      userId: dto.userId,
-      action: 'transaction.swap.failed_refunded',
-      entityType: 'transaction',
-      entityId: tx.id,
-      after: { retryCount: tx.retryCount, refundedAmount: totalChecked, error: lastError?.message },
-    });
-    this.events.emit('transactions.swap.failed', { transactionId: tx.id, userId: dto.userId });
-
-    throw lastError;
   }
 
   // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import {
 @Entity('account_freezes')
 @Index('idx_account_freezes_user_id', ['userId'])
 @Index('idx_account_freezes_is_active', ['isActive'])
+@Index('uq_account_freezes_active_user', ['userId'], { unique: true, where: '"isActive" = true' })
 export class AccountFreezeEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

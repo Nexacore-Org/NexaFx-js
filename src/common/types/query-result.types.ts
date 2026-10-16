@@ -1,10 +1,10 @@
-import { SelectQueryBuilder } from 'typeorm';
+import { ObjectLiteral, SelectQueryBuilder } from 'typeorm';
 
 /**
  * Execute a TypeORM query builder and return explicitly typed results.
  * Prevents `any`-typed query results slipping through TypeScript.
  */
-export async function executeQuery<T>(qb: SelectQueryBuilder<T>): Promise<T[]> {
+export async function executeQuery<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>): Promise<T[]> {
   return qb.getMany();
 }
 

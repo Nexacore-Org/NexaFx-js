@@ -1,14 +1,12 @@
-import { TransactionsService } from './transactions.service';
+import { makeTransactionsService } from './testing/transactions-service.factory';
+import { makeAdminService } from '../admin/testing/admin-service.factory';
 import { FxService } from '../fx/fx.service';
-import { AdminService } from '../admin/admin.service';
 
 describe('femaleotaku Features (Issues #988, #987, #986, #985)', () => {
   it('TransactionsService supports user-to-user internal transfer', async () => {
     const mockUsers = { findByEmail: jest.fn().mockResolvedValue({ id: 'recipient-123', email: 'recipient@example.com' }) };
-    const txService = new TransactionsService(
-      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, mockUsers as any, {} as any, {} as any, {} as any, {} as any, {} as any,
-    );
-    jest.spyOn(txService, 'transfer').mockResolvedValue({ id: 'tx-int-1', status: 'COMPLETED' } as any);
+    const txService = makeTransactionsService({ users: mockUsers });
+    const transferSpy = jest.spyOn(txService, 'transfer').mockResolvedValue({ id: 'tx-int-1', status: 'COMPLETED' } as any);
 
     const tx = await txService.createInternalTransfer({
       senderId: 'sender-123',
@@ -18,7 +16,7 @@ describe('femaleotaku Features (Issues #988, #987, #986, #985)', () => {
     });
 
     expect(tx.id).toBe('tx-int-1');
-    expect(txService.transfer).toHaveBeenCalledWith(expect.objectContaining({ senderId: 'sender-123', receiverId: 'recipient-123' }));
+    expect(transferSpy).toHaveBeenCalledWith(expect.objectContaining({ senderId: 'sender-123', receiverId: 'recipient-123' }));
   });
 
   it('FxService calculates smart swap route comparing DEX liquidity', async () => {
@@ -33,7 +31,7 @@ describe('femaleotaku Features (Issues #988, #987, #986, #985)', () => {
   it('AdminService generates CBN monthly compliance report', async () => {
     const mockTxRepo = { count: jest.fn().mockResolvedValue(150) };
     const mockAlertRepo = { count: jest.fn().mockResolvedValue(2) };
-    const adminService = new AdminService({} as any, mockTxRepo as any, {} as any, {} as any, {} as any, mockAlertRepo as any, {} as any);
+    const adminService = makeAdminService({ transactions: mockTxRepo, alerts: mockAlertRepo });
 
     const report = await adminService.generateCbnComplianceReport('monthly');
     expect(report.reportType).toBe('CBN_MONTHLY_COMPLIANCE_FILING');
@@ -42,9 +40,7 @@ describe('femaleotaku Features (Issues #988, #987, #986, #985)', () => {
 
   it('TransactionsService simulates swap transaction without DB/blockchain side effects', async () => {
     const mockFees = { calculateFee: jest.fn().mockReturnValue({ feeAmount: 1.0 }) };
-    const txService = new TransactionsService(
-      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, mockFees as any, {} as any, {} as any,
-    );
+    const txService = makeTransactionsService({ fees: mockFees });
 
     const sim = await txService.simulateTransaction({
       type: 'swap',
