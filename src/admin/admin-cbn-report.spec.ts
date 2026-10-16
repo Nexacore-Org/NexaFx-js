@@ -80,9 +80,9 @@ describe('AdminService.findAllTransactions date validation (#1357)', () => {
     const chain: any = {};
     for (const m of ['leftJoinAndSelect', 'orderBy', 'skip', 'take', 'andWhere']) chain[m] = jest.fn(() => chain);
     chain.getManyAndCount = jest.fn().mockResolvedValue([[], 0]);
-    return build().service.constructor === AdminService
-      ? new AdminService({} as any, { createQueryBuilder: () => chain } as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any)
-      : (undefined as never);
+    return new AdminService(
+      {} as any, { createQueryBuilder: () => chain } as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+    );
   };
 
   it('rejects unparsable dates with 400 instead of reaching the database', async () => {
