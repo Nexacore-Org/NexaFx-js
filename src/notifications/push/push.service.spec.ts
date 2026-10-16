@@ -22,7 +22,7 @@ describe('PushNotificationService', () => {
   });
 
   beforeEach(() => {
-    tokenRepo = { findOne: jest.fn(), find: jest.fn(), create: jest.fn(), save: jest.fn(), delete: jest.fn() } as any;
+    tokenRepo = { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]), create: jest.fn(), save: jest.fn(), delete: jest.fn() } as any;
     config = { get: jest.fn().mockReturnValue('server-key') } as any;
     http = { post: jest.fn() } as any;
     service = new PushNotificationService(tokenRepo as any, config as any, http as any);
@@ -50,6 +50,32 @@ describe('PushNotificationService', () => {
 
       expect(tokenRepo.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-3', token: 'tok-new' }));
       expect(result).toEqual(newToken);
+    });
+  });
+
+  describe('registerToken() token limit', () => {
+    it('deletes the least recently used token once the per-user cap is reached', async () => {
+      const full = Array.from({ length: 20 }, (_, i) => makeToken({ id: `dt-${i}`, token: `tok-${i}` }));
+      tokenRepo.findOne.mockResolvedValue(null);
+      tokenRepo.find.mockResolvedValue(full);
+      tokenRepo.create.mockReturnValue(makeToken({ id: 'dt-new', token: 'tok-new' }));
+      tokenRepo.save.mockResolvedValue(makeToken({ id: 'dt-new', token: 'tok-new' }));
+
+      await service.registerToken('user-1', 'tok-new', DevicePlatform.ANDROID);
+
+      // find() is ordered by lastUsedAt ASC, so the first entry is the oldest.
+      expect(tokenRepo.find).toHaveBeenCalledWith(expect.objectContaining({ order: { lastUsedAt: 'ASC' } }));
+      expect(tokenRepo.delete).toHaveBeenCalledWith({ id: 'dt-0' });
+    });
+
+    it('does not delete anything below the cap', async () => {
+      tokenRepo.findOne.mockResolvedValue(null);
+      tokenRepo.find.mockResolvedValue([makeToken()]);
+      tokenRepo.create.mockReturnValue(makeToken());
+      tokenRepo.save.mockResolvedValue(makeToken());
+
+      await service.registerToken('user-1', 'tok-new', DevicePlatform.ANDROID);
+      expect(tokenRepo.delete).not.toHaveBeenCalled();
     });
   });
 

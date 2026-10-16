@@ -41,6 +41,7 @@ describe('configuration factory', () => {
     expect(config.app).toEqual({
       nodeEnv: 'production',
       port: 4001,
+      swaggerEnabled: false,
       isProduction: true,
       isDevelopment: false,
       isTest: false,
@@ -62,11 +63,14 @@ describe('configuration factory', () => {
     });
   });
 
-  it('rejects invalid wallet encryption keys', () => {
-    process.env.WALLET_ENCRYPTION_KEY = 'invalid';
+  it('enables Swagger only when SWAGGER_ENABLED=true', () => {
+    process.env.SWAGGER_ENABLED = 'true';
+    expect(configuration().app.swaggerEnabled).toBe(true);
 
-    expect(() => configuration()).toThrow(
-      'WALLET_ENCRYPTION_KEY must be a valid 64-character hexadecimal string',
-    );
+    process.env.SWAGGER_ENABLED = 'false';
+    expect(configuration().app.swaggerEnabled).toBe(false);
   });
+
+  // WALLET_ENCRYPTION_KEY validation moved to the Zod schema and is covered by
+  // env.validation.spec.ts; configuration() itself no longer throws for it.
 });

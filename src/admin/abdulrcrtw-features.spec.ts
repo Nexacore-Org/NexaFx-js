@@ -1,6 +1,38 @@
+import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { AdminService } from '../admin/admin.service';
+import { AuditService } from '../audit/audit.service';
+import { User } from '../users/user.entity';
+import { Transaction } from '../transactions/transaction.entity';
+import { KycDocument } from '../kyc/kyc-document.entity';
+import { SupportTicketEntity } from '../modules/support-tickets/entities/support-ticket.entity';
+import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
+import { AmlAlert } from '../aml/aml-alert.entity';
+import { AdminApproval } from './admin-approval.entity';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { MailService } from '../mail/mail.service';
+
+/**
+ * Builds AdminService through Nest DI instead of positionally, so adding or
+ * reordering constructor dependencies cannot silently put a mock in the wrong slot.
+ */
+async function buildAdminService(overrides: { users?: object; audit?: object } = {}) {
+  const repo = () => ({ findOne: jest.fn(), find: jest.fn(), count: jest.fn(), save: jest.fn() });
+  const module = await Test.createTestingModule({
+    providers: [
+      AdminService,
+      { provide: getRepositoryToken(User), useValue: overrides.users ?? repo() },
+      { provide: getRepositoryToken(Transaction), useValue: repo() },
+      { provide: getRepositoryToken(KycDocument), useValue: repo() },
+      { provide: getRepositoryToken(SupportTicketEntity), useValue: repo() },
+      { provide: getRepositoryToken(WebhookEndpoint), useValue: repo() },
+      { provide: getRepositoryToken(AmlAlert), useValue: repo() },
+      { provide: getRepositoryToken(AdminApproval), useValue: repo() },
+      { provide: AuditService, useValue: overrides.audit ?? { log: jest.fn().mockResolvedValue(undefined) } },
+    ],
+  }).compile();
+  return module.get(AdminService);
+}
 
 describe('abdulrcrtw Features (Issues #992, #991, #990, #989)', () => {
   it('AdminService supports spread configuration management and audit logging', async () => {

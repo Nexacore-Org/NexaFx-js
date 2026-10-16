@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Repository, DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import Big from 'big.js';
+import { randomUUID } from 'crypto';
 import { CsvValue, toCsv } from '../common/csv/csv.util';
 import { Transaction, TransactionStatus } from './transaction.entity';
 import { WalletsService } from '../wallet/wallets.service';
@@ -302,20 +303,58 @@ export class TransactionsService implements OnModuleInit {
     // Superseded by TransactionLimitService.check() — kept as no-op for backward compat
   }
 
-  /** Generate NXF-YYYY-NNNNNN receipt number using a DB sequence (postgres) or timestamp fallback. */
+  /**
+   * Assign the human-readable receipt number (NXF-YYYY-NNNNNN) and persist it.
+   *
+   * Postgres uses the `transaction_receipt_seq` sequence; any sequence error is
+   * logged and rethrown rather than silently switching to a scheme that can
+   * collide on the UNIQUE index. Other drivers (sqlite in tests) use a random
+   * suffix and retry on a unique-violation.
+   */
   private async generateReceiptNumber(tx: Transaction): Promise<void> {
-    try {
-      const result = await this.dataSource.query(
-        `SELECT nextval('transaction_receipt_seq') AS seq`,
-      ) as Array<{ seq: string }>;
-      const seq = String(result[0].seq).padStart(6, '0');
-      const year = new Date().getFullYear();
-      tx.receiptNumber = `NXF-${year}-${seq}`;
-    } catch {
-      // Fallback for non-postgres envs (e.g. sqlite in tests)
-      tx.receiptNumber = `NXF-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+    const year = new Date().getFullYear();
+
+    if (this.dataSource.options?.type === 'postgres') {
+      try {
+        const result = (await this.dataSource.query(
+          `SELECT nextval('transaction_receipt_seq') AS seq`,
+        )) as Array<{ seq: string }>;
+        const row = result[0];
+        if (!row) {
+          throw new Error('transaction_receipt_seq returned no value');
+        }
+        tx.receiptNumber = `NXF-${year}-${String(row.seq).padStart(6, '0')}`;
+      } catch (err) {
+        this.logger.error('Failed to allocate a receipt number from the sequence', err as Error);
+        throw err;
+      }
+      await this.txRepo.save(tx);
+      return;
     }
-    await this.txRepo.save(tx);
+
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      // 8 hex chars keeps the value within the varchar(32) column: "NXF-2026-" + 8.
+      tx.receiptNumber = `NXF-${year}-${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+      try {
+        await this.txRepo.save(tx);
+        return;
+      } catch (err) {
+        if (!TransactionsService.isUniqueViolation(err) || attempt === maxAttempts) {
+          throw err;
+        }
+        this.logger.warn(`Receipt number collision (attempt ${attempt}); retrying`);
+      }
+    }
+  }
+
+  private static isUniqueViolation(err: unknown): boolean {
+    const e = err as { code?: string; message?: string };
+    return (
+      e?.code === '23505' ||
+      e?.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+      /UNIQUE constraint failed|duplicate key value/i.test(e?.message ?? '')
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -326,6 +365,24 @@ export class TransactionsService implements OnModuleInit {
     await this.termsService.ensureAccepted(dto.userId);
     const fee = this.feesService.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
+    await this.limitService.check(dto.userId, totalChecked, dto.currency);
+
+    const tx = this.txRepo.create({
+      senderId: dto.userId,
+      receiverId: dto.userId,
+      amount: dto.amount,
+      currency: dto.currency,
+      fee: fee.feeAmount,
+      reference: dto.reference,
+      metadata: { ...dto.metadata, type: 'deposit' },
+      status: TransactionStatus.PENDING,
+      pendingTimeoutAt: this.nextPendingTimeoutAt(),
+    });
+    await this.txRepo.save(tx);
+    // The id only exists after the first save; generateReceiptNumber() persists this too.
+    tx.metadata = { ...tx.metadata, fullTransactionId: tx.id };
+    await this.generateReceiptNumber(tx);
+
     const reservedUsd = await this.limitService.check(dto.userId, totalChecked, dto.currency);
     // Give the reserved limit headroom back unless the money actually moved (#1376).
     let succeeded = false;
