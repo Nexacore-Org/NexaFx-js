@@ -219,6 +219,26 @@ export class MailService {
     }`;
   }
 
+  /** Name used by AuthService (issue #1394); delegates to the existing transport path. */
+  async sendPasswordReset(email: string, resetUrl: string): Promise<void> {
+    return this.sendPasswordResetLink(email, resetUrl);
+  }
+
+  async sendEmailVerification(email: string, verifyUrl: string): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      const url = Utils.escapeExpression(verifyUrl);
+      await this.transporter.sendMail({
+        from: process.env.MAIL_FROM,
+        to: email,
+        subject: 'Verify your NexaFx email',
+        html: `<p><a href="${url}">Verify your email</a></p><p>If you did not sign up, ignore this email.</p>`,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send verification link: ${(err as Error).message}`);
+    }
+  }
+
   /** Password reset link. The URL is escaped; the token inside it is single-use and short-lived. */
   async sendPasswordResetLink(to: string, resetUrl: string): Promise<void> {
     if (process.env.NODE_ENV === 'test') return;

@@ -1,6 +1,7 @@
 import { Controller, Get, Query, Req, UseGuards, BadRequestException } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { FxQuoteCache } from '../../fx/fx-quote-cache';
+import { ExchangeRateService } from '../../fx/exchange-rate.service';
 
 export interface FxPreviewResponse {
   fromCurrency: string;
@@ -20,6 +21,8 @@ export interface FxPreviewResponse {
 @Controller('fx')
 @UseGuards(JwtAuthGuard)
 export class FxPreviewController {
+  constructor(private readonly exchangeRates: ExchangeRateService) {}
+
   @Get('preview')
   async getPreview(
     @Req() req: { user?: { id?: string; sub?: string } },
@@ -32,7 +35,8 @@ export class FxPreviewController {
       throw new BadRequestException('An authenticated user is required to lock a quote');
     }
     const fromAmount = parseFloat(amount ?? '0');
-    const rate = from === to ? 1.0 : parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
+    // Live rate from ExchangeRateService instead of a random number (issue #1395).
+    const rate = from === to ? 1.0 : (await this.exchangeRates.getRate(from, to)).rate;
     const fee = parseFloat((fromAmount * 0.005).toFixed(8));
     const toAmount = parseFloat(((fromAmount - fee) * rate).toFixed(8));
     // The quote is bound to this user, pair and amount, has a random UUID id
