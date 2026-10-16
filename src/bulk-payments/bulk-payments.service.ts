@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -6,6 +6,7 @@ import { BulkPaymentEntity } from './entities/bulk-payment.entity';
 import { BulkPaymentItemEntity } from './entities/bulk-payment-item.entity';
 import { CreateBulkPaymentDto } from './dto/create-bulk-payment.dto';
 import { TransactionEntity } from '../modules/transactions/entities/transaction.entity';
+import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
 
 @Injectable()
 export class BulkPaymentsService {
@@ -25,9 +26,13 @@ export class BulkPaymentsService {
     @InjectRepository(TransactionEntity)
     private readonly transactionRepo: Repository<TransactionEntity>,
     private readonly eventEmitter: EventEmitter2,
+    @Optional() private readonly accountFreezeService?: AccountFreezeService,
   ) {}
 
   async create(userId: string, dto: CreateBulkPaymentDto) {
+    // A frozen account cannot send bulk payments.
+    await this.accountFreezeService?.assertNotFrozen(userId);
+
     const totalAmount = dto.items.reduce((sum, item) => sum + item.amount, 0);
 
     const bulkPayment = this.bulkPaymentRepo.create({
@@ -113,6 +118,13 @@ export class BulkPaymentsService {
     });
 
     if (!bulkPayment) return;
+
+    // The account may have been frozen after the batch was accepted.
+    if (await this.accountFreezeService?.isAccountFrozen(bulkPayment.userId)) {
+      this.logger.warn(`Bulk payment ${bulkPaymentId} not processed: account is frozen`);
+      await this.bulkPaymentRepo.update(bulkPaymentId, { status: 'failed' });
+      return;
+    }
 
     await this.bulkPaymentRepo.update(bulkPaymentId, { status: 'processing' });
 

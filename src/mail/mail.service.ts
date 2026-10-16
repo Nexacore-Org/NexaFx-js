@@ -38,6 +38,12 @@ export interface AdminAlertEmail {
   metadata?: Record<string, unknown>;
 }
 
+export interface AccountLockedEmail {
+  to: string;
+  lockoutMinutes: number;
+  failedAttempts: number;
+}
+
 export interface SupportTicketCreatedEmail {
   to: string;
   fullName: string;
@@ -211,6 +217,31 @@ export class MailService {
         ? `<pre>${escape(JSON.stringify(payload.metadata, null, 2))}</pre>`
         : ''
     }`;
+  }
+
+  renderAccountLockedHtml(payload: AccountLockedEmail): string {
+    const escape = (value: unknown) => Utils.escapeExpression(String(value ?? ''));
+    return (
+      `<h2>Your NexaFx account has been temporarily locked</h2>` +
+      `<p>We locked your account for ${escape(payload.lockoutMinutes)} minutes after ` +
+      `${escape(payload.failedAttempts)} failed sign-in attempts.</p>` +
+      `<p>If this was you, wait and try again. If it was not you, reset your password immediately.</p>`
+    );
+  }
+
+  /** User-facing lockout notice (not the admin alert template). */
+  async sendAccountLockedEmail(payload: AccountLockedEmail): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      await this.transporter.sendMail({
+        from: process.env.MAIL_FROM,
+        to: payload.to,
+        subject: 'Your NexaFx account has been locked',
+        html: this.renderAccountLockedHtml(payload),
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send account locked email: ${(err as Error).message}`);
+    }
   }
 
   async sendAdminAlert(payload: AdminAlertEmail): Promise<void> {

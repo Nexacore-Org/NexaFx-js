@@ -12,6 +12,7 @@ import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
 import { AuditService } from '../audit/audit.service';
 import { AdminApproval, AdminApprovalStatus } from './admin-approval.entity';
+import { AdminApprovalActionType } from './dto/create-admin-approval.dto';
 
 export interface AdminStats {
   users: number;
@@ -240,6 +241,15 @@ export class AdminService {
 
     this.events?.emit(TOKEN_VERSION_CHANGED_EVENT, { userId: targetUserId });
 
+    // Tell the auth layer immediately: suspension revokes refresh tokens and
+    // drops cached status so existing access tokens stop working.
+    const accessChanged: UserAccessChangedEvent = {
+      userId: targetUserId,
+      reason: isActive ? 'activated' : 'suspended',
+      revokeTokens: !isActive,
+    };
+    this.events?.emit(USER_ACCESS_CHANGED_EVENT, accessChanged);
+
     await this.auditService.log({
       userId: adminUserId,
       action: isActive ? 'admin.user.activated' : 'admin.user.suspended',
@@ -351,45 +361,129 @@ export class AdminService {
       token: `impersonated-session-token-${user.id}`,
     };
   }
+  /** When true, the gated admin endpoints create an approval instead of acting directly. */
+  isDualControlEnabled(): boolean {
+    return process.env.ADMIN_DUAL_CONTROL === 'true';
+  }
+
+  private approvalTtlMs(): number {
+    const hours = Number(process.env.ADMIN_APPROVAL_TTL_HOURS ?? 24);
+    return (Number.isFinite(hours) && hours > 0 ? hours : 24) * 3_600_000;
+  }
+
   async requestAdminApproval(actionType: string, actionData: any, requestedBy: string) {
+    if (!requestedBy) {
+      throw new ForbiddenException('An authenticated admin is required to request approval');
+    }
+    if (!(Object.values(AdminApprovalActionType) as string[]).includes(actionType)) {
+      throw new BadRequestException(`Unknown approval action type: ${actionType}`);
+    }
+
     const approval = this.approvalsRepository.create({
       actionType,
       actionData,
       requestedBy,
+      status: AdminApprovalStatus.PENDING,
+      expiresAt: new Date(Date.now() + this.approvalTtlMs()),
     });
     return this.approvalsRepository.save(approval);
   }
 
-  async approveAdminRequest(approvalId: string, approvedBy: string) {
+  async listAdminApprovals(status?: AdminApprovalStatus) {
+    const approvals = await this.approvalsRepository.find({
+      where: status ? { status } : {},
+      order: { createdAt: 'DESC' },
+    });
+    // Expiry is lazy: a pending request past its deadline is reported as such.
+    const now = Date.now();
+    return approvals.map((a) => ({
+      ...a,
+      expired:
+        a.status === AdminApprovalStatus.PENDING && !!a.expiresAt && a.expiresAt.getTime() <= now,
+    }));
+  }
+
+  async rejectAdminRequest(approvalId: string, rejectedBy: string, reason?: string) {
     const approval = await this.approvalsRepository.findOne({ where: { id: approvalId } });
     if (!approval) throw new NotFoundException(`Approval request ${approvalId} not found`);
-    if (approval.status !== AdminApprovalStatus.PENDING) {
-      throw new Error(`Approval is not pending`);
-    }
-    if (approval.requestedBy === approvedBy) {
-      throw new Error('Admin cannot approve their own request');
+
+    const result = await this.approvalsRepository.update(
+      { id: approvalId, status: AdminApprovalStatus.PENDING },
+      { status: AdminApprovalStatus.REJECTED, rejectedBy, rejectionReason: reason ?? null },
+    );
+    if (!result.affected) {
+      throw new ConflictException('Approval request is no longer pending');
     }
 
-    approval.status = AdminApprovalStatus.APPROVED;
-    approval.approvedBy = approvedBy;
-    const saved = await this.approvalsRepository.save(approval);
-    
-    // Execute logic based on actionType
-    if (saved.actionType === 'override_transaction_status') {
-      await this.overrideTransactionStatus(
-        saved.actionData.transactionId,
-        saved.actionData.newStatus,
-        approvedBy,
-        saved.actionData.reason,
-      );
-    } else if (saved.actionType === 'update_user_status') {
-      await this.updateUserStatus(
-        saved.actionData.targetUserId,
-        saved.actionData.isActive,
-        approvedBy,
-        saved.actionData.reason,
-      );
+    await this.auditService.log({
+      userId: rejectedBy,
+      action: 'admin.approval.rejected',
+      entityType: 'admin_approval',
+      entityId: approvalId,
+      reason,
+    });
+    return this.approvalsRepository.findOne({ where: { id: approvalId } });
+  }
+
+  /**
+   * Approve a pending request and run its action exactly once.
+   *
+   * The pending -> approved flip is a single conditional UPDATE, so of two
+   * concurrent approvers only one affects a row; the other gets a 409 and
+   * never executes. The action runs in the same transaction, so a failure
+   * rolls the approval back to pending instead of consuming it.
+   */
+  async approveAdminRequest(approvalId: string, approvedBy: string) {
+    if (!approvedBy) {
+      throw new ForbiddenException('An authenticated admin is required to approve');
     }
-    return saved;
+
+    return this.approvalsRepository.manager.transaction(async (manager) => {
+      const approval = await manager.findOne(AdminApproval, { where: { id: approvalId } });
+      if (!approval) throw new NotFoundException(`Approval request ${approvalId} not found`);
+
+      if (approval.status !== AdminApprovalStatus.PENDING) {
+        throw new ConflictException('Approval request is not pending');
+      }
+      if (approval.expiresAt && approval.expiresAt.getTime() <= Date.now()) {
+        await manager.update(
+          AdminApproval,
+          { id: approvalId, status: AdminApprovalStatus.PENDING },
+          { status: AdminApprovalStatus.REJECTED, rejectionReason: 'expired' },
+        );
+        throw new ConflictException('Approval request has expired');
+      }
+      if (!approval.requestedBy || approval.requestedBy === approvedBy) {
+        throw new ForbiddenException('Admin cannot approve their own request');
+      }
+
+      const claimed = await manager.update(
+        AdminApproval,
+        { id: approvalId, status: AdminApprovalStatus.PENDING },
+        { status: AdminApprovalStatus.APPROVED, approvedBy, executedAt: new Date() },
+      );
+      if (!claimed.affected) {
+        throw new ConflictException('Approval request was already handled');
+      }
+
+      const data = approval.actionData ?? {};
+      if (approval.actionType === AdminApprovalActionType.OVERRIDE_TRANSACTION_STATUS) {
+        await this.overrideTransactionStatus(data.transactionId, data.newStatus, approvedBy, data.reason);
+      } else if (approval.actionType === AdminApprovalActionType.UPDATE_USER_STATUS) {
+        await this.updateUserStatus(data.targetUserId, data.isActive, approvedBy, data.reason);
+      } else {
+        throw new BadRequestException(`Unknown approval action type: ${approval.actionType}`);
+      }
+
+      await this.auditService.log({
+        userId: approvedBy,
+        action: 'admin.approval.approved',
+        entityType: 'admin_approval',
+        entityId: approvalId,
+        after: { actionType: approval.actionType, requestedBy: approval.requestedBy },
+      });
+
+      return manager.findOne(AdminApproval, { where: { id: approvalId } });
+    });
   }
 }
