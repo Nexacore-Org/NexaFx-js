@@ -37,7 +37,11 @@ export class AuthService {
     dto: RegisterDto,
     context: { ip?: string; userAgent?: string } = {},
   ) {
-    this.passwordPolicyService.validate(dto.password);
+    this.passwordPolicyService.validate(dto.password, {
+      email: dto.email,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+    });
     const passwordHash = await this.passwordService.hash(dto.password);
     const user = await this.usersService.create({
       email: dto.email,

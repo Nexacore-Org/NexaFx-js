@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Ip, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Ip, Post } from '@nestjs/common';
 import {
   ApiBody,
   ApiCreatedResponse,
@@ -7,6 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { PasswordPolicyService } from './password-policy.service';
 import { Public } from './decorators/public.decorator';
 import { AuthTokenResponseDto } from './dto/auth-token-response.dto';
 import { LoginDto } from './dto/login.dto';
@@ -15,7 +16,18 @@ import { RegisterDto } from './dto/register.dto';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordPolicy: PasswordPolicyService,
+  ) {}
+
+  /** The rules clients should display, straight from the service that enforces them. */
+  @Public()
+  @Get('password-policy')
+  @ApiOperation({ summary: 'Current password policy' })
+  getPasswordPolicy() {
+    return this.passwordPolicy.getPolicy();
+  }
 
   @Public()
   @Post('register')

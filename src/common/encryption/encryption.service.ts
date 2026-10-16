@@ -5,6 +5,8 @@ import * as crypto from 'crypto';
 const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
+const KEY_HEX_LENGTH = 64; // 32 bytes
+const MAX_KEY_VERSION = 10;
 
 export interface EncryptedPayload {
   /** base64(iv + ciphertext + authTag) */
@@ -21,7 +23,9 @@ export class EncryptionService {
   private currentVersion: number;
 
   constructor(private readonly config: ConfigService) {
-    const envKeys = this.resolveKeys();
+    // Validate everything at boot: a bad key must stop the app here, not
+    // surface as "Invalid key length" on the first wallet operation.
+    const envKeys = this.validateKeys(this.resolveKeys());
     this.currentVersion = Math.max(...envKeys.map((k) => k.version));
     for (const { version, hex } of envKeys) {
       this.keys.set(version, Buffer.from(hex, 'hex'));
@@ -47,6 +51,11 @@ export class EncryptionService {
       throw new Error(`No key available for version ${payload.keyVersion}`);
     }
     const combined = Buffer.from(payload.ciphertext, 'base64');
+    if (combined.length < IV_BYTES + TAG_BYTES) {
+      throw new Error(
+        `Ciphertext is too short: expected at least ${IV_BYTES + TAG_BYTES} bytes (iv + auth tag), got ${combined.length}`,
+      );
+    }
     const iv = combined.subarray(0, IV_BYTES);
     const tag = combined.subarray(combined.length - TAG_BYTES);
     const ciphertext = combined.subarray(IV_BYTES, combined.length - TAG_BYTES);
@@ -69,21 +78,50 @@ export class EncryptionService {
     return this.encrypt(this.decrypt(payload));
   }
 
-  private resolveKeys(): Array<{ version: number; hex: string }> {
+  private validateKeys(
+    keys: Array<{ version: number; hex: string | undefined }>,
+  ): Array<{ version: number; hex: string }> {
+    if (keys.length === 0) {
+      throw new Error('No wallet encryption key configured (set WALLET_ENCRYPTION_KEY)');
+    }
+    const seen = new Set<number>();
+    for (const { version, hex } of keys) {
+      if (!Number.isInteger(version) || version < 1) {
+        throw new Error(`WALLET_ENCRYPTION_KEY_VERSION must be a positive integer, got "${version}"`);
+      }
+      if (seen.has(version)) {
+        throw new Error(
+          `Duplicate wallet encryption key version ${version}: WALLET_ENCRYPTION_KEY_VERSION collides with WALLET_ENCRYPTION_KEY_V${version}`,
+        );
+      }
+      seen.add(version);
+      if (!hex) {
+        throw new Error(`Wallet encryption key for version ${version} is missing`);
+      }
+      if (!new RegExp(`^[0-9a-fA-F]{${KEY_HEX_LENGTH}}$`).test(hex)) {
+        throw new Error(
+          `Wallet encryption key for version ${version} must be ${KEY_HEX_LENGTH} hex characters (32 bytes)`,
+        );
+      }
+    }
+    return keys as Array<{ version: number; hex: string }>;
+  }
+
+  private resolveKeys(): Array<{ version: number; hex: string | undefined }> {
     // Primary key: WALLET_ENCRYPTION_KEY (version 1 unless overridden)
     const primaryHex =
       this.config.get<string>('wallet.encryptionKey') ??
-      process.env.WALLET_ENCRYPTION_KEY!;
+      process.env.WALLET_ENCRYPTION_KEY;
     const primaryVersion = parseInt(
       process.env.WALLET_ENCRYPTION_KEY_VERSION ?? '1',
       10,
     );
-    const result: Array<{ version: number; hex: string }> = [
+    const result: Array<{ version: number; hex: string | undefined }> = [
       { version: primaryVersion, hex: primaryHex },
     ];
 
     // Additional versioned keys: WALLET_ENCRYPTION_KEY_V2, _V3, …
-    for (let v = 2; v <= 10; v++) {
+    for (let v = 2; v <= MAX_KEY_VERSION; v++) {
       const hex = process.env[`WALLET_ENCRYPTION_KEY_V${v}`];
       if (hex) result.push({ version: v, hex });
     }
