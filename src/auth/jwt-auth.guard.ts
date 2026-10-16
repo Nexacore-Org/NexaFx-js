@@ -20,7 +20,8 @@ interface JwtPayload {
   email?: string;
   role?: string;
   roles?: string[];
-  tv?: number;
+  impersonation?: boolean;
+  act?: { sub?: string };
 }
 
 interface AuthenticatedRequest {
@@ -98,7 +99,9 @@ export class JwtAuthGuard implements CanActivate {
         email: payload.email ?? '',
         role: payload.role ?? '',
         isEmailVerified: payload.isEmailVerified,
-        tokenVersion: payload.tv ?? 0,
+        ...(payload.impersonation
+          ? { impersonation: true, actorId: payload.act?.sub }
+          : {}),
       };
       return true;
     } catch {

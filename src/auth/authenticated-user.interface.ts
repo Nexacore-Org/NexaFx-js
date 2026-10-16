@@ -8,6 +8,8 @@ export interface AuthenticatedUser {
   email: string;
   role: string;
   isEmailVerified?: boolean;
-  /** `User.tokenVersion` the access token was issued with. */
-  tokenVersion?: number;
+  /** True for a short-lived admin impersonation session (read-only). */
+  impersonation?: boolean;
+  /** The real admin behind an impersonation session (RFC 8693 `act.sub`). */
+  actorId?: string;
 }
