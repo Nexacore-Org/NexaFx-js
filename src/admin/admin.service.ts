@@ -46,6 +46,7 @@ export class AdminService {
     @InjectRepository(AdminApproval)
     private readonly approvalsRepository: Repository<AdminApproval>,
     private readonly auditService: AuditService,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   async getStats(): Promise<AdminStats> {
@@ -204,6 +205,15 @@ export class AdminService {
 
     user.isActive = isActive;
     const updated = await this.usersRepository.save(user);
+
+    // Tell the auth layer immediately: suspension revokes refresh tokens and
+    // drops cached status so existing access tokens stop working.
+    const accessChanged: UserAccessChangedEvent = {
+      userId: targetUserId,
+      reason: isActive ? 'activated' : 'suspended',
+      revokeTokens: !isActive,
+    };
+    this.events?.emit(USER_ACCESS_CHANGED_EVENT, accessChanged);
 
     await this.auditService.log({
       userId: adminUserId,

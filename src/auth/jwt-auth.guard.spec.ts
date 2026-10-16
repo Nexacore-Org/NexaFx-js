@@ -24,11 +24,11 @@ const run = (token: string) => {
 };
 
 describe('JwtAuthGuard', () => {
-  it('sets request.user.id to the token subject for access tokens', () => {
+  it('sets request.user.id to the token subject for access tokens', async () => {
     const { request, result } = run(
       jwt.sign({ sub: 'user-1', email: 'a@b.com', role: 'admin', typ: 'access' }),
     );
-    expect(result()).toBe(true);
+    await expect(result()).resolves.toBe(true);
     expect(request.user).toMatchObject({
       id: 'user-1',
       sub: 'user-1',
@@ -39,19 +39,19 @@ describe('JwtAuthGuard', () => {
 
   it.each(['refresh', 'sep10', 'export-download'])(
     'rejects a token with typ=%s',
-    (typ) => {
+    async (typ) => {
       const { result } = run(jwt.sign({ sub: 'user-1', typ }));
-      expect(result).toThrow(UnauthorizedException);
+      await expect(result()).rejects.toThrow(UnauthorizedException);
     },
   );
 
-  it('rejects a token without typ', () => {
+  it('rejects a token without typ', async () => {
     const { result } = run(jwt.sign({ sub: 'user-1' }));
-    expect(result).toThrow(UnauthorizedException);
+    await expect(result()).rejects.toThrow(UnauthorizedException);
   });
 
-  it('rejects an access token without sub', () => {
+  it('rejects an access token without sub', async () => {
     const { result } = run(jwt.sign({ email: 'a@b.com', typ: 'access' }));
-    expect(result).toThrow(UnauthorizedException);
+    await expect(result()).rejects.toThrow(UnauthorizedException);
   });
 });
