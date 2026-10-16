@@ -62,7 +62,7 @@ export class AuthService {
       after: { email: user.email },
     });
 
-    return this.issueToken(user.id, user.email, user.role);
+    return this.issueToken(user.id, user.email, user.role, user.tokenVersion);
   }
 
   async login(
@@ -170,7 +170,7 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.issueToken(user.id, user.email, user.role);
+    return this.issueToken(user.id, user.email, user.role, user.tokenVersion);
   }
 
   private readonly usedRefreshTokens = new Set<string>();
@@ -196,7 +196,7 @@ export class AuthService {
       // Take identity and role from the database, not the presented token, so
       // demotions and deactivations take effect on the next refresh.
       const user = await this.usersService.findById(payload.sub);
-      const newAccessToken = this.issueToken(user.id, user.email, user.role).accessToken;
+      const newAccessToken = this.issueToken(user.id, user.email, user.role, user.tokenVersion).accessToken;
       const newRefreshToken = this.jwtService.sign(
         { sub: user.id, typ: TokenType.REFRESH },
         { secret: refreshSecret, expiresIn: '7d' },
@@ -208,9 +208,9 @@ export class AuthService {
     }
   }
 
-  private issueToken(userId: string, email: string, role: string) {
+  private issueToken(userId: string, email: string, role: string, tokenVersion = 0) {
     return {
-      accessToken: this.jwtService.sign({ sub: userId, email, role, typ: TokenType.ACCESS }),
+      accessToken: this.jwtService.sign({ sub: userId, email, role, typ: TokenType.ACCESS, tv: tokenVersion ?? 0 }),
     };
   }
 }

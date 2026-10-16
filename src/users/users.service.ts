@@ -114,6 +114,7 @@ export class UsersService {
     user.email = `deleted_${uuid}@deleted.invalid`;
     user.firstName = '[deleted]';
     user.lastName = '[deleted]';
+    user.isActive = false;
     await this.usersRepository.save(user);
     await this.usersRepository.softDelete(id);
   }

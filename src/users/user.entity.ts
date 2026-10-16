@@ -1,6 +1,7 @@
 import {
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   Index,
   PrimaryGeneratedColumn,
@@ -50,8 +51,26 @@ export class User {
   })
   kycStatus!: KycStatus;
 
+  /** Bumped on role/status changes so tokens issued before the change stop working. */
+  @Column({ type: 'int', default: 0 })
+  tokenVersion!: number;
+
   @Column({ default: true })
   isActive!: boolean;
+
+  /** Soft-delete marker set when the account is closed. */
+  @DeleteDateColumn({ type: 'timestamp', nullable: true })
+  deletedAt!: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  closedAt!: Date | null;
+
+  /** When personal data becomes eligible for anonymisation. */
+  @Column({ type: 'timestamp', nullable: true })
+  piiPurgeAt!: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  piiPurgedAt!: Date | null;
 
   /** ISO 639-1 language code used to localize outbound emails, e.g. 'en', 'fr'. */
   @Column({ type: 'varchar', length: 2, default: 'en' })

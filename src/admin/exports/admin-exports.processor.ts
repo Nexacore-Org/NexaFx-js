@@ -9,16 +9,12 @@ import { Repository } from 'typeorm';
 import { Transaction } from '../../transactions/transaction.entity';
 import { MailService } from '../../mail/mail.service';
 import { ExportStorageService } from './export-storage.service';
+import { csvEscape } from './csv.util';
 import { ExportTransactionsJobData } from '../dto/export-transactions.dto';
 
 const BATCH_SIZE = 1000;
 const CSV_HEADER =
   'id,senderId,receiverId,amount,currency,fee,status,reference,receiptNumber,createdAt';
-
-function csvEscape(value: unknown): string {
-  const str = value === null || value === undefined ? '' : String(value);
-  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-}
 
 @Processor('admin-exports')
 export class AdminExportsProcessor {
@@ -40,16 +36,28 @@ export class AdminExportsProcessor {
     const out = createWriteStream(tmpPath);
     out.write(CSV_HEADER + '\n');
 
-    let skip = 0;
+    // Snapshot the upper bound so rows inserted during a long export cannot
+    // shift or extend the result, then page with a keyset on (createdAt, id):
+    // OFFSET paging over a non-unique createdAt can duplicate or skip rows.
+    const jobStartedAt = new Date();
+    const upperBound = new Date(Math.min(new Date(to).getTime(), jobStartedAt.getTime()));
+
+    let cursor: { createdAt: Date; id: string } | null = null;
     let count = 0;
     for (;;) {
       const qb = this.txRepo
         .createQueryBuilder('t')
         .where('t.createdAt >= :from', { from: new Date(from) })
-        .andWhere('t.createdAt <= :to', { to: new Date(to) });
+        .andWhere('t.createdAt <= :to', { to: upperBound });
       if (status) qb.andWhere('t.status = :status', { status });
       if (currency) qb.andWhere('t.currency = :currency', { currency });
-      qb.orderBy('t.createdAt', 'ASC').skip(skip).take(BATCH_SIZE);
+      if (cursor) {
+        qb.andWhere('(t.createdAt > :cAt OR (t.createdAt = :cAt AND t.id > :cId))', {
+          cAt: cursor.createdAt,
+          cId: cursor.id,
+        });
+      }
+      qb.orderBy('t.createdAt', 'ASC').addOrderBy('t.id', 'ASC').take(BATCH_SIZE);
 
       const batch = await qb.getMany();
       if (batch.length === 0) break;
@@ -74,7 +82,8 @@ export class AdminExportsProcessor {
       }
 
       count += batch.length;
-      skip += BATCH_SIZE;
+      const last = batch[batch.length - 1];
+      cursor = { createdAt: last.createdAt, id: last.id };
       await job.progress(count);
       if (batch.length < BATCH_SIZE) break;
     }

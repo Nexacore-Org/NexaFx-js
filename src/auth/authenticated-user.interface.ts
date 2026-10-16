@@ -8,4 +8,6 @@ export interface AuthenticatedUser {
   email: string;
   role: string;
   isEmailVerified?: boolean;
+  /** `User.tokenVersion` the access token was issued with. */
+  tokenVersion?: number;
 }

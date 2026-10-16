@@ -19,7 +19,8 @@ import {
 } from './aml-screening.service';
 import { AmlRiskLevel } from './aml-screening.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AdminRoleGuard } from '../common/guards/admin-role.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 interface AuthenticatedRequest {
   user?: {
@@ -31,21 +32,24 @@ interface AuthenticatedRequest {
 export class AmlController {
   constructor(private readonly screeningService: AmlScreeningService) {}
 
-  @UseGuards(JwtAuthGuard, AdminRoleGuard)
+  @Roles(Role.ADMIN, Role.COMPLIANCE)
+  @UseGuards(JwtAuthGuard)
   @Post('aml/screen/user')
   @HttpCode(HttpStatus.CREATED)
   screenUser(@Body() input: ScreenUserInput) {
     return this.screeningService.screenUser(input);
   }
 
-  @UseGuards(JwtAuthGuard, AdminRoleGuard)
+  @Roles(Role.ADMIN, Role.COMPLIANCE)
+  @UseGuards(JwtAuthGuard)
   @Post('aml/screen/transaction')
   @HttpCode(HttpStatus.CREATED)
   screenTransaction(@Body() input: ScreenTransactionInput) {
     return this.screeningService.screenTransaction(input);
   }
 
-  @UseGuards(JwtAuthGuard, AdminRoleGuard)
+  @Roles(Role.ADMIN, Role.COMPLIANCE)
+  @UseGuards(JwtAuthGuard)
   @Get('admin/aml')
   findAll(
     @Query('userId') userId?: string,
@@ -62,13 +66,15 @@ export class AmlController {
     return this.screeningService.findAll(filters);
   }
 
-  @UseGuards(JwtAuthGuard, AdminRoleGuard)
+  @Roles(Role.ADMIN, Role.COMPLIANCE)
+  @UseGuards(JwtAuthGuard)
   @Get('admin/aml/:id')
   findById(@Param('id') id: string) {
     return this.screeningService.findById(id);
   }
 
-  @UseGuards(JwtAuthGuard, AdminRoleGuard)
+  @Roles(Role.ADMIN, Role.COMPLIANCE)
+  @UseGuards(JwtAuthGuard)
   @Patch('admin/aml/:id/review')
   @HttpCode(HttpStatus.OK)
   review(

@@ -7,6 +7,8 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { TokenVersionGuard } from './auth/token-version.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -55,6 +57,7 @@ import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history
 import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { UsersModule as UpstreamUsersModule } from './users/users.module';
+import { AccountClosureModule } from './users/account-closure.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
@@ -227,6 +230,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
       : []),
     HealthModule,
     UpstreamUsersModule,
+    AccountClosureModule,
     AuditModule,
     UpstreamMailModule,
     SpendingModule,
@@ -282,6 +286,14 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TokenVersionGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
     {
       provide: APP_GUARD,

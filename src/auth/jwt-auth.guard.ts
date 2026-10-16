@@ -18,6 +18,7 @@ interface JwtPayload {
   email?: string;
   role?: string;
   roles?: string[];
+  tv?: number;
 }
 
 interface AuthenticatedRequest {
@@ -87,6 +88,7 @@ export class JwtAuthGuard implements CanActivate {
         email: payload.email ?? '',
         role: payload.role ?? '',
         isEmailVerified: payload.isEmailVerified,
+        tokenVersion: payload.tv ?? 0,
       };
       return true;
     } catch {

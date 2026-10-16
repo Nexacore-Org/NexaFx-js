@@ -1,9 +1,10 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import { TokenType } from '../../auth/token-types';
-import { existsSync, mkdirSync, renameSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { join } from 'path';
 
 const EXPORTS_DIR =
@@ -24,6 +25,7 @@ interface DownloadTokenPayload {
  */
 @Injectable()
 export class ExportStorageService {
+  private readonly logger = new Logger(ExportStorageService.name);
   private readonly downloadSecret: string;
 
   constructor(
@@ -46,7 +48,14 @@ export class ExportStorageService {
     extension: string,
   ): { downloadUrl: string; expiresAt: Date } {
     const filename = `${jobId}.${extension}`;
-    renameSync(sourcePath, join(EXPORTS_DIR, filename));
+    // copy + unlink instead of rename: EXPORTS_DIR may be on another filesystem
+    // (Docker volume, tmpfs /tmp), where rename fails with EXDEV.
+    copyFileSync(sourcePath, join(EXPORTS_DIR, filename));
+    try {
+      unlinkSync(sourcePath);
+    } catch {
+      // The export is already stored; a leftover temp file is harmless.
+    }
 
     const token = this.jwtService.sign(
       { jobId, filename, typ: TokenType.EXPORT_DOWNLOAD } as DownloadTokenPayload,
@@ -71,5 +80,39 @@ export class ExportStorageService {
       throw new ForbiddenException('Download link is invalid or has expired');
     }
     return join(EXPORTS_DIR, payload.filename);
+  }
+
+  /** Whether the stored file for a resolved download path still exists. */
+  exists(path: string): boolean {
+    return existsSync(path);
+  }
+
+  /**
+   * Delete export files older than the download-link lifetime. Returns the
+   * number removed. Runs on a schedule so full transaction dumps do not pile
+   * up on disk after their links have expired.
+   */
+  purgeExpired(maxAgeMs: number = DOWNLOAD_TTL_SECONDS * 1000, now: number = Date.now()): number {
+    if (!existsSync(EXPORTS_DIR)) return 0;
+    let removed = 0;
+    for (const name of readdirSync(EXPORTS_DIR)) {
+      const path = join(EXPORTS_DIR, name);
+      try {
+        const stat = statSync(path);
+        if (stat.isFile() && now - stat.mtimeMs > maxAgeMs) {
+          unlinkSync(path);
+          removed += 1;
+        }
+      } catch (err) {
+        this.logger.warn(`Could not purge ${name}: ${(err as Error).message}`);
+      }
+    }
+    return removed;
+  }
+
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  cleanupExpiredExports(): void {
+    const removed = this.purgeExpired();
+    if (removed > 0) this.logger.log(`Deleted ${removed} expired export file(s)`);
   }
 }
