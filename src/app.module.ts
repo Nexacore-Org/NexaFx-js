@@ -95,7 +95,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
   const cache = configService.get<Configuration['cache']>('cache');
 
   if (!redis || !cache) {
-    return { ttl: 60 };
+    return { ttl: 60_000 }; // cache-manager v7 expects milliseconds (issue #1408)
   }
 
   try {
@@ -112,12 +112,12 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           },
         },
         password: redis.password,
-        ttl: cache.defaultTtlSeconds,
+        ttl: cache.defaultTtlSeconds * 1000,
       }),
     };
   } catch {
     return {
-      ttl: cache.defaultTtlSeconds,
+      ttl: cache.defaultTtlSeconds * 1000,
     };
   }
 }
