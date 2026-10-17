@@ -59,14 +59,19 @@ export class ArchivalService {
             LIMIT $2
           )
           RETURNING *
+        ),
+        inserted AS (
+          INSERT INTO "${target.archiveTable}"
+          SELECT *, NOW() AS "archivedAt"
+          FROM moved
+          RETURNING 1
         )
-        INSERT INTO "${target.archiveTable}"
-        SELECT *, NOW() AS "archivedAt"
-        FROM moved
+        SELECT COUNT(*)::int AS moved FROM inserted
         `,
         [cutoff, batchSize],
       );
-      batch = Array.isArray(result) ? result.length : 0;
+      // Count the rows moved this iteration, not result.length (issue #1397).
+      batch = Number(result?.[0]?.moved ?? 0);
       archived += batch;
     } while (batch === batchSize);
 
