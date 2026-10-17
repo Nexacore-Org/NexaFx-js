@@ -149,6 +149,9 @@ export class TransactionsService implements OnModuleInit {
     // A compliance freeze blocks every outgoing money movement.
     await this.accountFreezeService?.assertNotFrozen(dto.senderId);
 
+    if (!(dto.amount > 0)) {
+      throw new BadRequestException('Amount must be positive');
+    }
     if (dto.amount <= 0) {
       throw new BadRequestException('Transfer amount must be positive');
     }
@@ -173,6 +176,12 @@ export class TransactionsService implements OnModuleInit {
       await this.dataSource.transaction(async (manager) => {
         await this.walletsService.adjustBalance(dto.senderId, dto.currency, -dto.amount, manager);
         await this.walletsService.adjustBalance(dto.receiverId, dto.currency, dto.amount, manager);
+        if (tx.metadata) {
+          tx.metadata = { ...tx.metadata, debitedAt: new Date().toISOString() };
+        } else {
+          tx.metadata = { debitedAt: new Date().toISOString() };
+        }
+        await manager.save(Transaction, tx);
 
         tx.status = TransactionStatus.COMPLETED;
         tx.completedAt = new Date();
@@ -270,6 +279,15 @@ export class TransactionsService implements OnModuleInit {
     return tx;
   }
 
+  async findByIdForUser(id: string, userId: string): Promise<Transaction> {
+    const tx = await this.txRepo.findOne({ where: { id } });
+    if (!tx) throw new NotFoundException(`Transaction ${id} not found`);
+    if (tx.senderId !== userId && tx.receiverId !== userId) {
+      throw new NotFoundException(`Transaction ${id} not found`);
+    }
+    return tx;
+  }
+
   async updateTags(
     id: string,
     userId: string,
@@ -362,6 +380,9 @@ export class TransactionsService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async createDeposit(dto: DepositDto): Promise<Transaction> {
+    if (!(dto.amount > 0)) {
+      throw new BadRequestException('Amount must be positive');
+    }
     await this.termsService.ensureAccepted(dto.userId);
     const fee = this.feesService.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
@@ -435,6 +456,9 @@ export class TransactionsService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async createWithdrawal(dto: WithdrawalDto): Promise<Transaction> {
+    if (!(dto.amount > 0)) {
+      throw new BadRequestException('Amount must be positive');
+    }
     const fee = this.feesService.calculateFee(dto.amount);
     await this.termsService.ensureAccepted(dto.userId);
 
@@ -472,6 +496,13 @@ export class TransactionsService implements OnModuleInit {
       await this.generateReceiptNumber(tx);
 
       await this.walletsService.adjustBalance(dto.userId, dto.currency, -totalChecked);
+      if (tx.metadata) {
+        tx.metadata = { ...tx.metadata, debitedAt: new Date().toISOString() };
+        await this.txRepo.save(tx);
+      } else {
+        tx.metadata = { debitedAt: new Date().toISOString() };
+        await this.txRepo.save(tx);
+      }
 
       try {
         // Stellar / blockchain submission would happen here
@@ -507,6 +538,9 @@ export class TransactionsService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async createSwap(dto: SwapDto): Promise<Transaction> {
+    if (!(dto.fromAmount > 0)) {
+      throw new BadRequestException('Amount must be positive');
+    }
     await this.termsService.ensureAccepted(dto.userId);
     const fee = this.feesService.calculateFee(dto.fromAmount);
     const totalChecked = dto.fromAmount + fee.feeAmount; // #742: fee included in limit check
@@ -541,6 +575,8 @@ export class TransactionsService implements OnModuleInit {
       await this.txRepo.save(tx);
 
       await this.walletsService.adjustBalance(dto.userId, dto.fromCurrency, -totalChecked);
+      tx.metadata = { ...tx.metadata, debitedAt: new Date().toISOString() };
+      await this.txRepo.save(tx);
 
       let lastError: Error | undefined;
 
@@ -689,15 +725,45 @@ export class TransactionsService implements OnModuleInit {
   }
 
   async cancelTransaction(id: string): Promise<Transaction> {
-    const tx = await this.findById(id);
-    if (tx.status !== TransactionStatus.PENDING) {
+    const result = await this.txRepo
+      .createQueryBuilder()
+      .update(Transaction)
+      .set({ status: TransactionStatus.CANCELLED, metadata: () => 'metadata' })
+      .where('id = :id AND status = :pending', { id, pending: TransactionStatus.PENDING })
+      .execute();
+
+    if (!result.affected || result.affected === 0) {
+      const tx = await this.txRepo.findOne({ where: { id } });
+      if (!tx) {
+        throw new NotFoundException(`Transaction ${id} not found`);
+      }
       throw new UnprocessableEntityException(
         `Transaction ${id} cannot be cancelled (current status: ${tx.status})`,
       );
     }
 
-    tx.status = TransactionStatus.CANCELLED;
-    await this.txRepo.save(tx);
+    const tx = await this.findById(id);
+    if (tx.type === 'withdrawal') {
+      const total = Number(tx.amount) + Number(tx.fee || 0);
+      if (tx.metadata && (tx.metadata as any).debitedAt) {
+        await this.walletsService.adjustBalance(tx.senderId, tx.currency, +total);
+        tx.metadata = { ...(tx.metadata as Record<string, unknown>), debitedAt: undefined };
+        await this.txRepo.save(tx);
+      }
+    } else if (tx.type === 'swap') {
+      const total = Number(tx.amount) + Number(tx.fee || 0);
+      if (tx.metadata && (tx.metadata as any).debitedAt) {
+        await this.walletsService.adjustBalance(tx.senderId, tx.currency, +total);
+        tx.metadata = { ...(tx.metadata as Record<string, unknown>), debitedAt: undefined };
+        await this.txRepo.save(tx);
+      }
+    } else if (tx.type === 'transfer') {
+      if (tx.metadata && (tx.metadata as any).debitedAt) {
+        await this.walletsService.adjustBalance(tx.senderId, tx.currency, +Number(tx.amount));
+        tx.metadata = { ...(tx.metadata as Record<string, unknown>), debitedAt: undefined };
+        await this.txRepo.save(tx);
+      }
+    }
 
     this.events.emit('transactions.cancelled', { transactionId: tx.id });
     return tx;
