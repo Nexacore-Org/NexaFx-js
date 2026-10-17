@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, Logger, NotFoundException, Optional, UnprocessableEntityException, OnModuleInit } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, Optional, ServiceUnavailableException, UnprocessableEntityException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository, DataSource } from 'typeorm';
@@ -17,6 +17,7 @@ import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UserDeactivationService } from '../modules/user-deactivation/services/user-deactivation.service';
 import { FeesService } from '../fees/fees.service';
 import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
+import { ExchangeRateService } from '../fx/exchange-rate.service';
 
 export interface TransferDto {
   senderId: string;
@@ -108,6 +109,7 @@ export class TransactionsService implements OnModuleInit {
     private readonly events: EventEmitter2,
     private readonly limitService: TransactionLimitService,
     private readonly feesService: FeesService,
+    private readonly exchangeRateService: ExchangeRateService,
     private readonly deactivationService: UserDeactivationService,
     private readonly termsService: TermsAcceptanceService,
     @Optional() private readonly accountFreezeService?: AccountFreezeService,
@@ -155,6 +157,9 @@ export class TransactionsService implements OnModuleInit {
     if (dto.senderId === dto.receiverId) {
       throw new BadRequestException('Sender and receiver must differ');
     }
+
+    // Transfer fee is explicitly zero (#1422) — only the principal is limited.
+    await this.limitService.check(dto.senderId, dto.amount, dto.currency);
 
     const senderBalance = await this.walletsService.getBalance(
       dto.senderId,
@@ -358,7 +363,7 @@ export class TransactionsService implements OnModuleInit {
   }
 
   // ---------------------------------------------------------------------------
-  // Deposit — credits user balance (no deduction on failure, no rollback needed)
+  // Deposit — #1423: stays PENDING (no credit) until confirmDeposit verifies it
   // ---------------------------------------------------------------------------
 
   async createDeposit(dto: DepositDto): Promise<Transaction> {
@@ -383,50 +388,69 @@ export class TransactionsService implements OnModuleInit {
     tx.metadata = { ...tx.metadata, fullTransactionId: tx.id };
     await this.generateReceiptNumber(tx);
 
-    const reservedUsd = await this.limitService.check(dto.userId, totalChecked, dto.currency);
-    // Give the reserved limit headroom back unless the money actually moved (#1376).
-    let succeeded = false;
-    try {
-      const tx = this.txRepo.create({
-        senderId: dto.userId,
-        receiverId: dto.userId,
-        amount: dto.amount,
-        currency: dto.currency,
-        fee: fee.feeAmount,
-        reference: dto.reference,
-        metadata: { ...dto.metadata, type: 'deposit' },
-        status: TransactionStatus.PENDING,
-        pendingTimeoutAt: this.nextPendingTimeoutAt(),
-      });
-      tx.metadata = { ...tx.metadata, fullTransactionId: tx.id };
-      await this.txRepo.save(tx);
-      await this.generateReceiptNumber(tx);
+    // #1422: record the fee up-front so the stored fee equals what will be charged.
+    await this.feesService.recordFee({
+      transactionId: tx.id,
+      userId: dto.userId,
+      transactionType: 'deposit',
+      amount: dto.amount,
+      feeAmount: fee.feeAmount,
+      currency: dto.currency,
+      reason: fee.reason,
+    });
 
-      try {
-        // Stellar / blockchain submission would happen here
-        await this.walletsService.adjustBalance(dto.userId, dto.currency, dto.amount);
-        tx.status = TransactionStatus.COMPLETED;
-        tx.completedAt = new Date();
-        await this.txRepo.save(tx);
-        await this.usersService.invalidateWalletBalanceCache(dto.userId);
-        this.events.emit('transactions.deposit.completed', { transactionId: tx.id, userId: dto.userId });
-        succeeded = true;
-        return tx;
-      } catch (err) {
-        // Deposit failed — no balance was credited, so no rollback required
-        tx.status = TransactionStatus.FAILED;
-        await this.txRepo.save(tx);
-        await this.auditService.log({
-          userId: dto.userId,
-          action: 'transaction.deposit.failed',
-          entityType: 'transaction',
-          entityId: tx.id,
-          after: { error: (err as Error).message },
-        });
-        throw err;
-      }
-    } finally {
-      if (!succeeded) await this.releaseLimit(dto.userId, reservedUsd);
+    // #1423: money has not arrived yet — no adjustBalance, no COMPLETED here.
+    // The user should attach tx.reference as the memo/reference of the transfer;
+    // confirmDeposit() credits the wallet once the payment is verified.
+    return tx;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Deposit confirmation — #1423: credit only after the payment is verified
+  // ---------------------------------------------------------------------------
+
+  async confirmDeposit(userId: string, transactionId: string, txHash: string): Promise<Transaction> {
+    const tx = await this.txRepo.findOne({ where: { id: transactionId } });
+    if (!tx || tx.senderId !== userId || tx.metadata?.type !== 'deposit') {
+      throw new NotFoundException(`Deposit ${transactionId} not found`);
+    }
+    if (tx.status !== TransactionStatus.PENDING) {
+      throw new UnprocessableEntityException(
+        `Deposit ${transactionId} cannot be confirmed (current status: ${tx.status})`,
+      );
+    }
+    if (!txHash || !txHash.trim()) {
+      throw new BadRequestException('txHash is required to confirm a deposit');
+    }
+    const duplicate = await this.txRepo.findOne({ where: { txHash } });
+    if (duplicate && duplicate.id !== transactionId) {
+      throw new ConflictException('Transaction hash has already been used by another transaction');
+    }
+
+    // Horizon payment verification is the follow-up (#1423); for now the hash is
+    // accepted, stored, and the wallet is credited.
+    tx.txHash = txHash.trim();
+    try {
+      // Credit only the principal — the fee was recorded at deposit creation (#1422).
+      const principal = new Big(String(tx.amount)).minus(String(tx.fee ?? 0));
+      const credit = principal.lt(0) ? new Big(0) : principal; // never below zero
+      await this.walletsService.adjustBalance(userId, tx.currency, Number(credit.toFixed(8)));
+      tx.status = TransactionStatus.COMPLETED;
+      tx.completedAt = new Date();
+      await this.txRepo.save(tx);
+      await this.usersService.invalidateWalletBalanceCache(userId);
+      this.events.emit('transactions.deposit.completed', { transactionId: tx.id, userId });
+      return tx;
+    } catch (err) {
+      // Credit failed before completion was written — keep PENDING so it can be retried.
+      await this.auditService.log({
+        userId,
+        action: 'transaction.deposit.confirm_failed',
+        entityType: 'transaction',
+        entityId: tx.id,
+        after: { txHash: tx.txHash, error: (err as Error).message },
+      });
+      throw err;
     }
   }
 
@@ -478,6 +502,16 @@ export class TransactionsService implements OnModuleInit {
         tx.status = TransactionStatus.COMPLETED;
         tx.completedAt = new Date();
         await this.txRepo.save(tx);
+        // #1422: record the withdrawal fee the same way swaps do.
+        await this.feesService.recordFee({
+          transactionId: tx.id,
+          userId: dto.userId,
+          transactionType: 'withdrawal',
+          amount: dto.amount,
+          feeAmount: fee.feeAmount,
+          currency: dto.currency,
+          reason: fee.reason,
+        });
         await this.usersService.invalidateWalletBalanceCache(dto.userId);
         this.events.emit('transactions.withdrawal.completed', { transactionId: tx.id, userId: dto.userId });
         succeeded = true;
@@ -522,9 +556,20 @@ export class TransactionsService implements OnModuleInit {
       // #1058: never trust the client-supplied toAmount — derive it server-side
       // from the same rate source used for previews, so a swap can't be used
       // to mint an arbitrary destination-currency amount.
-      const feeAdjustedAmount = dto.fromAmount - fee.feeAmount;
-      const rate = parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
-      const serverToAmount = parseFloat((feeAdjustedAmount * rate).toFixed(8));
+      // #1421: price from ExchangeRateService instead of a random placeholder.
+      const feeAdjustedAmount = new Big(String(dto.fromAmount)).minus(String(fee.feeAmount));
+      let rate: number;
+      try {
+        const quote = await this.exchangeRateService.getRate(dto.fromCurrency, dto.toCurrency);
+        rate = quote.rate;
+      } catch (err) {
+        this.logger.error(
+          `Exchange rate fetch failed for ${dto.fromCurrency}/${dto.toCurrency}`,
+          err as Error,
+        );
+        throw new ServiceUnavailableException('Exchange rate provider unavailable');
+      }
+      const serverToAmount = Number(feeAdjustedAmount.times(rate).toFixed(8));
 
       const tx = this.txRepo.create({
         senderId: dto.userId,
@@ -533,7 +578,7 @@ export class TransactionsService implements OnModuleInit {
         currency: dto.fromCurrency,
         fee: fee.feeAmount,
         reference: dto.reference,
-        metadata: { ...dto.metadata, type: 'swap', toAmount: serverToAmount, toCurrency: dto.toCurrency },
+        metadata: { ...dto.metadata, type: 'swap', toAmount: serverToAmount, toCurrency: dto.toCurrency, rate },
         status: TransactionStatus.PENDING,
         pendingTimeoutAt: this.nextPendingTimeoutAt(),
         retryCount: 0,
@@ -611,10 +656,19 @@ export class TransactionsService implements OnModuleInit {
     const fee = this.feesService.calculateFee(dto.fromAmount);
     const feeAdjustedAmount = dto.fromAmount - fee.feeAmount;
 
-    // Indicative rate: how many toCurrency units per 1 fromCurrency unit
-    // In production this would query a price oracle; placeholder rate for now.
-    const rate = parseFloat((0.85 + Math.random() * 0.3).toFixed(6));
-    const toAmount = parseFloat((feeAdjustedAmount * rate).toFixed(8));
+    // #1421: indicative rate from the same provider-backed service used for pricing.
+    let rate: number;
+    try {
+      const quote = await this.exchangeRateService.getRate(dto.fromCurrency, dto.toCurrency);
+      rate = quote.rate;
+    } catch (err) {
+      this.logger.error(
+        `Exchange rate fetch failed for ${dto.fromCurrency}/${dto.toCurrency}`,
+        err as Error,
+      );
+      throw new ServiceUnavailableException('Exchange rate provider unavailable');
+    }
+    const toAmount = Number(new Big(String(feeAdjustedAmount)).times(rate).toFixed(8));
 
     return {
       fromCurrency: dto.fromCurrency,
@@ -711,26 +765,84 @@ export class TransactionsService implements OnModuleInit {
     id: string,
     input: { reversedBy: string; reason: string },
   ): Promise<Transaction> {
-    const transaction = await this.findById(id);
-    if (transaction.reversedAt) {
+    const existing = await this.findById(id);
+    if (existing.status !== TransactionStatus.COMPLETED) {
       throw new UnprocessableEntityException(
-        'Transaction has already been reversed',
+        `Only COMPLETED transactions can be reversed (current status: ${existing.status})`,
       );
     }
 
     return this.dataSource.transaction(async (manager) => {
-      await this.walletsService.adjustBalance(
-        transaction.senderId,
-        transaction.currency,
-        Number(new Big(transaction.amount).toFixed(8)),
-        manager,
-      );
-      await this.walletsService.adjustBalance(
-        transaction.receiverId,
-        transaction.currency,
-        Number(new Big(transaction.amount).neg().toFixed(8)),
-        manager,
-      );
+      // Re-load under a pessimistic write lock so concurrent reversals serialise.
+      const transaction = await manager.findOne(Transaction, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!transaction) {
+        throw new NotFoundException(`Transaction ${id} not found`);
+      }
+      if (transaction.reversedAt) {
+        throw new UnprocessableEntityException(
+          'Transaction has already been reversed',
+        );
+      }
+
+      const type =
+        typeof transaction.metadata?.type === 'string' ? transaction.metadata.type : 'transfer';
+      const amount = new Big(String(transaction.amount));
+      const fee = new Big(String(transaction.fee ?? 0));
+
+      if (type === 'deposit') {
+        // Deposit reversal: debit back only the principal — the fee was already
+        // collected at deposit time and is not refunded for deposits.
+        const principal = amount.minus(fee).lt(0) ? new Big(0) : amount.minus(fee);
+        await this.walletsService.adjustBalance(
+          transaction.senderId,
+          transaction.currency,
+          Number(principal.neg().toFixed(8)),
+          manager,
+        );
+      } else if (type === 'withdrawal') {
+        // Withdrawal reversal: refund principal + fee (both were debited up-front).
+        await this.walletsService.adjustBalance(
+          transaction.senderId,
+          transaction.currency,
+          Number(amount.plus(fee).toFixed(8)),
+          manager,
+        );
+      } else if (type === 'swap') {
+        // Swap reversal: credit back the from-currency debit (principal + fee).
+        await this.walletsService.adjustBalance(
+          transaction.senderId,
+          transaction.currency,
+          Number(amount.plus(fee).toFixed(8)),
+          manager,
+        );
+        const meta = transaction.metadata as Record<string, unknown>;
+        const toCurrency = typeof meta.toCurrency === 'string' ? meta.toCurrency : undefined;
+        if (toCurrency && meta.toAmount !== undefined && meta.toAmount !== null) {
+          await this.walletsService.adjustBalance(
+            transaction.senderId,
+            toCurrency,
+            Number(new Big(String(meta.toAmount)).neg().toFixed(8)),
+            manager,
+          );
+        }
+      } else {
+        // transfer (default): keep the original two-leg swap of amounts.
+        await this.walletsService.adjustBalance(
+          transaction.senderId,
+          transaction.currency,
+          Number(amount.toFixed(8)),
+          manager,
+        );
+        await this.walletsService.adjustBalance(
+          transaction.receiverId,
+          transaction.currency,
+          Number(amount.neg().toFixed(8)),
+          manager,
+        );
+      }
 
       const reversal = manager.create(Transaction, {
         senderId: transaction.receiverId,
