@@ -362,6 +362,12 @@ export class TransactionsService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async createDeposit(dto: DepositDto): Promise<Transaction> {
+    // #1424: compliance gates — a deactivated or frozen account must not move money.
+    if (await this.deactivationService.isUserDeactivated(dto.userId)) {
+      throw new ForbiddenException('Account has been deactivated. Cannot perform transactions.');
+    }
+    await this.accountFreezeService?.assertNotFrozen(dto.userId);
+
     await this.termsService.ensureAccepted(dto.userId);
     const fee = this.feesService.calculateFee(dto.amount);
     const totalChecked = dto.amount + fee.feeAmount; // #742: fee included in limit check
@@ -435,6 +441,12 @@ export class TransactionsService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async createWithdrawal(dto: WithdrawalDto): Promise<Transaction> {
+    // #1424: compliance gates — a deactivated or frozen account must not move money.
+    if (await this.deactivationService.isUserDeactivated(dto.userId)) {
+      throw new ForbiddenException('Account has been deactivated. Cannot perform transactions.');
+    }
+    await this.accountFreezeService?.assertNotFrozen(dto.userId);
+
     const fee = this.feesService.calculateFee(dto.amount);
     await this.termsService.ensureAccepted(dto.userId);
 
@@ -507,6 +519,12 @@ export class TransactionsService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async createSwap(dto: SwapDto): Promise<Transaction> {
+    // #1424: compliance gates — a deactivated or frozen account must not move money.
+    if (await this.deactivationService.isUserDeactivated(dto.userId)) {
+      throw new ForbiddenException('Account has been deactivated. Cannot perform transactions.');
+    }
+    await this.accountFreezeService?.assertNotFrozen(dto.userId);
+
     await this.termsService.ensureAccepted(dto.userId);
     const fee = this.feesService.calculateFee(dto.fromAmount);
     const totalChecked = dto.fromAmount + fee.feeAmount; // #742: fee included in limit check
