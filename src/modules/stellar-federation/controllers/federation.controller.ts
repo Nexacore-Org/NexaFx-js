@@ -14,6 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { StellarFederationService } from '../services/stellar-federation.service';
 import { CreateFederationAddressDto } from '../dto/create-federation-address.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
+import { Public } from '../../../auth/decorators/public.decorator';
 
 @ApiTags('Stellar Federation')
 @Controller('federation')
@@ -21,16 +22,14 @@ export class FederationController {
   constructor(private readonly federationService: StellarFederationService) {}
 
   @Get('resolve')
+  @Public()
   @ApiOperation({ summary: 'Resolve a Stellar federation address (public)' })
-  async resolve(@Query('q') q: string) {
+  async resolve(@Query('q') q: string, @Query('type') _type?: string) {
     const result = await this.federationService.resolveAddress(q);
     return {
-      success: true,
-      data: {
-        stellar_address: result.stellarAddress,
-        memo: result.memo || '',
-        memo_type: result.memoType || 'text',
-      },
+      stellar_address: result.stellarAddress,
+      memo_type: result.memoType || 'text',
+      memo: result.memo || '',
     };
   }
 

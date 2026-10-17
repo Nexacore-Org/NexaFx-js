@@ -38,7 +38,19 @@ export class BeneficiariesService {
 
   async update(id: string, userId: string, dto: Partial<CreateBeneficiaryDto>): Promise<Beneficiary> {
     const beneficiary = await this.findById(id, userId);
-    Object.assign(beneficiary, dto);
+
+    const verificationChanged =
+      (dto.address !== undefined && dto.address !== beneficiary.address) ||
+      (dto.currency !== undefined && dto.currency !== beneficiary.currency) ||
+      (dto.network !== undefined && dto.network !== beneficiary.network);
+
+    const { userId: _ignored, ...allowed } = dto;
+    Object.assign(beneficiary, allowed);
+
+    if (verificationChanged) {
+      beneficiary.isVerified = false;
+    }
+
     return this.beneficiaryRepo.save(beneficiary);
   }
 

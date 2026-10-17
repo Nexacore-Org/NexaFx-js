@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository } from 'typeorm';
 import { WalletBalanceSnapshotEntity } from '../entities/wallet-balance-snapshot.entity';
-import { WalletEntity } from '../../users/entities/wallet.entity';
-import { TransactionEntity } from '../../transactions/entities/transaction.entity';
+import { WalletBalanceEntity } from '../../../wallet/wallet-balance.entity';
+import { ExchangeRateService } from '../../../fx/exchange-rate.service';
 import { QueryWalletHistoryDto } from '../dto/query-wallet-history.dto';
 
 @Injectable()
@@ -11,42 +11,32 @@ export class WalletHistoryService {
   constructor(
     @InjectRepository(WalletBalanceSnapshotEntity)
     private readonly snapshotRepo: Repository<WalletBalanceSnapshotEntity>,
-    @InjectRepository(WalletEntity)
-    private readonly walletRepo: Repository<WalletEntity>,
-    @InjectRepository(TransactionEntity)
-    private readonly txRepo: Repository<TransactionEntity>,
+    @InjectRepository(WalletBalanceEntity)
+    private readonly walletBalanceRepo: Repository<WalletBalanceEntity>,
+    private readonly exchangeRateService: ExchangeRateService,
   ) {}
 
   async recordSnapshot(userId: string): Promise<WalletBalanceSnapshotEntity> {
-    const wallets = await this.walletRepo.find({
-      where: { userId, status: 'active' },
+    const walletBalances = await this.walletBalanceRepo.find({
+      where: { accountId: userId },
     });
 
     const balances: Record<string, number> = {};
     let totalValueUsd = 0;
 
-    if (wallets.length > 0) {
-      // Single grouped aggregate instead of one find() per wallet + JS summation (was O(n) per snapshot).
-      const sums = await this.txRepo
-        .createQueryBuilder('tx')
-        .select('tx.walletId', 'walletId')
-        .addSelect(
-          `SUM(CASE WHEN tx.metadata->>'type' = 'CREDIT' OR tx.fromAddress IS NULL THEN tx.amount ELSE -tx.amount END)`,
-          'balance',
-        )
-        .where('tx.walletId IN (:...walletIds)', { walletIds: wallets.map((w) => w.id) })
-        .andWhere('tx.status = :status', { status: 'SUCCESS' })
-        .groupBy('tx.walletId')
-        .getRawMany<{ walletId: string; balance: string }>();
+    for (const walletBalance of walletBalances) {
+      const amount = Number(walletBalance.balance) || 0;
+      const currency = walletBalance.currency;
+      balances[currency] = (balances[currency] ?? 0) + amount;
 
-      const balanceByWallet = new Map(sums.map((s) => [s.walletId, Number(s.balance) || 0]));
-
-      for (const wallet of wallets) {
-        const balance = balanceByWallet.get(wallet.id) ?? 0;
-        balances[wallet.currency] = (balances[wallet.currency] ?? 0) + balance;
-        if (wallet.currency === 'USD') {
-          totalValueUsd += balance;
-        }
+      if (currency === 'USD') {
+        totalValueUsd += amount;
+      } else {
+        const { rate } = await this.exchangeRateService.getRate(
+          currency,
+          'USD',
+        );
+        totalValueUsd += amount * rate;
       }
     }
 
