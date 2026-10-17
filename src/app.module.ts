@@ -149,11 +149,16 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
 
         if (process.env.NODE_ENV === 'test') {
           return {
-            type: 'better-sqlite3' as const,
-            database: ':memory:',
+            type: 'postgres' as const,
+            host: process.env.TEST_DB_HOST ?? 'localhost',
+            port: Number(process.env.TEST_DB_PORT ?? 5432),
+            username: process.env.TEST_DB_USERNAME ?? 'postgres',
+            password: process.env.TEST_DB_PASSWORD ?? 'postgres',
+            database: process.env.TEST_DB_DATABASE ?? 'postgres',
             autoLoadEntities: true,
             synchronize: true,
             dropSchema: true,
+            retryAttempts: 0,
           };
         }
 

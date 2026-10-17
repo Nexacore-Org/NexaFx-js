@@ -424,6 +424,146 @@ export const envSchema = z.object({
   // Stellar Hot Wallet (required — fail-fast on startup)
   // ============================================
   STELLAR_HOT_WALLET_SECRET: z.string().min(1, 'STELLAR_HOT_WALLET_SECRET is required'),
+
+  // ============================================
+  // CORS / Public URLs
+  // ============================================
+  ALLOWED_ORIGINS: z.string().optional().default(''),
+  APP_URL: z.string().optional(),
+
+  // ============================================
+  // AWS / S3 document storage
+  // ============================================
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_REGION: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_BUCKET: z.string().optional(),
+
+  // ============================================
+  // Biometric authentication (optional shared secret)
+  // ============================================
+  BIOMETRIC_SECRET: z.string().optional(),
+
+  // ============================================
+  // Transaction USD limits (defaults match transaction-limit.service.ts /
+  // large-withdrawal.guard.ts; non-numeric input must fail validation)
+  // ============================================
+  DAILY_LIMIT_USD: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().positive())
+    .default(() => 50000),
+  MONTHLY_LIMIT_USD: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().positive())
+    .default(() => 500000),
+  SINGLE_TX_LIMIT_USD: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().positive())
+    .default(() => 25000),
+  WITHDRAWAL_LARGE_AMOUNT_THRESHOLD_USD: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().positive())
+    .default(() => 10000),
+
+  // ============================================
+  // Background jobs ("true" disables Bull; read from process.env in app.module)
+  // ============================================
+  DISABLE_BULL: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
+
+  // ============================================
+  // Exchange-rate cache TTLs (seconds)
+  // ============================================
+  EXCHANGE_RATES_CACHE_TTL_SECONDS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 60),
+  EXCHANGE_RATE_CACHE_TTL: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 60),
+
+  // ============================================
+  // Admin CSV export storage directory
+  // ============================================
+  EXPORTS_DIR: z.string().optional(),
+
+  // ============================================
+  // KYC per-tier document requirements (JSON map)
+  // ============================================
+  KYC_TIER_DOCUMENTS: z.string().optional(),
+
+  // ============================================
+  // Notification batching ("true" enables; kept a string because
+  // NotificationBatchingService compares the value to 'true')
+  // ============================================
+  NOTIFICATION_BATCHING_ENABLED: z.enum(['true', 'false']).default('true'),
+  NOTIFICATION_BATCH_WINDOW_MS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 2000),
+
+  // ============================================
+  // OpenTelemetry tracing
+  // ============================================
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+  OTEL_SERVICE_NAME: z.string().optional(),
+
+  // ============================================
+  // WebSocket rate-stream replay protection (ms)
+  // ============================================
+  RATE_REPLAY_WINDOW_MS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 300000),
+
+  // ============================================
+  // Redis connection URL (used by the Redis adapter)
+  // ============================================
+  REDIS_URL: z.string().optional(),
+
+  // ============================================
+  // Request timeout middleware (ms)
+  // ============================================
+  REQUEST_TIMEOUT_MS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 30000),
+
+  // ============================================
+  // Stellar network / Horizon
+  // ============================================
+  STELLAR_HORIZON_URL: z.string().optional(),
+  STELLAR_NETWORK: z.string().optional(),
+
+  // ============================================
+  // Wallet encryption key version (positive integer)
+  // ============================================
+  WALLET_ENCRYPTION_KEY_VERSION: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 1),
+
+  // ============================================
+  // Webhook delivery caps
+  // ============================================
+  WEBHOOK_MAX_ENDPOINTS_PER_USER: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default(() => 10),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
