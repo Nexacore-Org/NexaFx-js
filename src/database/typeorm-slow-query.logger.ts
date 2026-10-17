@@ -6,7 +6,7 @@ interface SlowQueryLogPayload {
   thresholdMs: number;
   durationMs: number;
   query: string;
-  parameters: unknown[];
+  parameterCount: number;
 }
 
 export class TypeOrmSlowQueryLogger implements TypeOrmLogger {
@@ -21,7 +21,11 @@ export class TypeOrmSlowQueryLogger implements TypeOrmLogger {
 
   logQuery(): void {}
 
-  logQueryError(): void {}
+  logQueryError(error: string | Error, query: string): void {
+    this.logger.warn(
+      JSON.stringify({ event: 'typeorm.query_error', query, error: String(error) }),
+    );
+  }
 
   logQuerySlow(time: number, query: string, parameters?: unknown[]): void {
     const payload: SlowQueryLogPayload = {
@@ -29,7 +33,8 @@ export class TypeOrmSlowQueryLogger implements TypeOrmLogger {
       thresholdMs: this.thresholdMs,
       durationMs: time,
       query,
-      parameters: parameters ?? [],
+      // Bind parameters can hold password hashes, OTPs and emails: log the count only (issue #1405).
+      parameterCount: (parameters ?? []).length,
     };
 
     this.logger.warn(JSON.stringify(payload));

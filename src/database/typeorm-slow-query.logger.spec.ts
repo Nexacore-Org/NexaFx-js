@@ -13,7 +13,7 @@ describe('TypeOrmSlowQueryLogger', () => {
         thresholdMs: 1000,
         durationMs: 1425,
         query: 'SELECT * FROM wallets WHERE id = $1',
-        parameters: ['abc'],
+        parameterCount: 1,
       }),
     );
   });
