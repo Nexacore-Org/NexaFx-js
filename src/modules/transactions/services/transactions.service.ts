@@ -33,6 +33,14 @@ export class TransactionsService {
 
     const qb = this.txRepo.createQueryBuilder('t');
 
+    // Scope to the caller. wallet_transactions has no userId column; the
+    // only owner linkage is walletId, which stores the account/owner id used
+    // by WalletsService.adjustBalance(accountId, ...). Always filter so a
+    // user can never page through another user's rows.
+    if (userId) {
+      qb.andWhere('t.walletId = :userId', { userId });
+    }
+
     // ✅ Full-text search query (optional)
     if (dto.q && dto.q.trim().length > 0) {
       const q = dto.q.trim();

@@ -24,7 +24,7 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Search and filter transactions with pagination' })
   @ApiOkResponse({ description: 'Paginated list of transactions' })
   search(@Query() query: SearchTransactionsDto, @Request() req: any) {
-    const userId = req.user?.id;
+    const userId = req.user?.id ?? req.user?.sub;
     return this.txService.search(query, userId);
   }
 

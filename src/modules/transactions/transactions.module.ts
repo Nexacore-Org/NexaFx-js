@@ -28,6 +28,7 @@ import { RiskEngineModule } from '../risk-engine/risk-engine.module';
 import { TransactionRiskIndicatorListener } from './listeners/transaction-risk-indicator.listener';
 import { AccountFreezeModule } from '../account-freeze/account-freeze.module';
 import { FeesModule } from '../fee/fee.module';
+import { WalletsModule } from '../../wallet/wallets.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { FeesModule } from '../fee/fee.module';
     RiskEngineModule,
     AccountFreezeModule,
     FeesModule,
+    WalletsModule,
     TypeOrmModule.forFeature([
       TransactionEntity,
       TransactionExecutionSnapshotEntity,

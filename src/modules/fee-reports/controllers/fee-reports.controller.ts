@@ -4,7 +4,6 @@ import {
   Get,
   Post,
   Query,
-  Request,
   UseGuards,
   ValidationPipe,
   HttpCode,
@@ -18,6 +17,7 @@ import {
   ApiCreatedResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { FeeReportsService } from '../services/fee-reports.service';
 import { GenerateFeeReportDto } from '../dto/generate-fee-report.dto';
 import { ListFeeReportsDto } from '../dto/list-fee-reports.dto';
@@ -32,8 +32,7 @@ export class FeeReportsController {
   @Get()
   @ApiOperation({ summary: 'List fee reports' })
   @ApiOkResponse({ description: 'Paginated list of fee reports' })
-  async findAll(@Request() req: any, @Query(ValidationPipe) dto: ListFeeReportsDto) {
-    const userId = req.user?.id ?? req.user?.sub;
+  async findAll(@CurrentUser('sub') userId: string, @Query(ValidationPipe) dto: ListFeeReportsDto) {
     return this.feeReportsService.findAll(userId, dto);
   }
 
@@ -41,8 +40,7 @@ export class FeeReportsController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Generate a fee report' })
   @ApiCreatedResponse({ description: 'Fee report generated' })
-  async generate(@Request() req: any, @Body(ValidationPipe) dto: GenerateFeeReportDto) {
-    const userId = req.user?.id ?? req.user?.sub;
+  async generate(@CurrentUser('sub') userId: string, @Body(ValidationPipe) dto: GenerateFeeReportDto) {
     return this.feeReportsService.generate(userId, dto);
   }
 }

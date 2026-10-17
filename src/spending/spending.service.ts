@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import Big from 'big.js';
 import { SpendingCategoryEntity } from './entities/spending-category.entity';
 import { SpendingEntryEntity } from './entities/spending-entry.entity';
 import { CreateSpendingCategoryDto } from './dto/create-spending-category.dto';
@@ -32,6 +33,18 @@ export class SpendingService {
   }
 
   async createEntry(userId: string, dto: CreateSpendingEntryDto): Promise<SpendingEntryEntity> {
+    if (dto.categoryId) {
+      const category = await this.categoryRepo.findOne({
+        where: { id: dto.categoryId, userId },
+      });
+      if (!category) {
+        throw new NotFoundException('Category not found');
+      }
+    }
+
+    // Note: no transaction repo is injected into this module, so we cannot
+    // cheaply verify that dto.transactionId belongs to the caller without
+    // adding heavier wiring. That check is left as a follow-up.
     const entry = this.entryRepo.create({
       userId,
       transactionId: dto.transactionId,
@@ -78,12 +91,16 @@ export class SpendingService {
 
     const entries = await this.getEntries(userId, start, end);
 
-    let totalSpent = 0;
+    // Group by currency. SpendingEntryEntity has no currency column yet, so
+    // every (old and current) row falls back to 'USD'. Follow-up: add a
+    // currency column + migration (explicitly out of scope here).
+    const byCurrency: Record<string, Big> = {};
     const byCategory: Record<string, { name: string; color: string; total: number; count: number }> = {};
 
     for (const entry of entries) {
       const amt = Number(entry.amount);
-      totalSpent += amt;
+      const currency = (entry as { currency?: string }).currency || 'USD';
+      byCurrency[currency] = (byCurrency[currency] ?? new Big(0)).plus(amt);
 
       const catId = entry.categoryId || 'uncategorized';
       if (!byCategory[catId]) {
@@ -102,13 +119,20 @@ export class SpendingService {
       .map(([categoryId, data]) => ({ categoryId, ...data }))
       .sort((a, b) => b.total - a.total);
 
+    const totals = Object.values(byCurrency);
+
     return {
       success: true,
       data: {
         period,
         startDate: start,
         endDate: end,
-        totalSpent: Math.round(totalSpent * 1e8) / 1e8,
+        // Preserve the legacy numeric field: single-currency total, or the
+        // total of the first currency when multiple are present.
+        totalSpent: Number((totals[0] ?? new Big(0)).toString()),
+        byCurrency: Object.fromEntries(
+          Object.entries(byCurrency).map(([c, t]) => [c, t.toString()]),
+        ),
         transactionCount: entries.length,
         categoryBreakdown,
       },
