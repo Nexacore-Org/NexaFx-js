@@ -29,17 +29,6 @@ export class ExchangeRatesController {
     };
   }
 
-  @Get(':pair')
-  @ApiOperation({ summary: 'Get current rate for a specific pair' })
-  @ApiQuery({ name: 'pair', description: 'Currency pair (e.g. USD/NGN)' })
-  async getRateByPair(@Param('pair') pair: string) {
-    const rate = await this.exchangeRatesService.getRateByPair(pair);
-    return {
-      success: true,
-      data: rate,
-    };
-  }
-
   @Get('calculate')
   @ApiOperation({ summary: 'Lightweight currency conversion calculator' })
   async calculate(
@@ -64,5 +53,17 @@ export class ExchangeRatesController {
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
   async getHistory(@Query() query: QueryExchangeRateHistoryDto) {
     return this.exchangeRatesService.getHistory(query);
+  }
+
+  @Get(':base/:quote')
+  @ApiOperation({ summary: 'Get current rate for a specific pair' })
+  async getRateByPair(@Param('base') base: string, @Param('quote') quote: string) {
+    const rate = await this.exchangeRatesService.getRateByPair(
+      `${base}/${quote}`.toUpperCase(),
+    );
+    return {
+      success: true,
+      data: rate,
+    };
   }
 }
