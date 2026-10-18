@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository } from 'typeorm';
+import Big from 'big.js';
 import { FeeReportEntity, FeeReportPeriod } from '../entities/fee-report.entity';
-import { TransactionEntity } from '../../transactions/entities/transaction.entity';
+import { FeeRecord } from '../../../fees/fee-record.entity';
 import { GenerateFeeReportDto } from '../dto/generate-fee-report.dto';
 import { ListFeeReportsDto } from '../dto/list-fee-reports.dto';
 
@@ -11,8 +12,8 @@ export class FeeReportsService {
   constructor(
     @InjectRepository(FeeReportEntity)
     private readonly feeReportRepo: Repository<FeeReportEntity>,
-    @InjectRepository(TransactionEntity)
-    private readonly txRepo: Repository<TransactionEntity>,
+    @InjectRepository(FeeRecord)
+    private readonly feeRecordRepo: Repository<FeeRecord>,
   ) {}
 
   async findAll(userId: string, dto: ListFeeReportsDto) {
@@ -38,23 +39,28 @@ export class FeeReportsService {
 
   async generate(userId: string, dto: GenerateFeeReportDto): Promise<FeeReportEntity> {
     const { startDate, endDate } = this.resolveDateRange(dto.period, dto.startDate, dto.endDate);
+    if (startDate > endDate) {
+      throw new BadRequestException('startDate must be <= endDate');
+    }
 
-    const transactions = await this.txRepo.find({
-      where: {
-        createdAt: Between(startDate, endDate),
-      },
-      order: { createdAt: 'ASC' },
-    });
+    const results = await this.feeRecordRepo
+      .createQueryBuilder('f')
+      .select('f.currency', 'currency')
+      .addSelect('SUM(f.feeAmount)', 'total')
+      .where('f.userId = :userId', { userId })
+      .andWhere('f.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .groupBy('f.currency')
+      .getRawMany();
 
     const feeBreakdown: Record<string, number> = {};
-    let totalFees = 0;
+    let totalFees = new Big(0);
 
-    for (const tx of transactions) {
-      if (tx.metadata?.fee && tx.currency) {
-        const fee = Number(tx.metadata.fee);
-        totalFees += fee;
-        feeBreakdown[tx.currency] = (feeBreakdown[tx.currency] ?? 0) + fee;
-      }
+    for (const r of results) {
+      const currency = r.currency;
+      const total = new Big(r.total || 0).toString();
+      const totalNum = Number(total);
+      feeBreakdown[currency] = totalNum;
+      totalFees = totalFees.plus(total);
     }
 
     const report = this.feeReportRepo.create({
@@ -62,7 +68,7 @@ export class FeeReportsService {
       period: dto.period,
       startDate,
       endDate,
-      totalFees,
+      totalFees: Number(totalFees.toString()),
       feeBreakdown,
       generatedAt: new Date(),
     });

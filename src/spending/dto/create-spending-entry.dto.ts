@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsUUID, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsUUID, MaxLength, IsPositive } from 'class-validator';
 
 export class CreateSpendingEntryDto {
   @IsOptional()
@@ -9,7 +9,8 @@ export class CreateSpendingEntryDto {
   @IsUUID()
   categoryId?: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 8 })
+  @IsPositive()
   amount: number;
 
   @IsOptional()

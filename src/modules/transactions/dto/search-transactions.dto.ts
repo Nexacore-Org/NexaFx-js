@@ -1,27 +1,49 @@
-// SearchTransactionsDto for admin transaction search (issue #1276).
-// Starting point -- TransactionReplayService, risk-scoring, and the
-// other missing imports in transactions.module.ts are separate
-// follow-ups.
-import { IsOptional, IsString, IsISO8601, IsIn } from 'class-validator';
+import { IsOptional, IsString, IsDateString, IsIn, IsInt, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class SearchTransactionsDto {
   @IsOptional()
   @IsString()
-  userId?: string;
+  q?: string;
 
   @IsOptional()
   @IsString()
   status?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsString()
+  currency?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsDateString()
   from?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateString()
   to?: string;
 
   @IsOptional()
-  @IsIn(['asc', 'desc'])
-  sort?: 'asc' | 'desc';
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @IsOptional()
+  @IsIn(['ASC', 'DESC'])
+  sortOrder?: 'ASC' | 'DESC';
 }
