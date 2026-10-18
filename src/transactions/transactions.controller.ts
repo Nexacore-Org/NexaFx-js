@@ -76,6 +76,16 @@ export class TransactionsController {
     return this.txService.createDeposit({ ...dto, userId, ipAddress: ip, userAgent });
   }
 
+  @Post('deposit/:id/confirm')
+  @HttpCode(HttpStatus.OK)
+  confirmDeposit(
+    @Param('id') id: string,
+    @Body() body: { txHash?: string },
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.txService.confirmDeposit(userId, id, body?.txHash ?? '');
+  }
+
   @Post('withdrawal')
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
