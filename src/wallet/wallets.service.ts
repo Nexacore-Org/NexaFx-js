@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import Big from 'big.js';
+import { StrKey } from 'stellar-sdk';
+import { randomUUID } from 'crypto';
 import { withTransaction } from '../common/helpers/with-transaction.helper';
 import {
   normalizeCurrencyCode,
@@ -11,6 +13,7 @@ import { WalletBalanceEntity } from './wallet-balance.entity';
 import { WalletBalance } from './wallets.types';
 import { LedgerService } from '../ledger/ledger.service';
 import { LedgerEntryType } from '../ledger/ledger-entry.entity';
+import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 
 @Injectable()
 export class WalletsService {
@@ -26,6 +29,7 @@ export class WalletsService {
     currency: string,
     delta: number,
     manager?: EntityManager,
+    transactionId?: string,
   ): Promise<WalletBalance> {
     const normalizedCurrency = this.validateCurrency(currency);
 
@@ -58,13 +62,21 @@ export class WalletsService {
       wallet.balance = newBalance.toFixed(8);
       const saved = await manager.save(wallet);
 
-      await this.ledgerService.recordEntry({
-        userId: accountId,
-        type: delta > 0 ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT,
-        amount: Math.abs(delta),
-        currency: normalizedCurrency,
-        balanceAfter: Number(newBalance.toFixed(8)),
-      });
+      // #1427: write the ledger entry through the same EntityManager so it
+      // commits/rolls back atomically with the wallet change, and link it to
+      // the originating transaction when one is supplied.
+      await this.ledgerService.recordEntry(
+        {
+          userId: accountId,
+          transactionId,
+          type: delta > 0 ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT,
+          amount: Math.abs(delta),
+          currency: normalizedCurrency,
+          balanceAfter: Number(newBalance.toFixed(8)),
+        },
+        manager,
+      );
+
 
       return {
         id: saved.id,
@@ -141,6 +153,10 @@ export class WalletsService {
   private readonly autoSweepConfigs = new Map<string, { threshold: number; coldStorageAddress: string }>();
 
   setAutoSweepConfig(userId: string, threshold: number, coldStorageAddress: string) {
+    // #1426: only a real Ed25519 public key ("G...") is a valid cold-storage destination.
+    if (!StrKey.isValidEd25519PublicKey(coldStorageAddress)) {
+      throw new BadRequestException('coldStorageAddress is not a valid Stellar Ed25519 public key');
+    }
     const config = { threshold, coldStorageAddress };
     this.autoSweepConfigs.set(userId, config);
     return config;
@@ -154,14 +170,36 @@ export class WalletsService {
     const config = this.getAutoSweepConfig(userId);
     if (!config) return { swept: false, reason: 'No auto-sweep config set' };
     const wallet = await this.getBalance(userId, currency);
-    if (wallet.balance > config.threshold) {
-      const sweepAmount = wallet.balance - config.threshold;
-      await this.adjustBalance(userId, currency, -sweepAmount);
+    // #1426: Big math — Postgres decimal columns can come back as strings and
+    // native float subtraction loses precision at 8dp.
+    const balance = new Big(String(wallet.balance));
+    if (balance.gt(String(config.threshold))) {
+      const sweepAmount = balance.minus(new Big(String(config.threshold))).toFixed(8);
+      await this.adjustBalance(userId, currency, -Number(sweepAmount));
+      // Record the sweep as a real transaction so history/reconciliation can see it.
+      // On-chain Stellar submission to coldStorageAddress is follow-up.
+      const txRepo = this.dataSource.getRepository(Transaction);
+      const tx = txRepo.create({
+        senderId: userId,
+        receiverId: userId,
+        amount: Number(sweepAmount),
+        currency,
+        reference: `sweep_${randomUUID()}`,
+        status: TransactionStatus.COMPLETED,
+        completedAt: new Date(),
+        metadata: {
+          type: 'auto_sweep',
+          description: 'Auto-sweep to cold storage',
+          coldStorageAddress: config.coldStorageAddress,
+        },
+      });
+      const savedTx = await txRepo.save(tx);
       return {
         swept: true,
         sweepAmount,
         coldStorageAddress: config.coldStorageAddress,
         remainingBalance: config.threshold,
+        transactionId: savedTx.id,
       };
     }
     return { swept: false, reason: 'Balance below threshold' };

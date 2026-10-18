@@ -9,6 +9,7 @@ import { WalletsService } from './wallets.service';
 import { AdjustBalanceDto } from './dto/adjust-balance.dto';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { AuditService } from '../audit/audit.service';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('wallets')
 @ApiBearerAuth()
@@ -19,11 +20,13 @@ export class WalletsController {
     private readonly auditService: AuditService,
   ) {}
 
-  @Get(':accountId')
-  @ApiOperation({ summary: 'Get balances for an account' })
+  // #1425: 'me' is declared before any param route and always resolves to the
+  // caller's own account — never a client-supplied accountId.
+  @Get('me')
+  @ApiOperation({ summary: 'Get balances for the authenticated user' })
   @ApiOkResponse({ description: 'Account balances returned successfully' })
-  getBalances(@Param('accountId') accountId: string) {
-    return this.walletsService.getBalancesForAccount(accountId);
+  getBalances(@CurrentUser('sub') userId: string) {
+    return this.walletsService.getBalancesForAccount(userId);
   }
 
   // Direct balance adjustment bypasses transaction/fee/ledger flows, so it is
@@ -57,22 +60,28 @@ export class WalletsController {
     return result;
   }
 
-  @Post('auto-sweep/config')
-  setAutoSweepConfig(@Body() body: { userId: string; threshold: number; coldStorageAddress: string }) {
-    return this.walletsService.setAutoSweepConfig(body.userId, body.threshold, body.coldStorageAddress);
+  @Post('me/auto-sweep/config')
+  setAutoSweepConfig(
+    @CurrentUser('sub') userId: string,
+    @Body() body: { threshold: number; coldStorageAddress: string },
+  ) {
+    return this.walletsService.setAutoSweepConfig(userId, body.threshold, body.coldStorageAddress);
   }
 
-  @Post('auto-sweep/process')
-  processAutoSweep(@Body() body: { userId: string; currency: string }) {
-    return this.walletsService.processAutoSweep(body.userId, body.currency);
+  @Post('me/auto-sweep/process')
+  processAutoSweep(
+    @CurrentUser('sub') userId: string,
+    @Body() body: { currency: string },
+  ) {
+    return this.walletsService.processAutoSweep(userId, body.currency);
   }
 
-  @Post(':accountId/:currency/customize')
+  @Post('me/:currency/customize')
   updateCustomization(
-    @Param('accountId') accountId: string,
+    @CurrentUser('sub') userId: string,
     @Param('currency') currency: string,
     @Body() body: { label?: string; color?: string }
   ) {
-    return this.walletsService.updateCustomization(accountId, currency, body.label, body.color);
+    return this.walletsService.updateCustomization(userId, currency, body.label, body.color);
   }
 }
