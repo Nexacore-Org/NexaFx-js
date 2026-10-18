@@ -81,7 +81,7 @@
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "nestjs-pino": "^4.4.0",
-    "nodemailer": "^8.0.4",
+    "nodemailer": "^10.1.1",
     "opossum": "^8.1.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
