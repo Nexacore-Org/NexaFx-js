@@ -1,14 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WalletBalanceSnapshotEntity } from './entities/wallet-balance-snapshot.entity';
-import { WalletEntity } from '../users/entities/wallet.entity';
-import { TransactionEntity } from '../transactions/entities/transaction.entity';
+import { WalletBalanceEntity } from '../../wallet/wallet-balance.entity';
+import { FxModule } from '../../fx/fx.module';
 import { WalletHistoryService } from './services/wallet-history.service';
 import { WalletHistoryController } from './controllers/wallet-history.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([WalletBalanceSnapshotEntity, WalletEntity, TransactionEntity]),
+    TypeOrmModule.forFeature([WalletBalanceSnapshotEntity, WalletBalanceEntity]),
+    FxModule,
   ],
   controllers: [WalletHistoryController],
   providers: [WalletHistoryService],

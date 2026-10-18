@@ -28,6 +28,7 @@ export class StellarFederationService {
 
     const address = this.federationRepo.create({
       userId,
+      name: data.name.toLowerCase(),
       domain: data.domain,
       stellarAddress: data.stellarAddress,
       memo: data.memo,
@@ -49,7 +50,7 @@ export class StellarFederationService {
     const domain = query.substring(starIndex + 1);
 
     const address = await this.federationRepo.findOne({
-      where: { domain, stellarAddress: name, isActive: true },
+      where: { name: name.toLowerCase(), domain, isActive: true },
     });
 
     if (!address) {

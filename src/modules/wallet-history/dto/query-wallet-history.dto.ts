@@ -1,5 +1,5 @@
-import { IsOptional, IsDateString, IsString, Type } from 'class-transformer';
-import { IsInt, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsOptional, IsDateString, IsString, IsInt, Min, Max } from 'class-validator';
 
 export class QueryWalletHistoryDto {
   @IsOptional()

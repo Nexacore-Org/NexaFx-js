@@ -21,6 +21,9 @@ export class FederationAddressEntity {
   @Column({ type: 'varchar', length: 255 })
   domain: string;
 
+  @Column({ type: 'varchar', length: 255, default: '' })
+  name: string;
+
   @Column({ type: 'varchar', length: 255 })
   stellarAddress: string;
 
