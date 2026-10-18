@@ -9,13 +9,20 @@
  * for the failure-path test.
  */
 import { TransactionsService, DepositDto } from '../../src/transactions/transactions.service';
-import { makeTransactionsService } from '../../src/transactions/testing/transactions-service.factory';
 import { Transaction, TransactionStatus } from '../../src/transactions/transaction.entity';
+import { TransactionLimitService } from '../../src/transactions/transaction-limit.service';
 import { WalletsService } from '../../src/wallet/wallets.service';
+import { StellarService } from '../../src/stellar/stellar.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { MailService } from '../../src/mail/mail.service';
 import { UsersService } from '../../src/users/users.service';
+import { FeesService } from '../../src/fees/fees.service';
+import { UserDeactivationService } from '../../src/modules/user-deactivation/services/user-deactivation.service';
+import { TermsAcceptanceService } from '../../src/terms/terms-acceptance.service';
+import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 
 const USER_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
@@ -51,7 +58,7 @@ describe('Deposit flow (e2e)', () => {
   let events: jest.Mocked<Pick<EventEmitter2, 'emit'>>;
   let service: TransactionsService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     txRepo = {
       create: jest.fn(),
       save: jest.fn(),
@@ -64,17 +71,50 @@ describe('Deposit flow (e2e)', () => {
     auditService = { log: jest.fn().mockResolvedValue(undefined) };
     events = { emit: jest.fn() };
 
-    // Every constructor argument is supplied (by name) through the factory; the collaborators
-    // this flow does not exercise get inert defaults instead of `undefined`.
-    service = makeTransactionsService({
-      txRepo: txRepo as unknown as Repository<Transaction>,
-      dataSource: { options: { type: 'better-sqlite3' } } as unknown as DataSource,
-      wallets: walletsService as unknown as WalletsService,
-      audit: auditService as unknown as AuditService,
-      mail: { sendTransactionReversalNotice: jest.fn() } as unknown as MailService,
-      users: { findById: jest.fn(), invalidateWalletBalanceCache: jest.fn().mockResolvedValue(undefined) } as unknown as UsersService,
-      events: events as unknown as EventEmitter2,
-    });
+    // Every constructor dependency is provided by its injection token so NestJS
+    // can resolve TransactionsService; collaborators this flow does not
+    // exercise get inert jest mocks instead of `undefined`.
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        TransactionsService,
+        { provide: getRepositoryToken(Transaction), useValue: txRepo },
+        { provide: DataSource, useValue: { options: { type: 'better-sqlite3' } } },
+        { provide: WalletsService, useValue: walletsService },
+        { provide: StellarService, useValue: {} },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
+        { provide: AuditService, useValue: auditService },
+        { provide: MailService, useValue: { sendTransactionReversalNotice: jest.fn() } },
+        {
+          provide: UsersService,
+          useValue: {
+            findById: jest.fn(),
+            invalidateWalletBalanceCache: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        { provide: EventEmitter2, useValue: events },
+        {
+          provide: TransactionLimitService,
+          useValue: {
+            check: jest.fn().mockResolvedValue(0),
+            release: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: FeesService,
+          useValue: { calculateFee: jest.fn().mockReturnValue({ feeAmount: 0, reason: 'none' }) },
+        },
+        {
+          provide: UserDeactivationService,
+          useValue: { isUserDeactivated: jest.fn().mockResolvedValue(false) },
+        },
+        {
+          provide: TermsAcceptanceService,
+          useValue: { ensureAccepted: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = moduleRef.get(TransactionsService);
   });
 
   afterEach(() => jest.clearAllMocks());

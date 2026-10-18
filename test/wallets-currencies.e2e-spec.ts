@@ -10,6 +10,7 @@ import { CurrenciesService } from '../src/currencies/currencies.service';
 import { WalletBalanceEntity } from '../src/wallet/wallet-balance.entity';
 import { WalletsController } from '../src/wallet/wallets.controller';
 import { WalletsService } from '../src/wallet/wallets.service';
+import { LedgerService } from '../src/ledger/ledger.service';
 
 @Module({
   imports: [
@@ -27,6 +28,10 @@ import { WalletsService } from '../src/wallet/wallets.service';
   providers: [
     WalletsService,
     CurrenciesService,
+    {
+      provide: LedgerService,
+      useValue: { recordEntry: jest.fn().mockResolvedValue({}) },
+    },
     {
       provide: ConfigService,
       useValue: {
