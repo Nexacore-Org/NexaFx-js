@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, LessThanOrEqual, Between } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -6,6 +6,7 @@ import { ExchangeRateCacheEntity } from './entities/exchange-rate-cache.entity';
 import { ExchangeRateHistoryEntity } from './entities/exchange-rate-history.entity';
 import { QueryExchangeRateHistoryDto } from './dto/query-exchange-rate-history.dto';
 import { RatesGateway } from '../rates/rates.gateway';
+import { ExchangeRateService } from '../fx/exchange-rate.service';
 
 const DEFAULT_CACHE_TTL_SECONDS = 60;
 const SUPPORTED_PAIRS = ['USD/NGN', 'USD/EUR', 'USD/GBP', 'EUR/NGN', 'GBP/NGN'];
@@ -21,6 +22,7 @@ export class ExchangeRatesService implements OnModuleInit {
     @InjectRepository(ExchangeRateHistoryEntity)
     private readonly historyRepo: Repository<ExchangeRateHistoryEntity>,
     private readonly ratesGateway: RatesGateway,
+    private readonly fxRateService: ExchangeRateService,
   ) {
     this.cacheTtlSeconds = parseInt(
       process.env.EXCHANGE_RATE_CACHE_TTL || String(DEFAULT_CACHE_TTL_SECONDS),
@@ -54,8 +56,13 @@ export class ExchangeRatesService implements OnModuleInit {
   }
 
   async getRateByPair(pair: string): Promise<ExchangeRateCacheEntity | null> {
+    const normalized = pair.toUpperCase();
+    if (!SUPPORTED_PAIRS.includes(normalized)) {
+      throw new NotFoundException(`Unsupported currency pair ${pair}`);
+    }
+
     const cached = await this.cacheRepo.findOne({
-      where: { pair, expiresAt: MoreThan(new Date()) },
+      where: { pair: normalized, expiresAt: MoreThan(new Date()) },
     });
 
     if (cached) {
@@ -63,7 +70,7 @@ export class ExchangeRatesService implements OnModuleInit {
     }
 
     const rates = await this.fetchAndCacheRates();
-    return rates.find((r) => r.pair === pair) || null;
+    return rates.find((r) => r.pair === normalized) || null;
   }
 
   async getHistory(dto: QueryExchangeRateHistoryDto) {
@@ -109,20 +116,20 @@ export class ExchangeRatesService implements OnModuleInit {
     const rates: ExchangeRateCacheEntity[] = [];
 
     for (const pair of SUPPORTED_PAIRS) {
-      const rate = await this.fetchRateFromSource(pair);
+      const { rate, provider } = await this.fetchRateFromSource(pair);
 
       // Upsert into cache
       let cached = await this.cacheRepo.findOne({ where: { pair } });
       if (cached) {
         cached.rate = rate;
-        cached.source = 'stellar';
+        cached.source = provider;
         cached.cachedAt = now;
         cached.expiresAt = expiresAt;
       } else {
         cached = this.cacheRepo.create({
           pair,
           rate,
-          source: 'stellar',
+          source: provider,
           cachedAt: now,
           expiresAt,
         });
@@ -134,7 +141,7 @@ export class ExchangeRatesService implements OnModuleInit {
       const historyEntry = this.historyRepo.create({
         pair,
         rate,
-        source: 'stellar',
+        source: provider,
         recordedAt: now,
       });
       await this.historyRepo.save(historyEntry);
@@ -146,25 +153,12 @@ export class ExchangeRatesService implements OnModuleInit {
     return rates;
   }
 
-  private async fetchRateFromSource(pair: string): Promise<number> {
-    try {
-      // Mock Stellar DEX rate fetch
-      // In production, this would call the Stellar DEX API
-      const baseRates: Record<string, number> = {
-        'USD/NGN': 1550.0,
-        'USD/EUR': 0.92,
-        'USD/GBP': 0.79,
-        'EUR/NGN': 1685.0,
-        'GBP/NGN': 1962.0,
-      };
-
-      const baseRate = baseRates[pair] || 1.0;
-      const fluctuation = (Math.random() - 0.5) * 0.02;
-      return Number((baseRate * (1 + fluctuation)).toFixed(8));
-    } catch (error) {
-      this.logger.error(`Failed to fetch rate for ${pair}: ${error.message}`);
-      throw new Error(`Unable to fetch exchange rate for ${pair}`);
-    }
+  private async fetchRateFromSource(
+    pair: string,
+  ): Promise<{ rate: number; provider: string }> {
+    const [base = '', quote = ''] = pair.split('/');
+    const result = await this.fxRateService.getRate(base, quote);
+    return { rate: Number(result.rate.toFixed(8)), provider: result.provider };
   }
 
   async calculateConversion(from: string, to: string, amount: number) {
@@ -177,7 +171,7 @@ export class ExchangeRatesService implements OnModuleInit {
       if (invObj && Number(invObj.rate) > 0) {
         rate = Number((1 / Number(invObj.rate)).toFixed(8));
       } else {
-        rate = 1.0;
+        throw new BadRequestException('No rate available for pair');
       }
     }
     const convertedAmount = Number((amount * rate).toFixed(8));

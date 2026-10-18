@@ -49,13 +49,13 @@ export class WalletsService {
         });
       }
 
-      // #1059: preserve full precision instead of truncating to 2dp
-      const newBalance = Number(new Big(wallet.balance).plus(new Big(delta)).toFixed(8));
-      if (newBalance < 0) {
+      // #1059/#1431: preserve full precision; Big math end-to-end, stored as decimal string
+      const newBalance = new Big(String(wallet.balance)).plus(delta);
+      if (newBalance.lt(0)) {
         throw new BadRequestException('Insufficient balance');
       }
 
-      wallet.balance = newBalance;
+      wallet.balance = newBalance.toFixed(8);
       const saved = await manager.save(wallet);
 
       await this.ledgerService.recordEntry({
@@ -63,14 +63,14 @@ export class WalletsService {
         type: delta > 0 ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT,
         amount: Math.abs(delta),
         currency: normalizedCurrency,
-        balanceAfter: newBalance,
+        balanceAfter: Number(newBalance.toFixed(8)),
       });
 
       return {
         id: saved.id,
         accountId: saved.accountId,
         currency: saved.currency,
-        balance: saved.balance,
+        balance: Number(saved.balance),
         label: saved.label,
         color: saved.color,
         createdAt: saved.createdAt,
@@ -103,7 +103,7 @@ export class WalletsService {
       id: wallet.id,
       accountId: wallet.accountId,
       currency: wallet.currency,
-      balance: wallet.balance,
+      balance: Number(wallet.balance),
       label: wallet.label,
       color: wallet.color,
       createdAt: wallet.createdAt,
@@ -120,7 +120,7 @@ export class WalletsService {
       id: wallet.id,
       accountId: wallet.accountId,
       currency: wallet.currency,
-      balance: wallet.balance,
+      balance: Number(wallet.balance),
       label: wallet.label,
       color: wallet.color,
       createdAt: wallet.createdAt,
@@ -181,7 +181,7 @@ export class WalletsService {
       id: saved.id,
       accountId: saved.accountId,
       currency: saved.currency,
-      balance: saved.balance,
+      balance: Number(saved.balance),
       label: saved.label,
       color: saved.color,
       createdAt: saved.createdAt,

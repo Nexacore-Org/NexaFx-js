@@ -12,6 +12,7 @@ import {
 import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { UseInterceptors } from '@nestjs/common';
 import { FxService, ExecuteTradeDto } from './fx.service';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 const exchangeRateCacheTtlSeconds = parseInt(
   process.env.EXCHANGE_RATES_CACHE_TTL_SECONDS ||
@@ -34,13 +35,16 @@ export class FxController {
 
   @Post('trades')
   @HttpCode(HttpStatus.CREATED)
-  executeTrade(@Body() dto: ExecuteTradeDto) {
-    return this.fxService.executeTrade(dto);
+  executeTrade(
+    @Body() dto: ExecuteTradeDto,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.fxService.executeTrade({ ...dto, userId });
   }
 
   @Post('trades/:id/reverse')
-  reverseTrade(@Param('id') id: string) {
-    return this.fxService.reverseTrade(id);
+  reverseTrade(@Param('id') id: string, @CurrentUser('sub') userId: string) {
+    return this.fxService.reverseTrade(id, userId);
   }
 
   @Get('volume')

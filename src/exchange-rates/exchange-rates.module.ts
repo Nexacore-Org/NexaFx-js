@@ -8,6 +8,7 @@ import { ExchangeRateCache } from './cache/exchange-rates.cache';
 import { ExchangeRatesService } from './exchange-rates.service';
 import { ExchangeRatesController } from './exchange-rates.controller';
 import { RatesModule } from '../rates/rates.module';
+import { FxModule } from '../fx/fx.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { RatesModule } from '../rates/rates.module';
     ScheduleModule.forRoot(),
     HttpModule,
     RatesModule,
+    FxModule,
   ],
   controllers: [ExchangeRatesController],
   providers: [ExchangeRatesService, ExchangeRateCache],

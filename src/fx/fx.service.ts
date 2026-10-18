@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   NotFoundException,
@@ -18,7 +19,7 @@ import { AccountFreezeService } from '../modules/account-freeze/services/account
 import { FxQuoteCache, RedisFxQuoteStore, type RedisLikeClient } from './fx-quote-cache';
 
 export interface ExecuteTradeDto {
-  userId: string;
+  userId?: string;
   fromCurrency: string;
   toCurrency: string;
   fromAmount: number;
@@ -45,6 +46,12 @@ export class FxService {
   }
 
   async executeTrade(dto: ExecuteTradeDto): Promise<FxTrade> {
+    if (dto.fromAmount <= 0) {
+      throw new BadRequestException('fromAmount must be greater than zero');
+    }
+    if (dto.fromCurrency === dto.toCurrency) {
+      throw new BadRequestException('fromCurrency and toCurrency must differ');
+    }
     // A frozen account cannot swap.
     await this.accountFreezeService?.assertNotFrozen(dto.userId);
 
@@ -86,8 +93,8 @@ export class FxService {
     });
   }
 
-  async reverseTrade(id: string): Promise<FxTrade> {
-    const trade = await this.tradeRepo.findOne({ where: { id } });
+  async reverseTrade(id: string, userId: string): Promise<FxTrade> {
+    const trade = await this.tradeRepo.findOne({ where: { id, userId } });
     if (!trade) throw new NotFoundException(`FX trade ${id} not found`);
     if (trade.reversedAt) {
       throw new UnprocessableEntityException('Trade has already been reversed');

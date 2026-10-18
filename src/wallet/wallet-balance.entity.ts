@@ -8,6 +8,18 @@ import {
   VersionColumn,
 } from 'typeorm';
 
+/** #1431: persist decimal balances as strings to avoid float drift. */
+class DecimalTransformer {
+  to(value?: string | number | null): string | number | null | undefined {
+    return value === null || value === undefined ? value : String(value);
+  }
+  from(value?: string | number | null): string | number | null | undefined {
+    return value;
+  }
+}
+
+const decimalTransformer = new DecimalTransformer();
+
 @Entity('wallet_balances')
 @Index(['accountId', 'currency'], { unique: true })
 export class WalletBalanceEntity {
@@ -22,8 +34,14 @@ export class WalletBalanceEntity {
 
   // #1059: scale 8 to match Transaction/FxTrade precision and avoid
   // truncating sub-cent/stroop amounts (1 stroop = 0.0000001 XLM).
-  @Column({ type: 'decimal', precision: 20, scale: 8, default: 0 })
-  balance!: number;
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    default: 0,
+    transformer: decimalTransformer,
+  })
+  balance!: string | number;
 
   @Column({ type: 'boolean', default: false })
   isPrimary!: boolean;
