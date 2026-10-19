@@ -4,12 +4,14 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { WebhooksService } from './webhooks.service';
 import { WebhookRetryJob } from './webhook-retry.job';
+import { ListDeliveriesQueryDto } from './dto/list-deliveries-query.dto';
 
 interface AuthenticatedRequest {
   user?: {
@@ -54,10 +56,24 @@ export class WebhooksController {
   listDeliveries(
     @Param('id') endpointId: string,
     @Req() request: AuthenticatedRequest,
+    @Query() query: ListDeliveriesQueryDto,
   ) {
     return this.webhooksService.listDeliveries(
       request.user?.sub ?? '',
       endpointId,
+      query,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('deliveries/:id')
+  getDelivery(
+    @Param('id') deliveryId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.webhooksService.findDeliveryForOwner(
+      deliveryId,
+      request.user?.sub ?? '',
     );
   }
 

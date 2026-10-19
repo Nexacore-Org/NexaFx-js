@@ -259,6 +259,15 @@ export const envSchema = z.object({
     .transform(Number)
     .pipe(z.number().int().positive())
     .default(() => 24),
+  /**
+   * Retention window for webhook delivery history (#1446). Rows older than this
+   * are pruned nightly. Set to 0 to disable pruning.
+   */
+  WEBHOOK_DELIVERY_RETENTION_DAYS: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().int().nonnegative())
+    .default(() => 30),
   TERMS_CURRENT_VERSION: z.string().min(1).default('1.0'),
   BLOCKED_COUNTRIES: z.string().optional().default(''),
   // ============================================
