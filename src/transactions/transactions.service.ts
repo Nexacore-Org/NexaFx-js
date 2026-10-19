@@ -18,6 +18,7 @@ import { UserDeactivationService } from '../modules/user-deactivation/services/u
 import { FeesService } from '../fees/fees.service';
 import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
 import { ExchangeRateService } from '../fx/exchange-rate.service';
+import { TransactionEvent } from '../common/events/transaction-events';
 
 export interface TransferDto {
   senderId: string;
@@ -203,13 +204,14 @@ export class TransactionsService implements OnModuleInit {
       return tx;
     }
 
-    this.events.emit('transactions.completed', {
+    this.events.emit(TransactionEvent.COMPLETED, {
       transactionId: tx.id,
       senderId: tx.senderId,
       receiverId: tx.receiverId,
       amount: tx.amount,
       currency: tx.currency,
       reference: tx.reference,
+      timestamp: new Date(),
     });
     return tx;
   }
@@ -466,7 +468,7 @@ export class TransactionsService implements OnModuleInit {
       tx.completedAt = new Date();
       await this.txRepo.save(tx);
       await this.usersService.invalidateWalletBalanceCache(userId);
-      this.events.emit('transactions.deposit.completed', { transactionId: tx.id, userId });
+      this.events.emit(TransactionEvent.DEPOSIT_COMPLETED, { transactionId: tx.id, userId });
       return tx;
     } catch (err) {
       // Credit failed before completion was written — keep PENDING so it can be retried.
@@ -556,7 +558,7 @@ export class TransactionsService implements OnModuleInit {
           reason: fee.reason,
         });
         await this.usersService.invalidateWalletBalanceCache(dto.userId);
-        this.events.emit('transactions.withdrawal.completed', { transactionId: tx.id, userId: dto.userId });
+        this.events.emit(TransactionEvent.WITHDRAWAL_COMPLETED, { transactionId: tx.id, userId: dto.userId });
         succeeded = true;
         return tx;
       } catch (err) {
@@ -660,7 +662,7 @@ export class TransactionsService implements OnModuleInit {
             currency: dto.fromCurrency,
             reason: fee.reason,
           });
-          this.events.emit('transactions.swap.completed', { transactionId: tx.id, userId: dto.userId });
+          this.events.emit(TransactionEvent.SWAP_COMPLETED, { transactionId: tx.id, userId: dto.userId });
           succeeded = true;
           return tx;
         } catch (err) {
@@ -687,7 +689,7 @@ export class TransactionsService implements OnModuleInit {
         entityId: tx.id,
         after: { retryCount: tx.retryCount, refundedAmount: totalChecked, error: lastError?.message },
       });
-      this.events.emit('transactions.swap.failed', { transactionId: tx.id, userId: dto.userId });
+      this.events.emit(TransactionEvent.SWAP_FAILED, { transactionId: tx.id, userId: dto.userId });
 
       throw lastError;
     } finally {
@@ -837,7 +839,7 @@ export class TransactionsService implements OnModuleInit {
       }
     }
 
-    this.events.emit('transactions.cancelled', { transactionId: tx.id });
+    this.events.emit(TransactionEvent.CANCELLED, { transactionId: tx.id });
     return tx;
   }
 
@@ -978,11 +980,14 @@ export class TransactionsService implements OnModuleInit {
         },
       });
 
-      this.events.emit('transactions.reversed', {
+      this.events.emit(TransactionEvent.REVERSED, {
         transactionId: transaction.id,
         reversalTransactionId: savedReversal.id,
         reversedBy: input.reversedBy,
         reason: input.reason,
+        senderId: transaction.senderId,
+        receiverId: transaction.receiverId,
+        timestamp: new Date(),
       });
 
       return transaction;

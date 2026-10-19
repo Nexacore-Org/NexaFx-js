@@ -38,6 +38,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Idempotent } from '../idempotency/idempotency.decorator';
 import { IdempotencyGuard } from '../idempotency/idempotency.guard';
 import { IdempotencyInterceptor } from '../idempotency/idempotency.interceptor';
+import { TransactionEvent } from '../common/events/transaction-events';
 
 interface AuthenticatedRequest {
   user?: {
@@ -205,12 +206,12 @@ export class TransactionsController {
       };
 
       const handlers = {
-        'transactions.completed': handler('completed'),
-        'transactions.deposit.completed': handler('completed'),
-        'transactions.withdrawal.completed': handler('completed'),
-        'transactions.swap.completed': handler('completed'),
-        'transactions.swap.failed': handler('failed'),
-        'transactions.reversed': handler('reversed'),
+        [TransactionEvent.COMPLETED]: handler('completed'),
+        [TransactionEvent.DEPOSIT_COMPLETED]: handler('completed'),
+        [TransactionEvent.WITHDRAWAL_COMPLETED]: handler('completed'),
+        [TransactionEvent.SWAP_COMPLETED]: handler('completed'),
+        [TransactionEvent.SWAP_FAILED]: handler('failed'),
+        [TransactionEvent.REVERSED]: handler('reversed'),
       };
 
       for (const [event, cb] of Object.entries(handlers)) {
