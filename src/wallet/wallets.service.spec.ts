@@ -4,6 +4,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { WalletBalanceEntity } from './wallet-balance.entity';
 import { WalletsService } from './wallets.service';
+import { LedgerService } from '../ledger/ledger.service';
+import { LedgerEntryType } from '../ledger/ledger-entry.entity';
 
 describe('WalletsService', () => {
   let service: WalletsService;
@@ -15,6 +17,9 @@ describe('WalletsService', () => {
   let mockRepository: {
     findOne: jest.Mock;
     find: jest.Mock;
+  };
+  let mockLedgerService: {
+    recordEntry: jest.Mock;
   };
   let mockQueryRunner: {
     manager: typeof mockManager;
@@ -41,6 +46,10 @@ describe('WalletsService', () => {
       find: jest.fn(),
     };
 
+    mockLedgerService = {
+      recordEntry: jest.fn().mockResolvedValue(undefined),
+    };
+
     mockQueryRunner = {
       manager: mockManager,
       connect: jest.fn().mockResolvedValue(undefined),
@@ -65,6 +74,10 @@ describe('WalletsService', () => {
         {
           provide: DataSource,
           useValue: mockDataSource,
+        },
+        {
+          provide: LedgerService,
+          useValue: mockLedgerService,
         },
       ],
     }).compile();
@@ -215,9 +228,10 @@ describe('WalletsService', () => {
       mockManager.create.mockImplementation(
         (_entity: unknown, data: Record<string, unknown>) => ({ ...data }),
       );
-      mockManager.save.mockImplementation(
-        async (data: Record<string, unknown>) => ({ ...data, id: 'w-1' }),
-      );
+      mockManager.save.mockImplementation((data: Record<string, unknown>) => ({
+        ...data,
+        id: 'w-1',
+      }));
     }
 
     it('initial balance is 0 for a brand-new account (getBalance returns 0 when no row exists)', async () => {
@@ -349,9 +363,10 @@ describe('WalletsService', () => {
         currency: 'USD',
         balance: 100,
       });
-      mockManager.save.mockImplementation(
-        async (data: Record<string, unknown>) => ({ ...data, id: 'w-usd' }),
-      );
+      mockManager.save.mockImplementation((data: Record<string, unknown>) => ({
+        ...data,
+        id: 'w-usd',
+      }));
 
       await service.adjustBalance('acct-multi', 'USD', 50);
 
@@ -368,9 +383,10 @@ describe('WalletsService', () => {
       mockManager.create.mockImplementation(
         (_entity: unknown, data: Record<string, unknown>) => ({ ...data }),
       );
-      mockManager.save.mockImplementation(
-        async (data: Record<string, unknown>) => ({ ...data, id: 'w-1' }),
-      );
+      mockManager.save.mockImplementation((data: Record<string, unknown>) => ({
+        ...data,
+        id: 'w-1',
+      }));
 
       const result = await service.adjustBalance('acct-1', 'usd', 100);
 
@@ -384,9 +400,30 @@ describe('WalletsService', () => {
     it('returns all currencies held by an account', async () => {
       const now = new Date();
       mockRepository.find.mockResolvedValue([
-        { id: '1', accountId: 'acct-1', currency: 'USD', balance: 100, createdAt: now, updatedAt: now },
-        { id: '2', accountId: 'acct-1', currency: 'EUR', balance: 200, createdAt: now, updatedAt: now },
-        { id: '3', accountId: 'acct-1', currency: 'GBP', balance: 50,  createdAt: now, updatedAt: now },
+        {
+          id: '1',
+          accountId: 'acct-1',
+          currency: 'USD',
+          balance: 100,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: '2',
+          accountId: 'acct-1',
+          currency: 'EUR',
+          balance: 200,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: '3',
+          accountId: 'acct-1',
+          currency: 'GBP',
+          balance: 50,
+          createdAt: now,
+          updatedAt: now,
+        },
       ]);
 
       const result = await service.getBalancesForAccount('acct-1');
@@ -401,8 +438,22 @@ describe('WalletsService', () => {
     it('each entry carries the correct balance for its currency', async () => {
       const now = new Date();
       mockRepository.find.mockResolvedValue([
-        { id: '1', accountId: 'acct-1', currency: 'USD', balance: 999, createdAt: now, updatedAt: now },
-        { id: '2', accountId: 'acct-1', currency: 'EUR', balance: 1,   createdAt: now, updatedAt: now },
+        {
+          id: '1',
+          accountId: 'acct-1',
+          currency: 'USD',
+          balance: 999,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: '2',
+          accountId: 'acct-1',
+          currency: 'EUR',
+          balance: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
       ]);
 
       const result = await service.getBalancesForAccount('acct-1');
@@ -421,6 +472,80 @@ describe('WalletsService', () => {
       expect(mockRepository.find).toHaveBeenCalledWith({
         where: { accountId: 'acct-xyz' },
       });
+    });
+  });
+
+  // ── Ledger recording (#1442) ───────────────────────────────────────────────
+
+  describe('adjustBalance – ledger recording', () => {
+    function setupWallet(existing: Partial<WalletBalanceEntity> | null) {
+      mockManager.findOne.mockResolvedValue(existing);
+      mockManager.create.mockImplementation(
+        (_entity: unknown, data: Record<string, unknown>) => ({ ...data }),
+      );
+      mockManager.save.mockImplementation((data: Record<string, unknown>) => ({
+        ...data,
+        id: 'w-1',
+      }));
+    }
+
+    it('records a CREDIT entry with the amount and resulting balance', async () => {
+      setupWallet({ accountId: 'acct-1', currency: 'USD', balance: 100 });
+
+      await service.adjustBalance('acct-1', 'USD', 50);
+
+      expect(mockLedgerService.recordEntry).toHaveBeenCalledTimes(1);
+      expect(mockLedgerService.recordEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'acct-1',
+          type: LedgerEntryType.CREDIT,
+          amount: 50,
+          currency: 'USD',
+          balanceAfter: 150,
+        }),
+        mockManager,
+      );
+    });
+
+    it('records a DEBIT entry with the absolute amount and resulting balance', async () => {
+      setupWallet({ accountId: 'acct-1', currency: 'USD', balance: 200 });
+
+      await service.adjustBalance('acct-1', 'USD', -75);
+
+      expect(mockLedgerService.recordEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: LedgerEntryType.DEBIT,
+          amount: 75,
+          balanceAfter: 125,
+        }),
+        mockManager,
+      );
+    });
+
+    it('links the ledger entry to the originating transaction when supplied', async () => {
+      setupWallet({ accountId: 'acct-1', currency: 'USD', balance: 0 });
+
+      await service.adjustBalance('acct-1', 'USD', 10, undefined, 'tx-42');
+
+      expect(mockLedgerService.recordEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ transactionId: 'tx-42' }),
+        mockManager,
+      );
+    });
+
+    it('does not record a ledger entry when delta is exactly zero', async () => {
+      mockRepository.findOne.mockResolvedValue({
+        id: 'w-1',
+        accountId: 'acct-1',
+        currency: 'USD',
+        balance: 99,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await service.adjustBalance('acct-1', 'USD', 0);
+
+      expect(mockLedgerService.recordEntry).not.toHaveBeenCalled();
     });
   });
 });
