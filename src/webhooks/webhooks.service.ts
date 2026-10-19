@@ -6,7 +6,15 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
-import { Repository } from 'typeorm';
+import {
+  Between,
+  FindOptionsWhere,
+  In,
+  LessThan,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
 import { Queue } from 'bull';
 import { randomUUID } from 'crypto';
 import * as dns from 'dns';
@@ -16,6 +24,7 @@ import {
   WebhookDelivery,
   WebhookDeliveryStatus,
 } from './webhook-delivery.entity';
+import { ListDeliveriesQueryDto } from './dto/list-deliveries-query.dto';
 
 export interface CreateWebhookEndpointDto {
   ownerId: string;
@@ -23,6 +32,19 @@ export interface CreateWebhookEndpointDto {
   secret: string;
   events: string[];
 }
+
+/** A delivery row without its (potentially large) stored request body. */
+export type DeliverySummary = Omit<WebhookDelivery, 'requestBody'>;
+
+export interface PaginatedDeliveries {
+  items: DeliverySummary[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export const DEFAULT_DELIVERY_PAGE_SIZE = 20;
+export const MAX_DELIVERY_PAGE_SIZE = 100;
 
 const MAX_ENDPOINTS_PER_USER =
   parseInt(process.env.WEBHOOK_MAX_ENDPOINTS_PER_USER ?? '10', 10) || 10;
@@ -36,9 +58,11 @@ const PRIVATE_CIDR_RANGES = [
 ];
 
 function ip2int(ip: string): number {
-  return ip
-    .split('.')
-    .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+  return (
+    ip
+      .split('.')
+      .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0
+  );
 }
 
 function isPrivateIp(ip: string): boolean {
@@ -133,28 +157,74 @@ export class WebhooksService {
   }
 
   async countActiveEndpoints(ownerId: string): Promise<number> {
-    return this.endpointsRepository.count({ where: { ownerId, isActive: true } });
+    return this.endpointsRepository.count({
+      where: { ownerId, isActive: true },
+    });
   }
 
+  /**
+   * Paginated delivery history for the caller's endpoints (#1446).
+   *
+   * Runs one bounded query joined to `webhook_endpoints` so only the caller's
+   * deliveries are ever read — the previous implementation loaded the entire
+   * table into memory and filtered in JavaScript. The stored `requestBody` is
+   * excluded from the list; fetch a single delivery to see the full payload.
+   *
+   * Throws 404 when `endpointId` is supplied but not owned by `ownerId`,
+   * instead of silently returning an empty page.
+   */
   async listDeliveries(
     ownerId: string,
     endpointId?: string,
-  ): Promise<WebhookDelivery[]> {
-    const endpoints = await this.endpointsRepository.find({
-      where: { ownerId },
-    });
-    const allowedIds = new Set(endpoints.map((endpoint) => endpoint.id));
+    query: ListDeliveriesQueryDto = {},
+  ): Promise<PaginatedDeliveries> {
+    if (endpointId) {
+      await this.findEndpointForOwner(endpointId, ownerId);
+    }
 
-    const deliveries = await this.deliveriesRepository.find({
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit = Math.min(
+      query.limit && query.limit > 0 ? query.limit : DEFAULT_DELIVERY_PAGE_SIZE,
+      MAX_DELIVERY_PAGE_SIZE,
+    );
+
+    const where: FindOptionsWhere<WebhookDelivery> = {
+      // Constrain to the caller's endpoints; when a specific endpoint is
+      // requested the ownership check above already proved it belongs to them.
+      endpointId: endpointId
+        ? endpointId
+        : In(
+            (await this.endpointsRepository.find({ where: { ownerId } })).map(
+              (e) => e.id,
+            ),
+          ),
+    };
+
+    if (query.status) {
+      where.status = query.status;
+    }
+    if (query.from && query.to) {
+      where.createdAt = Between(new Date(query.from), new Date(query.to));
+    } else if (query.from) {
+      where.createdAt = MoreThanOrEqual(new Date(query.from));
+    } else if (query.to) {
+      where.createdAt = LessThanOrEqual(new Date(query.to));
+    }
+
+    const [rows, total] = await this.deliveriesRepository.findAndCount({
+      where,
       order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
-    return deliveries.filter((delivery) => {
-      if (!allowedIds.has(delivery.endpointId)) {
-        return false;
-      }
-      return endpointId ? delivery.endpointId === endpointId : true;
+    const items: DeliverySummary[] = rows.map((row) => {
+      const summary = { ...row } as Record<string, unknown>;
+      delete summary.requestBody;
+      return summary as unknown as DeliverySummary;
     });
+
+    return { items, total, page, limit };
   }
 
   async dispatchEvent(
@@ -195,6 +265,23 @@ export class WebhooksService {
         },
       );
     }
+  }
+
+  /**
+   * Delete deliveries older than `retentionDays` (#1446). Retention is opt-in:
+   * a non-positive or unset value prunes nothing, so nothing is deleted by
+   * accident. Returns the number of rows removed.
+   */
+  async pruneExpiredDeliveries(retentionDays: number): Promise<number> {
+    if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+      return 0;
+    }
+
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const result = await this.deliveriesRepository.delete({
+      createdAt: LessThan(cutoff),
+    });
+    return result.affected ?? 0;
   }
 
   async findEndpointForOwner(
