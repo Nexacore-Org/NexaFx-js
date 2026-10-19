@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Queue } from 'bull';
 import { randomUUID } from 'crypto';
 import * as dns from 'dns';
@@ -16,6 +16,7 @@ import {
   WebhookDelivery,
   WebhookDeliveryStatus,
 } from './webhook-delivery.entity';
+import { isCustomerWebhookEvent } from './webhook-events';
 
 export interface CreateWebhookEndpointDto {
   ownerId: string;
@@ -36,9 +37,11 @@ const PRIVATE_CIDR_RANGES = [
 ];
 
 function ip2int(ip: string): number {
-  return ip
-    .split('.')
-    .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+  return (
+    ip
+      .split('.')
+      .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0
+  );
 }
 
 function isPrivateIp(ip: string): boolean {
@@ -117,12 +120,34 @@ export class WebhooksService {
       );
     }
     await validateWebhookUrl(dto.url);
+    this.assertSubscribableEvents(dto.events);
 
     const endpoint = this.endpointsRepository.create({
       ...dto,
       isActive: true,
     });
     return this.endpointsRepository.save(endpoint);
+  }
+
+  /**
+   * Reject any subscription to an event that is not customer-facing (#1444).
+   * Previously any authenticated user could subscribe to `transactions.completed`
+   * or `aml.alert.created` and receive every tenant's data.
+   */
+  private assertSubscribableEvents(events: string[]): void {
+    if (!events || events.length === 0) {
+      throw new BadRequestException(
+        'At least one webhook event must be subscribed to',
+      );
+    }
+    const rejected = events.filter((event) => !isCustomerWebhookEvent(event));
+    if (rejected.length > 0) {
+      throw new BadRequestException(
+        `Cannot subscribe to non-customer-facing webhook event(s): ${rejected.join(
+          ', ',
+        )}`,
+      );
+    }
   }
 
   async listEndpoints(ownerId: string): Promise<WebhookEndpoint[]> {
@@ -133,7 +158,9 @@ export class WebhooksService {
   }
 
   async countActiveEndpoints(ownerId: string): Promise<number> {
-    return this.endpointsRepository.count({ where: { ownerId, isActive: true } });
+    return this.endpointsRepository.count({
+      where: { ownerId, isActive: true },
+    });
   }
 
   async listDeliveries(
@@ -157,24 +184,53 @@ export class WebhooksService {
     });
   }
 
+  /**
+   * Deliver a domain event to the active endpoints owned by the parties to the
+   * event (#1444).
+   *
+   * `ownerIds` is mandatory: a dispatched event has an owner set derived from
+   * the event, and only those owners' endpoints are considered. The previous
+   * implementation targeted every active endpoint subscribed to the event name,
+   * so any subscriber received every tenant's payloads.
+   *
+   * Each recipient gets a payload built from `payload` via
+   * {@link buildRecipientPayload}, so a party only ever sees their own side of
+   * an event (e.g. a transfer counterparty is masked).
+   */
   async dispatchEvent(
     eventName: string,
+    ownerIds: string[],
     payload: Record<string, unknown>,
   ): Promise<void> {
+    const owners = [...new Set(ownerIds.filter(Boolean))];
+    if (owners.length === 0) {
+      return;
+    }
+
+    // Internal/compliance events must never reach customer webhooks (#1444).
+    if (!isCustomerWebhookEvent(eventName)) {
+      return;
+    }
+
     const endpoints = await this.endpointsRepository.find({
-      where: { isActive: true },
+      where: { isActive: true, ownerId: In(owners) },
     });
     const targets = endpoints.filter((endpoint) =>
       endpoint.events.includes(eventName),
     );
 
     for (const endpoint of targets) {
+      const recipientPayload = this.buildRecipientPayload(
+        endpoint.ownerId,
+        payload,
+      );
+
       const delivery = await this.deliveriesRepository.save(
         this.deliveriesRepository.create({
           id: randomUUID(),
           endpointId: endpoint.id,
           eventName,
-          requestBody: payload,
+          requestBody: recipientPayload,
           attemptCount: 0,
           status: WebhookDeliveryStatus.PENDING,
         }),
@@ -195,6 +251,44 @@ export class WebhooksService {
         },
       );
     }
+  }
+
+  /**
+   * Reduce a platform-wide event payload to what a single `ownerId` should
+   * see. For a transfer, both sender and receiver received the full
+   * `senderId`/`receiverId`/`amount`/`reference`; each side now sees only its
+   * own perspective, with the counterparty id masked.
+   */
+  private buildRecipientPayload(
+    ownerId: string,
+    payload: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const senderId = payload.senderId as string | undefined;
+    const receiverId = payload.receiverId as string | undefined;
+
+    if (senderId || receiverId) {
+      const isSender = ownerId === senderId;
+      const isReceiver = ownerId === receiverId;
+
+      // Defensive: if the owner is somehow not a party, expose nothing.
+      if (!isSender && !isReceiver) {
+        return { transactionId: payload.transactionId };
+      }
+
+      return {
+        transactionId: payload.transactionId,
+        direction: isSender ? 'outgoing' : 'incoming',
+        counterpartyId: isSender ? receiverId : senderId,
+        amount: payload.amount,
+        currency: payload.currency,
+        reference: payload.reference,
+        timestamp: payload.timestamp,
+      };
+    }
+
+    // Single-sided events (deposit/withdrawal/swap/reversal) carry no
+    // counterparty, so the payload is already scoped to the owner.
+    return payload;
   }
 
   async findEndpointForOwner(
