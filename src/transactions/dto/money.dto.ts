@@ -8,6 +8,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { IsStellarAddress } from '../../common/validators/is-stellar-address.decorator';
 
 export class CreateTransferDto {
   @IsString()
@@ -67,6 +68,7 @@ export class CreateWithdrawalDto {
 
   @IsString()
   @IsNotEmpty()
+  @IsStellarAddress()
   destinationAddress: string;
 
   @IsString()
