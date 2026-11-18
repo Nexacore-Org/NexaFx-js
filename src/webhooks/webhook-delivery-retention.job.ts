@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { WebhooksService } from './webhooks.service';
 
 /**
@@ -16,7 +17,7 @@ export class WebhookDeliveryRetentionJob {
 
   constructor(private readonly webhooksService: WebhooksService) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  @ClusterCron(CronExpression.EVERY_DAY_AT_3AM, 'webhooks:delivery-retention')
   async runRetentionSweep(): Promise<void> {
     const retentionDays = Number(
       process.env.WEBHOOK_DELIVERY_RETENTION_DAYS ?? '30',

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { ConfigService } from '@nestjs/config';
 import { ArchivalService } from './archival.service';
 
@@ -12,7 +12,7 @@ export class ArchivalJob {
     private readonly config: ConfigService,
   ) {}
 
-  @Cron('0 3 * * *', { name: 'archival' })
+  @ClusterCron('0 3 * * *', 'archival:run', { name: 'archival', ttlMs: 60 * 60 * 1000 })
   async runArchival(): Promise<void> {
     const cron = this.config.get<string>('archive.cron');
     this.logger.log(`Running archival job (schedule: ${cron})`);

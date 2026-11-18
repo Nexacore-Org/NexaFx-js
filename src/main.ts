@@ -13,12 +13,20 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { Configuration } from './config/configuration';
+import { RedisIoAdapter } from './gateways/redis-adapter';
 
 const GLOBAL_PREFIX = 'api/v1';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+
+  // Multi-replica WebSocket fan-out through Redis, only when configured (issue #1548).
+  if (process.env.REDIS_URL) {
+    const redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis(process.env.REDIS_URL);
+    app.useWebSocketAdapter(redisIoAdapter);
+  }
 
   // Behind a proxy or load balancer, trust an explicit hop count or CIDR list so req.ip is the
   // client (issue #1407). TRUST_PROXY=false (default) | <hops> | <comma-separated CIDRs/names>.

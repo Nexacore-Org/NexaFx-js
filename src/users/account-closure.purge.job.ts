@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
 import { IsNull, LessThanOrEqual, Repository } from 'typeorm';
@@ -19,7 +20,7 @@ export class AccountClosurePurgeJob {
     private readonly usersRepository: Repository<User>,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @ClusterCron(CronExpression.EVERY_DAY_AT_MIDNIGHT, 'users:account-closure-purge')
   async purgeExpiredPersonalData(): Promise<number> {
     const now = new Date();
     // Soft-deleted rows are hidden by default, so ask for them explicitly.

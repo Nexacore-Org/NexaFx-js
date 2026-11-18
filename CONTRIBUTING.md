@@ -50,6 +50,16 @@ the surrounding block later rolls back.
   `@Controller('api/v1/wallets')`, which resolves to `/api/v1/api/v1/wallets`.
 - `npm run check:controller-prefixes` enforces this and runs in CI.
 
+## Scheduled jobs
+
+Every scheduled job must use `@ClusterCron(expression, lockKey, options?)` from
+`src/common/locks/cluster-cron.decorator.ts`, never a bare `@Cron(`. The API runs as several
+replicas, and a bare `@Cron` fires on all of them each tick. `@ClusterCron` takes a Redis lock
+(`SET NX PX` + compare-and-delete release, with a Postgres advisory-lock fallback), so one replica
+runs each tick. Pick a unique `lockKey` per job and a `ttlMs` longer than the job's worst-case
+runtime. Jobs that only touch an instance's own resources (e.g. local disk) may pass
+`{ perInstance: true }`; say why in a comment. `npm run check:cron` (run in CI) fails on a bare `@Cron(`.
+
 ## Code style
 
 - ESLint and Prettier are already configured in the repository.
