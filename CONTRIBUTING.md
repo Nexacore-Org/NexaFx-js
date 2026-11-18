@@ -76,6 +76,23 @@ the surrounding block later rolls back.
   per-glob thresholds for specific high-risk areas (auth, money movement); everything is judged
   against the same global numbers.
 
+### Test database (destructive)
+
+Specs that boot `AppModule` (`NODE_ENV=test`, which Jest sets automatically) and
+`TestDatabaseModule` run with `synchronize: true, dropSchema: true`, i.e. they **drop every table** in
+the target database. Configure it with:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `TEST_DB_DATABASE` | none (required) | Must end in `_test` or `-test`, e.g. `nexafx_test` |
+| `TEST_DB_HOST` / `TEST_DB_PORT` | `localhost` / `5432` | |
+| `TEST_DB_USERNAME` / `TEST_DB_PASSWORD` | `postgres` / `postgres` | |
+| `TEST_DB_ALLOW_DROP` | unset | `true` bypasses the name check; only for a throwaway database |
+
+`docker compose up db` creates `nexafx_test` on first start (`scripts/db/init-test-db.sql`). For an
+existing volume run `docker compose exec db createdb -U postgres nexafx_test`. e2e specs get
+`TEST_DB_DATABASE=nexafx_test` from `test/test-env.ts`.
+
 ## Pull request checklist
 
 - [ ] Change is scoped to the issue.

@@ -2,6 +2,7 @@ import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from
 import { Request, Response } from 'express';
 import { Logger } from '@nestjs/common';
 import { REDACTED, isSensitiveField, maskBody } from '../utils/redact';
+import { getCorrelationId } from '../middleware/correlation-id.storage';
 
 export { REDACTED, isSensitiveField };
 
@@ -38,7 +39,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       path: request.url,
       body: maskBody(request.body),
       error: typeof message === 'string' ? message : (message as Record<string, unknown>).message ?? 'Error',
-      correlationId: (request.headers['x-correlation-id'] as string) ?? undefined,
+      correlationId: (request.headers['x-correlation-id'] as string) ?? getCorrelationId(),
       userId: this.userIdOf(request),
     };
 
@@ -48,7 +49,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.warn(logPayload);
     }
 
-    const correlationId = (request.headers['x-correlation-id'] as string) ?? undefined;
+    const correlationId = (request.headers['x-correlation-id'] as string) ?? getCorrelationId();
     const errorResponse: Record<string, unknown> = {
       statusCode: status,
       message: this.messageOf(message),

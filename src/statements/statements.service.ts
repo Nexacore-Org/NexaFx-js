@@ -1,3 +1,4 @@
+import { getCorrelationId } from '../common/middleware/correlation-id.storage';
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -39,7 +40,7 @@ export class StatementsService {
     const rangeDays = this.dateDiffInDays(request.from, request.to);
     if (rangeDays > ASYNC_RANGE_DAYS) {
       const job = this.statementsQueue
-        ? await this.statementsQueue.add('generate', request)
+        ? await this.statementsQueue.add('generate', { ...request, correlationId: getCorrelationId() })
         : { id: 'statement-queued' };
       return {
         status: 'queued',

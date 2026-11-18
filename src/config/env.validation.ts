@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { checkSecretHygiene } from './secret-hygiene';
 
 /**
  * Environment validation schema using Zod
@@ -582,9 +583,31 @@ export type EnvConfig = z.infer<typeof envSchema>;
  * Throws detailed error if validation fails
  * This ensures fail-fast behavior on startup
  */
+/**
+ * Rejects secrets that satisfy the Zod length/shape rules but are unsafe
+ * (issue #1543): duplicated across variables (any environment), and
+ * placeholders from .env.example or low-entropy values (production only;
+ * a warning elsewhere so local setup from .env.example still works).
+ */
+function assertSecretHygiene(parsed: EnvConfig): void {
+  const { errors, productionErrors } = checkSecretHygiene(parsed);
+  const fatal = parsed.NODE_ENV === 'production' ? [...errors, ...productionErrors] : errors;
+
+  if (fatal.length > 0) {
+    throw new Error(`Environment validation failed:\n${fatal.join('\n')}`);
+  }
+  if (parsed.NODE_ENV !== 'production') {
+    for (const message of productionErrors) {
+      console.warn(`[env] ${message} (rejected when NODE_ENV=production)`);
+    }
+  }
+}
+
 export function validateEnv(config: Record<string, unknown>): EnvConfig {
   try {
-    return envSchema.parse(config);
+    const parsed = envSchema.parse(config);
+    assertSecretHygiene(parsed);
+    return parsed;
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessages = error.issues.map(

@@ -1,3 +1,4 @@
+import { getCorrelationId } from '../common/middleware/correlation-id.storage';
 import {
   ConflictException,
   BadRequestException,
@@ -304,7 +305,7 @@ export class WebhooksService {
 
       await this.webhooksQueue.add(
         'deliver',
-        { deliveryId: delivery.id },
+        { deliveryId: delivery.id, correlationId: getCorrelationId() },
         {
           jobId: delivery.id,
           attempts: Number(process.env.WEBHOOK_MAX_ATTEMPTS || '5'),
