@@ -282,6 +282,12 @@ export default () => {
         10,
       ),
       riskScoreWeight: parseInt(process.env.AML_RISK_SCORE_WEIGHT || '30', 10),
+      highValueThresholdUsd: parseFloat(
+        process.env.AML_HIGH_VALUE_THRESHOLD_USD || '10000',
+      ),
+      criticalValueThresholdUsd: parseFloat(
+        process.env.AML_CRITICAL_VALUE_THRESHOLD_USD || '50000',
+      ),
     },
     // FX configuration
     fx: {
