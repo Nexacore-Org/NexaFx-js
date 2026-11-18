@@ -438,6 +438,11 @@ export const envSchema = z.object({
   // CORS / Public URLs
   // ============================================
   ALLOWED_ORIGINS: z.string().optional().default(''),
+  // Four-eyes control: when true, admin status overrides are queued for a second admin's approval.
+  ADMIN_DUAL_CONTROL: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
   APP_URL: z.string().optional(),
 
   // ============================================

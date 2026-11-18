@@ -12,6 +12,7 @@ import { Cache } from 'cache-manager';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { FxTrade } from './fx-trade.entity';
+import { CurrencyPair } from './currency-pair.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { WalletsService } from '../wallet/wallets.service';
 import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
@@ -36,6 +37,7 @@ export class FxService {
     private readonly rateService: ExchangeRateService,
     private readonly wallets: WalletsService,
     @Optional() @Inject(CACHE_MANAGER) cacheManager?: Cache,
+    @Optional() @InjectRepository(CurrencyPair) private readonly pairRepo?: Repository<CurrencyPair>,
   ) {
     // Share locked quotes across replicas when the cache store is Redis
     // (SET PX to store, GETDEL to redeem); otherwise keep the in-memory store.
@@ -71,7 +73,7 @@ export class FxService {
         dto.fromCurrency,
         dto.toCurrency,
       );
-      rate = rateResult.rate;
+      rate = await this.applySpread(rateResult.rate, dto.fromCurrency, dto.toCurrency);
     }
     const toAmount = parseFloat((dto.fromAmount * rate).toFixed(8));
 
@@ -91,6 +93,21 @@ export class FxService {
       this.volumeTracker.set(pairKey, (this.volumeTracker.get(pairKey) || 0) + dto.fromAmount);
       return manager.save(FxTrade, trade);
     });
+  }
+
+  /**
+   * Customers get the market rate minus the configured spread for the pair
+   * (`currency_pairs.spreadPercent`, set through `PATCH /admin/spreads`, issue #1520).
+   * A pair without a row is priced at the market rate.
+   */
+  private async applySpread(marketRate: number, from: string, to: string): Promise<number> {
+    if (!this.pairRepo) return marketRate;
+    const pair = await this.pairRepo.findOne({
+      where: { fromCurrency: from.toUpperCase(), toCurrency: to.toUpperCase() },
+    });
+    const spread = pair ? Number(pair.spreadPercent) : 0;
+    if (!Number.isFinite(spread) || spread <= 0) return marketRate;
+    return Number((marketRate * (1 - spread)).toFixed(8));
   }
 
   async reverseTrade(id: string, userId: string): Promise<FxTrade> {
