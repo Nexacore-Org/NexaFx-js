@@ -258,6 +258,23 @@ export class MailService {
     }
   }
 
+  /** Tell the owner their password was changed (issue #1526); the account may have been taken over. */
+  async sendPasswordChangedNotice(to: string): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      await this.transporter.sendMail({
+        from: process.env.MAIL_FROM,
+        to,
+        subject: 'Your NexaFx password was changed',
+        html:
+          `<p>The password for your NexaFx account was just changed and all your sessions were signed out.</p>` +
+          `<p>If this was you, no action is needed. If it was not, reset your password again and contact support immediately.</p>`,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send password changed notice: ${(err as Error).message}`);
+    }
+  }
+
   async sendAdminAlert(payload: AdminAlertEmail): Promise<void> {
     if (process.env.NODE_ENV === 'test') return;
     try {

@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -10,6 +11,8 @@ import { Repository } from 'typeorm';
 import { User } from '../../../users/user.entity';
 import { AuthenticatedUser } from '../../../auth/authenticated-user.interface';
 import { ApiKeysService } from './api-keys.service';
+import { AccountStatusService } from '../../../auth/account-status.service';
+import { AccountFreezeService } from '../../account-freeze/services/account-freeze.service';
 
 const WINDOW_MS = 60 * 60 * 1000; // rateLimit is "requests per hour"
 
@@ -25,6 +28,8 @@ export class ApiKeyAuthService {
   constructor(
     private readonly apiKeysService: ApiKeysService,
     @InjectRepository(User) private readonly usersRepo: Repository<User>,
+    @Optional() private readonly accountStatus?: AccountStatusService,
+    @Optional() private readonly accountFreeze?: AccountFreezeService,
   ) {}
 
   private consumeRateLimit(keyId: string, limit: number): void {
@@ -61,12 +66,21 @@ export class ApiKeyAuthService {
     if (!owner || owner.isActive === false) {
       throw new UnauthorizedException('API key owner is not active');
     }
+    // Same answer as for JWTs: admin-suspended and deactivated owners may not authenticate.
+    if (this.accountStatus && !(await this.accountStatus.isAllowedToAuthenticate(owner.id))) {
+      throw new UnauthorizedException('API key owner is not active');
+    }
+    // A frozen owner's keys must not move money either; the money paths re-check, this fails early.
+    if (this.accountFreeze && (await this.accountFreeze.isAccountFrozen(owner.id))) {
+      throw new ForbiddenException('Account is frozen');
+    }
 
     return {
       id: owner.id,
       sub: owner.id,
       email: owner.email,
-      role: owner.role,
+      // An API key never inherits admin or compliance privileges, whatever its owner's role.
+      role: 'user',
       isEmailVerified: owner.isEmailVerified,
       authMethod: 'api_key',
       scopes: granted,

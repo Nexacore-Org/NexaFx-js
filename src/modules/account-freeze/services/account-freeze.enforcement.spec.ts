@@ -12,7 +12,10 @@ describe('AccountFreezeService (integrity and enforcement)', () => {
       }),
       find: jest.fn(),
     };
-    const usersRepo = { exist: jest.fn().mockResolvedValue(opts.userExists ?? true) };
+    // Second probe (role = admin) is false unless a test says otherwise.
+    const usersRepo = {
+      exist: jest.fn(async (q: { where: { role?: string } }) => (q.where.role ? false : (opts.userExists ?? true))),
+    };
     const audit = { log: jest.fn() };
     const events = { emit: jest.fn() };
     const service = new AccountFreezeService(
@@ -59,5 +62,73 @@ describe('AccountFreezeService (integrity and enforcement)', () => {
     await service.unfreezeAccount('u1', 'admin-2');
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'account.unfrozen' }));
     expect(events.emit).toHaveBeenCalledWith('account.unfrozen', expect.objectContaining({ userId: 'u1' }));
+  });
+});
+
+describe('AccountFreezeService guardrails and cache (issue #1524)', () => {
+  const build = (opts: { targetIsAdmin?: boolean } = {}) => {
+    const freezeRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((v) => v),
+      save: jest.fn(async (v) => ({ id: 'freeze-1', ...v })),
+      findAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    const usersRepo = {
+      exist: jest.fn(async (q: { where: { role?: string } }) => (q.where.role ? !!opts.targetIsAdmin : true)),
+    };
+    const audit = { log: jest.fn() };
+    const events = { emit: jest.fn() };
+    const service = new AccountFreezeService(freezeRepo as any, usersRepo as any, audit as any, events as any);
+    return { service, freezeRepo, events };
+  };
+
+  it('refuses to freeze the caller', async () => {
+    const { service } = build();
+    await expect(service.freezeAccount('admin-1', 'a long enough reason', 'admin-1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('refuses a missing actor (no "system" fallback)', async () => {
+    const { service } = build();
+    await expect(service.freezeAccount('u1', 'a long enough reason', '')).rejects.toThrow(/authenticated admin/);
+  });
+
+  it('needs an explicit confirmation to freeze another admin', async () => {
+    const { service } = build({ targetIsAdmin: true });
+    await expect(service.freezeAccount('admin-2', 'a long enough reason', 'admin-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(
+      service.freezeAccount('admin-2', 'a long enough reason', 'admin-1', undefined, { confirmAdminFreeze: true }),
+    ).resolves.toMatchObject({ isActive: true });
+  });
+
+  it('announces a session-revoking access change on freeze', async () => {
+    const { service, events } = build();
+    await service.freezeAccount('u1', 'a long enough reason', 'admin-1');
+    expect(events.emit).toHaveBeenCalledWith(
+      'user.access.changed',
+      expect.objectContaining({ userId: 'u1', revokeTokens: true }),
+    );
+  });
+
+  it('caches isAccountFrozen briefly and invalidates on freeze', async () => {
+    const { service, freezeRepo } = build();
+
+    await service.isAccountFrozen('u1');
+    await service.isAccountFrozen('u1');
+    expect(freezeRepo.findOne).toHaveBeenCalledTimes(1);
+
+    freezeRepo.findOne.mockResolvedValue({ id: 'freeze-1', isActive: true });
+    await service.freezeAccount('u2', 'a long enough reason', 'admin-1').catch(() => undefined);
+    await service.isAccountFrozen('u1');
+    expect(freezeRepo.findOne.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('paginates history', async () => {
+    const { service, freezeRepo } = build();
+    await service.getFreezeHistory('u1', 3, 10);
+    expect(freezeRepo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
   });
 });
