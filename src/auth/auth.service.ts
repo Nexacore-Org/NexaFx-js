@@ -17,6 +17,16 @@ import { TokenType } from './token-types';
 import { RefreshTokensService } from '../tokens/refresh-tokens.service';
 import { parseDeviceInfo } from './device-info';
 
+/** Set when the user must do something (currently only accept new terms) before money moves. */
+export type RequiresAction = 'accept_terms' | null;
+
+export interface AuthTokenResponse {
+  accessToken: string;
+  refreshToken?: string;
+  refreshTokenExpiresAt?: Date;
+  requiresAction: RequiresAction;
+}
+
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 30;
 
@@ -88,7 +98,8 @@ export class AuthService {
       },
     );
 
-    return this.issueToken(user.id, user.email, user.role, user.tokenVersion);
+    // Terms were accepted in the same transaction, so nothing is pending.
+    return this.issueSession(user, context, null);
   }
 
   /**
@@ -196,14 +207,13 @@ export class AuthService {
     // to accept it. The token is issued with a `requiresAction` flag, and the
     // money-moving flows enforce acceptance themselves (ensureAccepted).
     const termsAccepted = await this.termsService.hasAcceptedCurrent(user.id);
+    const requiresAction: RequiresAction = termsAccepted ? null : 'accept_terms';
 
     // Suspended (isActive=false) and deactivated users get the same response.
     const isDeactivated = await this.deactivationService?.isUserDeactivated(user.id);
     if (user.isActive === false || isDeactivated) {
       throw new UnauthorizedException('Account has been deactivated by an administrator');
     }
-
-    await this.termsService.ensureAccepted(user.id);
 
     // Successful login — reset failed attempts and any expired lockout
     // (column-only update so a concurrent lock is never overwritten).
@@ -220,25 +230,29 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.issueToken(user.id, user.email, user.role, user.tokenVersion);
+    return this.issueSession(user, context, requiresAction);
   }
 
   /**
    * Issue an access token plus a DB-backed, hashed, rotating refresh token
    * with device metadata, so the session shows up in `GET /auth/sessions`.
+   * The access token carries the session id (`sid`) so logout and session
+   * revocation can name the session.
    */
   private async issueSession(
-    user: { id: string; email: string; role: string },
+    user: { id: string; email: string; role: string; tokenVersion?: number },
     context: { ip?: string; userAgent?: string } = {},
-  ): Promise<{ accessToken: string; refreshToken?: string; refreshTokenExpiresAt?: Date }> {
+    requiresAction: RequiresAction = null,
+  ): Promise<AuthTokenResponse> {
     if (!this.refreshTokens) {
-      return this.issueToken(user.id, user.email, user.role);
+      return { ...this.issueToken(user.id, user.email, user.role, user.tokenVersion), requiresAction };
     }
     const session = await this.refreshTokens.createToken(user.id, parseDeviceInfo(context));
     return {
-      ...this.issueToken(user.id, user.email, user.role, session.id),
+      ...this.issueToken(user.id, user.email, user.role, user.tokenVersion, session.id),
       refreshToken: session.token,
       refreshTokenExpiresAt: session.expiresAt,
+      requiresAction,
     };
   }
 
@@ -249,7 +263,7 @@ export class AuthService {
   async rotateRefreshToken(
     refreshToken: string,
     context: { ip?: string; userAgent?: string } = {},
-  ) {
+  ): Promise<AuthTokenResponse> {
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token required');
     }
@@ -257,24 +271,22 @@ export class AuthService {
       throw new UnauthorizedException('Refresh tokens are not available');
     }
 
-      // Take identity and role from the database, not the presented token, so
-      // demotions and deactivations take effect on the next refresh.
-      const user = await this.usersService.findById(payload.sub);
-      const newAccessToken = this.issueToken(user.id, user.email, user.role, user.tokenVersion).accessToken;
-      const newRefreshToken = this.jwtService.sign(
-        { sub: user.id, typ: TokenType.REFRESH },
-        { secret: refreshSecret, expiresIn: '7d' },
-      );
-      return { accessToken: newAccessToken, refreshToken: newRefreshToken };
-    } catch (err) {
-      if (err instanceof ForbiddenException) throw err;
-      throw new UnauthorizedException('Invalid or expired refresh token');
+    const rotated = await this.refreshTokens.rotateToken(refreshToken, parseDeviceInfo(context));
+
+    // Take identity and role from the database, not the presented token, so
+    // demotions and deactivations take effect on the next refresh.
+    const user = await this.usersService.findById(rotated.userId);
+    const isDeactivated = user ? await this.deactivationService?.isUserDeactivated(user.id) : false;
+    if (!user || user.isActive === false || isDeactivated) {
+      await this.refreshTokens.revokeUserTokens(rotated.userId);
+      throw new UnauthorizedException('Account is not active');
     }
 
     return {
-      ...this.issueToken(user.id, user.email, user.role, rotated.id),
+      ...this.issueToken(user.id, user.email, user.role, user.tokenVersion, rotated.id),
       refreshToken: rotated.token,
       refreshTokenExpiresAt: rotated.expiresAt,
+      requiresAction: null,
     };
   }
 
@@ -288,9 +300,16 @@ export class AuthService {
     }
   }
 
-  private issueToken(userId: string, email: string, role: string, tokenVersion = 0) {
+  private issueToken(userId: string, email: string, role: string, tokenVersion = 0, sid?: string) {
     return {
-      accessToken: this.jwtService.sign({ sub: userId, email, role, typ: TokenType.ACCESS, tv: tokenVersion ?? 0 }),
+      accessToken: this.jwtService.sign({
+        sub: userId,
+        email,
+        role,
+        typ: TokenType.ACCESS,
+        tv: tokenVersion ?? 0,
+        ...(sid ? { sid } : {}),
+      }),
     };
   }
 }

@@ -1,6 +1,9 @@
 import { Repository } from 'typeorm';
 import { AuditService, AuditEvent } from './audit.service';
 import { AuditLog } from './audit-log.entity';
+import { getRequestActorId } from '../common/context/request-actor.storage';
+
+jest.mock('../common/context/request-actor.storage', () => ({ getRequestActorId: jest.fn() }));
 
 describe('AuditService', () => {
   let service: AuditService;
@@ -111,6 +114,68 @@ describe('AuditService', () => {
           entityType: 'kyc',
         }),
       ).not.toThrow();
+    });
+  });
+
+  describe('log() — manager, masking, impersonation, listener (issue #1517)', () => {
+    let repo: { create: jest.Mock; save: jest.Mock };
+    let svc: AuditService;
+
+    beforeEach(() => {
+      repo = { create: jest.fn((e: any) => e), save: jest.fn(async (e: any) => e) };
+      svc = new AuditService({ create: jest.fn(), save: jest.fn() } as any);
+      (getRequestActorId as jest.Mock).mockReturnValue(undefined);
+    });
+
+    it('writes through the caller\'s manager so the entry joins their transaction', async () => {
+      const manager = { getRepository: jest.fn().mockReturnValue(repo) };
+
+      await svc.log({ action: 'auth.register', entityType: 'user' }, manager as any);
+
+      expect(manager.getRepository).toHaveBeenCalledWith(AuditLog);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('masks password and token keys in nested snapshots', async () => {
+      const saved: any = await svc.log(
+        { action: 'x', entityType: 'user', after: { password: 'p', nested: { accessToken: 't' }, keep: 1 } },
+        { getRepository: () => repo } as any,
+      );
+
+      expect(saved.after).toEqual({ password: '[REDACTED]', nested: { accessToken: '[REDACTED]' }, keep: 1 });
+    });
+
+    it('adds impersonatedBy to a copy and never mutates the caller\'s event', async () => {
+      (getRequestActorId as jest.Mock).mockReturnValue('admin-1');
+      const event: AuditEvent = { action: 'x', entityType: 'user', after: { a: 1 } };
+
+      const saved: any = await svc.log(event, { getRepository: () => repo } as any);
+
+      expect(saved.after).toEqual({ a: 1, impersonatedBy: 'admin-1' });
+      expect(event.after).toEqual({ a: 1 });
+    });
+
+    it('lets log() reject for transactional callers', async () => {
+      repo.save.mockRejectedValue(new Error('insert failed'));
+
+      await expect(svc.log({ action: 'x', entityType: 'user' }, { getRepository: () => repo } as any)).rejects.toThrow(
+        'insert failed',
+      );
+    });
+
+    it('handleAuditEvent contains a failing insert instead of leaking an unhandled rejection', async () => {
+      const failing = new AuditService({
+        create: jest.fn((e: any) => e),
+        save: jest.fn().mockRejectedValue(new Error('db down')),
+      } as any);
+      const unhandled = jest.fn();
+      process.on('unhandledRejection', unhandled);
+
+      failing.handleAuditEvent({ action: 'kyc.reviewed', entityType: 'kyc' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      process.off('unhandledRejection', unhandled);
+      expect(unhandled).not.toHaveBeenCalled();
     });
   });
 });

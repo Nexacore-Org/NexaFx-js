@@ -14,7 +14,7 @@ function build() {
     recordFailedLogin: jest.fn(),
     resetLoginFailures: jest.fn(),
   };
-  const termsService = { accept: jest.fn(), ensureAccepted: jest.fn() };
+  const termsService = { accept: jest.fn(), ensureAccepted: jest.fn(), hasAcceptedCurrent: jest.fn().mockResolvedValue(true) };
   const jwtService = { sign: jest.fn().mockReturnValue('signed'), verify: jest.fn() };
   const auditService = { log: jest.fn() };
   const deactivationService = { isUserDeactivated: jest.fn().mockResolvedValue(false) };
@@ -72,7 +72,7 @@ describe('AuthService', () => {
 
       await expect(
         service.register({ email: 'a@b.c', password: 'secret', firstName: 'A', lastName: 'B' }),
-      ).resolves.toEqual({ accessToken: 'signed' });
+      ).resolves.toMatchObject({ accessToken: 'signed' });
       expect(termsService.accept).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u2' }));
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'auth.register', userId: 'u2' }),
@@ -119,7 +119,7 @@ describe('AuthService', () => {
 
       await expect(
         service.login({ email: 'user@example.com', password: 'secret123' }),
-      ).resolves.toEqual({ accessToken: 'signed' });
+      ).resolves.toMatchObject({ accessToken: 'signed' });
       expect(passwordService.hash).toHaveBeenCalledWith('secret123');
       expect(usersService.update).toHaveBeenCalledWith('user-1', { passwordHash: BCRYPT_HASH });
     });
@@ -278,7 +278,7 @@ describe('AuthService', () => {
 
       await expect(
         service.login({ email: 'user@example.com', password: 'correct-pass' }),
-      ).resolves.toEqual({ accessToken: 'signed' });
+      ).resolves.toMatchObject({ accessToken: 'signed' });
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'auth.login', userId: 'user-1' }),
       );
