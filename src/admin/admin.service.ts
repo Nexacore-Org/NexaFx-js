@@ -1,3 +1,4 @@
+import { AuditAction } from '../modules/admin-audit/audit-actions';
 import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { ApprovalService } from '../multi-signature-approval/approval.service';
 import { ApprovalActionType } from '../multi-signature-approval/dto/approval.dto';
@@ -53,6 +54,17 @@ export class AdminService implements OnModuleInit {
       (data, approvedBy, manager) =>
         this.updateUserStatus(data.targetUserId, data.isActive, approvedBy, data.reason, manager),
     );
+  }
+
+  /** Who viewed which customer's identity document, and which file (issue #1533). */
+  async recordKycFileView(adminUserId: string, ownerUserId: string, version: string, filename: string) {
+    await this.auditService.log({
+      userId: adminUserId,
+      action: AuditAction.ADMIN_KYC_FILE_VIEWED,
+      entityType: 'kyc_document',
+      entityId: ownerUserId,
+      after: { ownerUserId, version, filename },
+    });
   }
 
   async getStats(): Promise<AdminStats> {

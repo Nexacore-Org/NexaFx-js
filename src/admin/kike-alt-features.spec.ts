@@ -1,7 +1,6 @@
 import { AdminService } from '../admin/admin.service';
 import { AdminAlertService } from '../admin/admin-alert.service';
 import { CurrenciesService } from '../currencies/currencies.service';
-import { UsersService } from '../users/users.service';
 
 describe('kike-alt Features (Issues #980, #979, #978, #977)', () => {
   it('AdminService performs platform-wide search across users and transactions', async () => {
@@ -34,14 +33,5 @@ describe('kike-alt Features (Issues #980, #979, #978, #977)', () => {
 
     expect(result.convertedAmount).toBe(99.9);
     expect(result.fee).toBe(0.1);
-  });
-
-  it('UsersService supports GDPR data portability package generation', async () => {
-    const mockUsersRepo = { findOne: jest.fn().mockResolvedValue({ id: 'u-123', email: 'user@example.com' }) };
-    const service = new UsersService(mockUsersRepo as any, {} as any, {} as any);
-
-    const data = await service.exportUserData('u-123');
-    expect(data.exportId).toBeDefined();
-    expect(data.userData.exportedSections).toContain('profile');
   });
 });

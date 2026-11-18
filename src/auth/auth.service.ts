@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
 import { createHash } from 'crypto';
+import { AuditAction } from '../modules/admin-audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
 import { TermsAcceptanceService } from '../terms/terms-acceptance.service';
 import { UsersService } from '../users/users.service';
@@ -132,8 +133,12 @@ export class AuthService {
       LOCKOUT_MINUTES,
     );
 
-    // Notify only on the attempt that crossed the threshold.
-    if (result.failedLoginAttempts === MAX_FAILED_ATTEMPTS && result.lockedUntil) {
+    // Notify whenever this attempt *newly* set a lock, so the second and later lockouts alert the
+    // owner and the admins too (issue #1534). `newlyLocked` is computed from the stored lock time;
+    // the count comparison is the fallback for callers that do not provide it.
+    const lockedNow =
+      result.newlyLocked ?? (result.failedLoginAttempts === MAX_FAILED_ATTEMPTS && !!result.lockedUntil);
+    if (lockedNow) {
       try {
         await this.mailService?.sendAccountLockedEmail({
           to: user.email,
@@ -286,6 +291,12 @@ export class AuthService {
     } else if (sid) {
       await this.refreshTokens.revokeToken(userId, sid);
     }
+    await this.auditService.log({
+      userId,
+      action: AuditAction.LOGOUT,
+      entityType: 'session',
+      entityId: sid,
+    });
   }
 
   private issueToken(userId: string, email: string, role: string, tokenVersion = 0) {

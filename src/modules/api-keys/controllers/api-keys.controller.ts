@@ -10,6 +10,8 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { AuditService } from '../../../audit/audit.service';
+import { AuditAction } from '../../admin-audit/audit-actions';
 import { ApiKeysService, toApiKeyView } from '../services/api-keys.service';
 import { ApiKeyAllowed } from '../api-key-scopes';
 import { CreateApiKeyDto } from '../dto/create-api-key.dto';
@@ -20,7 +22,10 @@ import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 @Controller('api-keys')
 @UseGuards(JwtAuthGuard)
 export class ApiKeysController {
-  constructor(private readonly apiKeysService: ApiKeysService) {}
+  constructor(
+    private readonly apiKeysService: ApiKeysService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new API key' })
@@ -31,6 +36,13 @@ export class ApiKeysController {
       scopes: dto.scopes,
       rateLimit: dto.rateLimit,
       expiresAt: dto.expiresAt,
+    });
+    await this.audit.log({
+      userId,
+      action: AuditAction.API_KEY_CREATED,
+      entityType: 'api_key',
+      entityId: apiKey.id,
+      after: { name: apiKey.name, scopes: apiKey.scopes, rateLimit: apiKey.rateLimit, expiresAt: apiKey.expiresAt },
     });
     return {
       success: true,
@@ -69,6 +81,12 @@ export class ApiKeysController {
   async revoke(@Param('id', new ParseUUIDPipe()) id: string, @Request() req: any) {
     const userId = req.user?.id || req.user?.sub;
     const key = await this.apiKeysService.revokeApiKey(id, userId);
+    await this.audit.log({
+      userId,
+      action: AuditAction.API_KEY_REVOKED,
+      entityType: 'api_key',
+      entityId: id,
+    });
     return { success: true, data: toApiKeyView(key) };
   }
 }

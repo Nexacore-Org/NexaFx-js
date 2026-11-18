@@ -13,6 +13,8 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '../../modules/admin-audit/audit-actions';
 import { Queue } from 'bull';
 import { Response } from 'express';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -32,12 +34,14 @@ export class AdminExportsController {
     @InjectQueue('admin-exports')
     private readonly exportsQueue: Queue | undefined,
     private readonly storage: ExportStorageService,
+    private readonly audit: AuditService,
   ) {}
 
   @Post('transactions')
   async createExport(
     @Body() dto: ExportTransactionsDto,
     @CurrentUser('email') requestedByEmail: string,
+    @CurrentUser('id') requestedBy: string,
   ) {
     assertExportWindow(dto.from, dto.to);
 
@@ -51,16 +55,33 @@ export class AdminExportsController {
       ? await this.exportsQueue.add('export-transactions', {
           ...dto,
           requestedByEmail,
+          // Lets getStatus/download be restricted to whoever asked for the export (issue #1533).
+          requestedBy,
         })
       : { id: 'export-queued' };
+
+    await this.audit.log({
+      userId: requestedBy,
+      action: AuditAction.ADMIN_EXPORT_CREATED,
+      entityType: 'export',
+      entityId: String(job.id),
+      after: { from: dto.from, to: dto.to, status: dto.status, currency: dto.currency, format: dto.format },
+    });
 
     return { jobId: job.id, status: 'queued' };
   }
 
   @Get(':jobId')
-  async getStatus(@Param('jobId') jobId: string) {
+  async getStatus(
+    @Param('jobId') jobId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+  ) {
     const job = await this.exportsQueue?.getJob(jobId);
-    if (!job) {
+    // Any admin could previously read any job by id. Only the requester (or the compliance role)
+    // may see it; everyone else gets the same 404 as for an unknown job.
+    const requestedBy = (job?.data as { requestedBy?: string } | undefined)?.requestedBy;
+    if (!job || (role !== Role.COMPLIANCE && requestedBy !== userId)) {
       throw new NotFoundException('Export job not found');
     }
 
@@ -75,9 +96,10 @@ export class AdminExportsController {
   }
 
   @Get(':jobId/download')
-  download(
+  async download(
     @Param('jobId') jobId: string,
     @Query('token') token: string,
+    @CurrentUser('id') userId: string,
     @Res() res: Response,
   ) {
     const filePath = this.storage.resolve(jobId, token);
@@ -85,6 +107,12 @@ export class AdminExportsController {
       // The link was valid but the file has been cleaned up (or never existed).
       throw new GoneException('This export has expired; request a new one');
     }
+    await this.audit.log({
+      userId,
+      action: AuditAction.ADMIN_EXPORT_DOWNLOADED,
+      entityType: 'export',
+      entityId: jobId,
+    });
     res.download(filePath);
   }
 }
