@@ -437,6 +437,12 @@ export const envSchema = z.object({
   // ============================================
   // CORS / Public URLs
   // ============================================
+  // Key for the keyed hash used to detect duplicate KYC document numbers (issue #1535). When unset a
+  // key is derived from the primary wallet key, which then cannot be rotated without re-hashing.
+  KYC_DOCUMENT_HASH_KEY: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.length >= 32, 'KYC_DOCUMENT_HASH_KEY must be at least 32 characters when set'),
   ALLOWED_ORIGINS: z.string().optional().default(''),
   APP_URL: z.string().optional(),
 

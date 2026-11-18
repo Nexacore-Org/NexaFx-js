@@ -6,16 +6,7 @@ import { UsersService } from '../../users/users.service';
 import { AuthenticatedUser } from '../authenticated-user.interface';
 import { TokenType } from '../token-types';
 import { AccountStatusService } from '../account-status.service';
-
-export interface JwtPayload {
-  sub: string;
-  email: string;
-  role: string;
-  isEmailVerified: boolean;
-  iat: number;
-  typ?: string;
-  sid?: string;
-}
+import { JwtPayload, buildPrincipal } from '../jwt-payload';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -46,22 +37,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       throw new UnauthorizedException('User no longer exists');
     }
-    if (this.accountStatus && !(await this.accountStatus.isAllowedToAuthenticate(payload.sub))) {
-      throw new UnauthorizedException('Account is not active');
-    }
-    if (
+    // Same account-status and password-change checks the global guard applies.
+    if (this.accountStatus) {
+      await this.accountStatus.assertTokenAccepted(payload);
+    } else if (
       user.passwordChangedAt &&
+      payload.iat !== undefined &&
       payload.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)
     ) {
       throw new UnauthorizedException('Token invalidated by password change');
     }
-    return {
-      id: payload.sub,
-      sub: payload.sub,
-      email: payload.email,
-      role: payload.role,
-      isEmailVerified: payload.isEmailVerified,
-      sid: payload.sid,
-    };
+    return buildPrincipal(payload);
   }
 }

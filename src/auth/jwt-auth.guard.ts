@@ -12,17 +12,7 @@ import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { AuthenticatedUser } from './authenticated-user.interface';
 import { TokenType } from './token-types';
 import { AccountStatusService } from './account-status.service';
-
-interface JwtPayload {
-  sub?: string;
-  typ?: string;
-  isEmailVerified?: boolean;
-  email?: string;
-  role?: string;
-  roles?: string[];
-  impersonation?: boolean;
-  act?: { sub?: string };
-}
+import { JwtPayload, buildPrincipal } from './jwt-payload';
 
 interface AuthenticatedRequest {
   headers: {
@@ -89,21 +79,7 @@ export class JwtAuthGuard implements CanActivate {
     let payload: JwtPayload;
     try {
       const secret = String(this.config.get('jwt.secret') ?? '');
-      const payload = this.jwtService.verify<JwtPayload>(token, { secret });
-      if (payload.typ !== TokenType.ACCESS || !payload.sub) {
-        throw new UnauthorizedException('Invalid authentication token');
-      }
-      request.user = {
-        id: payload.sub,
-        sub: payload.sub,
-        email: payload.email ?? '',
-        role: payload.role ?? '',
-        isEmailVerified: payload.isEmailVerified,
-        ...(payload.impersonation
-          ? { impersonation: true, actorId: payload.act?.sub }
-          : {}),
-      };
-      return true;
+      payload = this.jwtService.verify<JwtPayload>(token, { secret });
     } catch {
       throw new UnauthorizedException('Invalid authentication token');
     }
@@ -111,19 +87,14 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid authentication token');
     }
 
-    // A signed token is not enough: suspended, deactivated and deleted users
-    // lose access immediately even though their token has not expired.
-    if (this.accountStatus && !(await this.accountStatus.isAllowedToAuthenticate(payload.sub))) {
-      throw new UnauthorizedException('Account is not active');
+    // A signed token is not enough: suspended, deactivated and deleted users lose access
+    // immediately, and a token issued before a password change is refused (same shared check
+    // the passport strategy uses).
+    if (this.accountStatus) {
+      await this.accountStatus.assertTokenAccepted(payload);
     }
 
-    request.user = {
-      id: payload.sub,
-      sub: payload.sub,
-      email: payload.email ?? '',
-      role: payload.role ?? '',
-      isEmailVerified: payload.isEmailVerified,
-    };
+    request.user = buildPrincipal(payload);
     return true;
   }
 }

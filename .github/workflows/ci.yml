@@ -45,6 +45,9 @@ jobs:
       - name: Check AppModule imports resolve
         run: npm run check:app-module-imports
 
+      - name: Security guard tests
+        run: npm run test:security
+
       - name: Run Linter
         run: npm run lint || true
 

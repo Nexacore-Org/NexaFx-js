@@ -34,34 +34,34 @@ export class KycController {
 
   @Post('submit')
   @HttpCode(HttpStatus.CREATED)
-  submit(
+  async submit(
     @Req() req: AuthenticatedRequest,
     @Body() dto: SubmitKycRequestDto,
   ) {
     // A submission always belongs to the caller; a body-supplied userId is ignored.
-    return this.kycService.submit({ ...dto, userId: req.user?.sub ?? '' });
+    return this.kycService.toView(await this.kycService.submit({ ...dto, userId: req.user?.sub ?? '' }));
   }
 
   @Post(':id/appeal')
-  appeal(
+  async appeal(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() dto: AppealKycRequestDto,
   ) {
-    return this.kycService.appeal(id, dto.reason, req.user?.sub ?? '');
+    return this.kycService.toView(await this.kycService.appeal(id, dto.reason, req.user?.sub ?? ''));
   }
 
   // Admins and compliance officers may review; enforced by the global RolesGuard.
   @Roles(Role.ADMIN, Role.COMPLIANCE)
   @UseGuards(JwtAuthGuard, IpAllowlistGuard)
   @Patch(':id/review')
-  review(
+  async review(
     @Param('id') id: string,
     @Body() dto: ReviewKycRequestDto,
     @CurrentUser('id') reviewerId: string,
   ) {
     // The reviewer is the authenticated admin; a body-supplied identity is not accepted.
-    return this.kycService.review(id, { ...dto, reviewerId });
+    return this.kycService.toView(await this.kycService.review(id, { ...dto, reviewerId }));
   }
 
   @Get(':userId/expiry-status')

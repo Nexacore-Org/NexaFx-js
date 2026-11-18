@@ -8,6 +8,12 @@ export interface AuthenticatedUser {
   email: string;
   role: string;
   isEmailVerified?: boolean;
+  /** Token version claim (`tv`); `TokenVersionGuard` compares it with the user's current version. */
+  tokenVersion?: number;
+  /** How the principal authenticated. */
+  authMethod?: 'jwt' | 'api_key';
+  /** Id of the refresh-token session the access token belongs to (JWT `sid`). */
+  sid?: string;
   /** True for a short-lived admin impersonation session (read-only). */
   impersonation?: boolean;
   /** The real admin behind an impersonation session (RFC 8693 `act.sub`). */

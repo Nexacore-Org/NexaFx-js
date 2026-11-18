@@ -69,6 +69,8 @@ import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 // in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { TokenVersionGuard } from './auth/token-version.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
 import { EndpointRateLimitModule } from './modules/endpoint-rate-limit/endpoint-rate-limit.module';
@@ -300,9 +302,19 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
+    // Order matters: authenticate, then token version, then the read-only impersonation rule, then
+    // role checks (issue #1537). RolesGuard and TokenVersionGuard had dropped out of this list.
+    {
+      provide: APP_GUARD,
+      useClass: TokenVersionGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: ImpersonationGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
     {
       provide: APP_GUARD,
