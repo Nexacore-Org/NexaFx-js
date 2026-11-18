@@ -12,6 +12,7 @@ import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { AuthenticatedUser } from './authenticated-user.interface';
 import { TokenType } from './token-types';
 import { AccountStatusService } from './account-status.service';
+import { RefreshTokensService } from '../tokens/refresh-tokens.service';
 
 interface JwtPayload {
   sub?: string;
@@ -22,6 +23,8 @@ interface JwtPayload {
   roles?: string[];
   impersonation?: boolean;
   act?: { sub?: string };
+  /** Refresh-token session this access token belongs to. */
+  sid?: string;
 }
 
 interface AuthenticatedRequest {
@@ -38,6 +41,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly config: ConfigService,
     private readonly reflector: Reflector,
     @Optional() private readonly accountStatus?: AccountStatusService,
+    @Optional() private readonly refreshTokens?: RefreshTokensService,
   ) {}
 
   private getRequest(context: ExecutionContext): AuthenticatedRequest {
@@ -89,21 +93,7 @@ export class JwtAuthGuard implements CanActivate {
     let payload: JwtPayload;
     try {
       const secret = String(this.config.get('jwt.secret') ?? '');
-      const payload = this.jwtService.verify<JwtPayload>(token, { secret });
-      if (payload.typ !== TokenType.ACCESS || !payload.sub) {
-        throw new UnauthorizedException('Invalid authentication token');
-      }
-      request.user = {
-        id: payload.sub,
-        sub: payload.sub,
-        email: payload.email ?? '',
-        role: payload.role ?? '',
-        isEmailVerified: payload.isEmailVerified,
-        ...(payload.impersonation
-          ? { impersonation: true, actorId: payload.act?.sub }
-          : {}),
-      };
-      return true;
+      payload = this.jwtService.verify<JwtPayload>(token, { secret });
     } catch {
       throw new UnauthorizedException('Invalid authentication token');
     }
@@ -117,12 +107,22 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Account is not active');
     }
 
+    // "Log out" and "revoke this device" must end the session now, not when the (up to one hour)
+    // access token expires: the token names its session (`sid`), which must still be active.
+    if (payload.sid && this.refreshTokens && !(await this.refreshTokens.isSessionActive(payload.sub, payload.sid))) {
+      throw new UnauthorizedException('Session has been revoked');
+    }
+
     request.user = {
       id: payload.sub,
       sub: payload.sub,
       email: payload.email ?? '',
       role: payload.role ?? '',
       isEmailVerified: payload.isEmailVerified,
+      ...(payload.sid ? { sid: payload.sid } : {}),
+      ...(payload.impersonation
+        ? { impersonation: true, actorId: payload.act?.sub }
+        : {}),
     };
     return true;
   }

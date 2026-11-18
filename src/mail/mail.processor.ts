@@ -4,6 +4,11 @@ import { Job } from 'bull';
 import { EMAIL_JOB_NAMES, QUEUE_NAMES } from '../queues/queue.constants';
 import { MailService } from './mail.service';
 
+export interface PasswordResetJobData {
+  to: string;
+  resetUrl: string;
+}
+
 export interface SendEmailJobData {
   to: string;
   subject: string;
@@ -35,6 +40,16 @@ export class MailProcessor {
       subject,
       body: html ?? text ?? '',
     });
+  }
+
+  /** Password reset links are sent here so the request path never waits on SMTP (issue #1527). */
+  @Process(EMAIL_JOB_NAMES.PASSWORD_RESET)
+  async handlePasswordReset(job: Job<PasswordResetJobData>): Promise<void> {
+    const { to, resetUrl } = job.data;
+    if (!to || !resetUrl) {
+      throw new Error('Missing required password reset fields: to, resetUrl');
+    }
+    await this.mailService.sendPasswordResetLink(to, resetUrl);
   }
 
   @OnQueueFailed()

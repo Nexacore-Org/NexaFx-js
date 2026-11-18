@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository, LessThan, MoreThan } from 'typeorm';
 import * as crypto from 'crypto';
 import { PasswordResetToken } from './password-reset.entity';
 
@@ -20,6 +20,23 @@ export class PasswordResetService {
     @InjectRepository(PasswordResetToken)
     private readonly tokenRepo: Repository<PasswordResetToken>,
   ) {}
+
+  /**
+   * True when the user already has an unused, unexpired token issued within `windowMs`.
+   * `forgotPassword` then keeps that link instead of replacing it, so repeated requests
+   * cannot keep invalidating the link the owner is trying to use (issue #1527).
+   */
+  async hasRecentActiveToken(userId: string, windowMs: number): Promise<boolean> {
+    const count = await this.tokenRepo.count({
+      where: {
+        userId,
+        used: false,
+        expiresAt: MoreThan(new Date()),
+        createdAt: MoreThan(new Date(Date.now() - windowMs)),
+      },
+    });
+    return count > 0;
+  }
 
   /** Generate a reset token for the given userId and return the raw token. */
   async createResetToken(userId: string): Promise<string> {

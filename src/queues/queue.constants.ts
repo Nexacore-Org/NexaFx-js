@@ -8,6 +8,7 @@ export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
 export const EMAIL_JOB_NAMES = {
   SEND_EMAIL: 'send-email',
+  PASSWORD_RESET: 'password-reset',
 } as const;
 
 export const TRANSACTION_JOB_NAMES = {
