@@ -18,12 +18,17 @@ export enum RewardStatus {
 
 @Entity('referral_rewards')
 @Index(['referralId'])
+@Index(['referralId', 'recipientId'], { unique: true })
 export class ReferralReward {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
   @Column({ type: 'uuid' })
   referralId!: string;
+
+  /** Who receives this reward: the referrer or, optionally, the referee. */
+  @Column({ type: 'uuid' })
+  recipientId!: string;
 
   @Column({ type: 'simple-enum', enum: RewardType })
   rewardType!: RewardType;
