@@ -35,7 +35,7 @@ export class AuditService {
     }
 
     // Never persist secrets/PII into the (exportable) audit trail.
-    const entry = repo.create({
+    const entry = this.auditRepo.create({
       ...event,
       ...(event.before !== undefined && {
         before: maskBody(event.before, 0, AUDIT_MASK_DEPTH) as Record<string, unknown>,
