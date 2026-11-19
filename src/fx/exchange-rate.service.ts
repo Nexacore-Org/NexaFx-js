@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -6,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { isSupportedCurrency } from '../currencies/supported-currencies';
 
 export interface RateResult {
   base: string;
@@ -14,6 +16,7 @@ export interface RateResult {
   provider: string;
   fetchedAt: Date;
   ageMs: number;
+  stale?: boolean;
 }
 
 interface CacheEntry {
@@ -37,6 +40,16 @@ export class ExchangeRateService {
   }
 
   async getRate(base: string, target: string): Promise<RateResult> {
+    if (
+      typeof base !== 'string' ||
+      typeof target !== 'string' ||
+      !isSupportedCurrency(base.toUpperCase()) ||
+      !isSupportedCurrency(target.toUpperCase())
+    ) {
+      throw new BadRequestException('Unsupported currency code');
+    }
+    base = base.toUpperCase();
+    target = target.toUpperCase();
     const key = `${base.toUpperCase()}:${target.toUpperCase()}`;
     const cached = this.cache.get(key);
 
@@ -52,7 +65,8 @@ export class ExchangeRateService {
     }
 
     const result = await this.fetchWithFallback(base, target);
-    this.cache.set(key, result);
+    const isStale = this.cache.get(key) === result;
+    if (!isStale) this.cache.set(key, result);
 
     return {
       base,
@@ -60,7 +74,8 @@ export class ExchangeRateService {
       rate: result.rate,
       provider: result.provider,
       fetchedAt: result.fetchedAt,
-      ageMs: 0,
+      ageMs: Date.now() - result.fetchedAt.getTime(),
+      stale: isStale,
     };
   }
 
@@ -87,6 +102,13 @@ export class ExchangeRateService {
     const key = `${base.toUpperCase()}:${target.toUpperCase()}`;
     const cached = this.cache.get(key);
     if (cached) {
+      const maxStaleMs =
+        Number(process.env.FX_MAX_STALE_SECONDS ?? 3600) * 1000;
+      if (Date.now() - cached.fetchedAt.getTime() > maxStaleMs) {
+        throw new ServiceUnavailableException(
+          'Exchange rate providers are unavailable and the cached rate is too old',
+        );
+      }
       this.logger.warn(
         `Both exchange rate providers failed; returning stale rate from cache for ${key}`,
       );
@@ -103,12 +125,16 @@ export class ExchangeRateService {
     target: string,
   ): Promise<CacheEntry> {
     const apiKey = this.config.get<string>('fx.openExchangeRatesApiKey');
-    const url = `https://openexchangerates.org/api/latest.json?app_id=${apiKey}&base=${base}&symbols=${target}`;
+    const url = `https://openexchangerates.org/api/latest.json?${new URLSearchParams({
+      app_id: String(apiKey),
+      base,
+      symbols: target,
+    })}`;
     const res = await firstValueFrom(
-      this.http.get<{ rates: Record<string, number> }>(url),
+      this.http.get<{ rates: Record<string, number> }>(url, { timeout: 4000, maxRedirects: 0 }),
     );
     const rate = res.data.rates[target.toUpperCase()];
-    if (!rate) throw new Error(`Rate not found for ${target}`);
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error(`Rate not found for ${target}`);
     return { rate, provider: 'openexchangerates', fetchedAt: new Date() };
   }
 
@@ -117,13 +143,17 @@ export class ExchangeRateService {
     target: string,
   ): Promise<CacheEntry> {
     const apiKey = this.config.get<string>('fx.exchangeRateHostApiKey');
-    const url = `https://api.exchangerate.host/live?access_key=${apiKey}&source=${base}&currencies=${target}`;
+    const url = `https://api.exchangerate.host/live?${new URLSearchParams({
+      access_key: String(apiKey),
+      source: base,
+      currencies: target,
+    })}`;
     const res = await firstValueFrom(
-      this.http.get<{ quotes: Record<string, number> }>(url),
+      this.http.get<{ quotes: Record<string, number> }>(url, { timeout: 4000, maxRedirects: 0 }),
     );
     const rateKey = `${base.toUpperCase()}${target.toUpperCase()}`;
     const rate = res.data.quotes?.[rateKey];
-    if (!rate) throw new Error(`Rate not found for ${target}`);
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error(`Rate not found for ${target}`);
     return { rate, provider: 'exchangeratehost', fetchedAt: new Date() };
   }
 }
