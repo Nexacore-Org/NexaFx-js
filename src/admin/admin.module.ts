@@ -8,6 +8,7 @@ import { AdminCacheInvalidationService } from './admin-cache-invalidation.servic
 import { AdminAlertService } from './admin-alert.service';
 import { KeyRotationService } from './key-rotation.service';
 import { AdminExportsController } from './exports/admin-exports.controller';
+import { AuditExportController } from './audit-export.controller';
 import { AdminExportsProcessor } from './exports/admin-exports.processor';
 import { ExportStorageService } from './exports/export-storage.service';
 import { SystemAdminController } from '../modules/admin/controllers/system-admin.controller';
@@ -45,7 +46,7 @@ import { TransactionApprovalModule } from '../multi-signature-approval/multi-sig
     SharedJwtModule,
     TransactionApprovalModule,
   ],
-  controllers: [AdminController, SystemAdminController, AdminExportsController],
+  controllers: [AdminController, SystemAdminController, AdminExportsController, AuditExportController],
   providers: [
     AdminService,
     AdminCacheInvalidationService,
