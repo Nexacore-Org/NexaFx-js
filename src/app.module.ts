@@ -72,7 +72,8 @@ import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 // in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
-import { ObservabilityModule } from './observability/observability.module';
+import { LocksModule } from './common/locks/locks.module';
+import { buildPinoHttpOptions } from './config/logger.config';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
 import { EndpointRateLimitModule } from './modules/endpoint-rate-limit/endpoint-rate-limit.module';
@@ -130,15 +131,8 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
   imports: [
     ObservabilityModule,
     ConfigModule,
-    LoggerModule.forRoot({
-      pinoHttp: {
-        level: process.env.LOG_LEVEL || 'info',
-        transport:
-          process.env.NODE_ENV !== 'production'
-            ? { target: 'pino-pretty', options: { singleLine: true } }
-            : undefined,
-      },
-    }),
+    LocksModule,
+    LoggerModule.forRoot({ pinoHttp: buildPinoHttpOptions() }),
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],

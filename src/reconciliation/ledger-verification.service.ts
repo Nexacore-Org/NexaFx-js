@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cron } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import Big from 'big.js';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { WalletBalanceEntity } from '../wallet/wallet-balance.entity';
@@ -24,7 +24,7 @@ export class LedgerVerificationService {
     private readonly auditService: AuditService,
   ) {}
 
-  @Cron('0 4 * * *')
+  @ClusterCron('0 4 * * *', 'reconciliation:ledger-verification', { ttlMs: 60 * 60 * 1000 })
   async verify(): Promise<LedgerVerificationResult> {
     this.logger.log('Starting nightly ledger verification');
     const wallets = await this.walletRepo.find();
