@@ -9,4 +9,11 @@ export class AuthTokenResponseDto {
 
   @ApiPropertyOptional({ description: 'When the refresh token expires.' })
   refreshTokenExpiresAt?: Date;
+
+  @ApiProperty({
+    enum: ['accept_terms'],
+    nullable: true,
+    description: 'Set when the user must accept the current terms; money-moving flows enforce it.',
+  })
+  requiresAction!: 'accept_terms' | null;
 }

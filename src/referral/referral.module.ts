@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Referral } from './referral.entity';
+import { ReferralCode } from './referral-code.entity';
 import { ReferralReward } from './referral-reward.entity';
 import { ReferralService } from './referral.service';
 import { ReferralController } from './referral.controller';
@@ -9,7 +10,7 @@ import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Referral, ReferralReward]),
+    TypeOrmModule.forFeature([Referral, ReferralCode, ReferralReward]),
     WalletsModule,
     UsersModule,
   ],

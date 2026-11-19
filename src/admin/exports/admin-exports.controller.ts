@@ -1,3 +1,4 @@
+import { getCorrelationId } from '../../common/middleware/correlation-id.storage';
 import { InjectQueue } from '@nestjs/bull';
 import {
   BadRequestException,
@@ -57,6 +58,7 @@ export class AdminExportsController {
           requestedByEmail,
           // Lets getStatus/download be restricted to whoever asked for the export (issue #1533).
           requestedBy,
+          correlationId: getCorrelationId(),
         })
       : { id: 'export-queued' };
 

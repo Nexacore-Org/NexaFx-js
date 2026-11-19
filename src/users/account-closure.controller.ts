@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
 import { AccountClosureService } from './account-closure.service';
@@ -17,6 +18,8 @@ export class AccountClosureController {
     private readonly dataExport: UserDataExportService,
   ) {}
 
+  // Irreversible and password-gated: 3 attempts per 15 minutes per client (issue #1530).
+  @Throttle({ default: { limit: 3, ttl: 900_000 } })
   @Post('close-account')
   async closeAccount(
     @CurrentUser('id') userId: string,

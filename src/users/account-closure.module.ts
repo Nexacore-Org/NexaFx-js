@@ -15,6 +15,10 @@ import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User]), WalletsModule, TokensModule, AuditModule, SharedJwtModule, MailModule],
+import { UsersModule } from './users.module';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([User]), WalletsModule, TokensModule, AuditModule, UsersModule],
   controllers: [AccountClosureController],
   providers: [UserDataExportService, AccountClosureService, AccountClosureMailer, AccountClosurePurgeJob, PasswordService],
   exports: [AccountClosureService],

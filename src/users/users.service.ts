@@ -79,7 +79,9 @@ export class UsersService {
     // must not be able to create a mixed-case duplicate either.
     const email = normalizeEmail(dto.email) as string;
 
-    const existing = await repo.findOne({ where: { email } });
+    // withDeleted: a closed (soft-deleted) account still owns the unique email, so re-registering
+    // must be a clear 409 rather than a raw unique-index 500 (issue #1530).
+    const existing = await repo.findOne({ where: { email }, withDeleted: true });
     if (existing) throw new ConflictException('Email already in use');
 
     const user = repo.create({ ...dto, email, role: dto.role ?? UserRole.USER });
@@ -166,11 +168,23 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
-  async updatePassword(id: string, newPasswordHash: string): Promise<void> {
-    const user = await this.findById(id);
+  /**
+   * Set a new password. Also clears any lockout (the owner just proved control of the
+   * account) and bumps `tokenVersion` so access tokens issued before the change stop
+   * working (issue #1526). Pass `manager` to run inside the caller's transaction.
+   */
+  async updatePassword(id: string, newPasswordHash: string, manager?: EntityManager): Promise<void> {
+    const repo = manager ? manager.getRepository(User) : this.usersRepository;
+    const user = await repo.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
     user.passwordHash = newPasswordHash;
     user.passwordChangedAt = new Date();
-    await this.usersRepository.save(user);
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await repo.save(user);
   }
 
   sanitize(user: User): Omit<User, 'passwordHash'> {

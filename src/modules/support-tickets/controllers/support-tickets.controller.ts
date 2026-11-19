@@ -21,6 +21,7 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
+import { AdminRoleGuard } from '../../../common/guards/admin-role.guard';
 import { SupportTicketsService } from '../services/support-tickets.service';
 import { CreateSupportTicketDto } from '../dto/create-support-ticket.dto';
 import { ListSupportTicketsDto } from '../dto/list-support-tickets.dto';
@@ -61,12 +62,22 @@ export class SupportTicketsController {
   }
 
   @Patch(':id/assign')
+  @UseGuards(AdminRoleGuard)
   @ApiOperation({ summary: 'Assign a support ticket to an agent' })
   @ApiParam({ name: 'id', description: 'Support ticket UUID' })
   @ApiOkResponse({ description: 'Ticket assigned' })
-  async assign(@Param('id') id: string, @Request() req: any, @Body(ValidationPipe) dto: AssignTicketDto) {
+  async assign(@Param('id') id: string, @Body(ValidationPipe) dto: AssignTicketDto) {
+    return this.supportTicketsService.assign(id, dto.assignedTo, dto.status);
+  }
+
+  /** Owners may close their own ticket; reassignment and other statuses are staff-only. */
+  @Patch(':id/close')
+  @ApiOperation({ summary: 'Close your own support ticket' })
+  @ApiParam({ name: 'id', description: 'Support ticket UUID' })
+  @ApiOkResponse({ description: 'Ticket closed' })
+  async close(@Param('id') id: string, @Request() req: any) {
     const userId = req.user?.id ?? req.user?.sub;
-    return this.supportTicketsService.assign(id, dto.assignedTo, dto.status as any, userId);
+    return this.supportTicketsService.close(id, userId);
   }
 
   @Post(':id/messages')

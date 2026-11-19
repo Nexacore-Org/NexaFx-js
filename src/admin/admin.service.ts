@@ -1,9 +1,21 @@
 import { AuditAction } from '../modules/admin-audit/audit-actions';
 import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { JwtService } from '@nestjs/jwt';
 import { ApprovalService } from '../multi-signature-approval/approval.service';
 import { ApprovalActionType } from '../multi-signature-approval/dto/approval.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { EntityManager, ILike, Repository, Between } from 'typeorm';
+import { EntityManager, Repository, Between, Not } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
@@ -12,6 +24,13 @@ import { SupportTicketEntity } from '../modules/support-tickets/entities/support
 import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
 import { AuditService } from '../audit/audit.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { TokenType } from '../auth/token-types';
+import { TOKEN_VERSION_CHANGED_EVENT } from '../auth/token-version.service';
+import { USER_ACCESS_CHANGED_EVENT, UserAccessChangedEvent } from '../auth/account-status.service';
+import { CbnReportPeriod } from './dto/cbn-report-query.dto';
+
+const ADMIN_SEARCH_LIMIT = 10;
 
 export interface AdminStats {
   users: number;
@@ -40,6 +59,9 @@ export class AdminService implements OnModuleInit {
     private readonly alertsRepository: Repository<AmlAlert>,
     private readonly auditService: AuditService,
     @Optional() private readonly approvalService?: ApprovalService,
+    @Optional() private readonly events?: EventEmitter2,
+    @Optional() private readonly jwtService?: JwtService,
+    @Optional() private readonly rateService?: ExchangeRatesService,
   ) {}
 
   /** Tell the approval workflow how to run the actions this service owns. */
@@ -65,6 +87,34 @@ export class AdminService implements OnModuleInit {
       entityId: ownerUserId,
       after: { ownerUserId, version, filename },
     });
+  /** Four-eyes control for high-risk changes. Off unless ADMIN_DUAL_CONTROL=true. */
+  isDualControlEnabled(): boolean {
+    return process.env.ADMIN_DUAL_CONTROL === 'true';
+  }
+
+  /**
+   * Platform search for support staff: users by email or name, transactions by
+   * reference, hash or id. Each entity is capped so one query cannot dump a table.
+   */
+  async searchPlatform(query: string) {
+    const term = (query ?? '').trim();
+    const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term);
+
+    const [users, transactions] = await Promise.all([
+      this.usersRepository.find({
+        where: [{ email: ILike(pattern) }, { firstName: ILike(pattern) }, { lastName: ILike(pattern) }, ...(isUuid ? [{ id: term }] : [])],
+        select: ['id', 'email', 'firstName', 'lastName', 'role', 'isActive', 'kycStatus'],
+        take: ADMIN_SEARCH_LIMIT,
+      }),
+      this.transactionsRepository.find({
+        where: [{ reference: ILike(pattern) }, { txHash: term }, ...(isUuid ? [{ id: term }] : [])],
+        order: { createdAt: 'DESC' },
+        take: ADMIN_SEARCH_LIMIT,
+      }),
+    ]);
+
+    return { query: term, limit: ADMIN_SEARCH_LIMIT, results: { users, transactions } };
   }
 
   async getStats(): Promise<AdminStats> {
@@ -194,7 +244,7 @@ export class AdminService implements OnModuleInit {
     if (currency.toUpperCase() === 'USD') return 1;
     if (!this.rateService) return null;
     try {
-      const { rate } = await this.rateService.getRate(currency, 'USD');
+      const { rate } = await this.rateService.calculateConversion(currency, 'USD', 1);
       return Number.isFinite(rate) && rate > 0 ? rate : null;
     } catch {
       return null;
@@ -335,6 +385,12 @@ export class AdminService implements OnModuleInit {
     }
   }
 
+  /**
+   * Suspend or reactivate a user. Mirrors `updateUserRole`: runs in one transaction
+   * (or the approval workflow's `manager`), applies the self-change and last-admin
+   * guardrails, bumps `tokenVersion`, and announces the change so access tokens and
+   * refresh tokens stop working immediately when the user is suspended (issue #1518).
+   */
   async updateUserStatus(
     targetUserId: string,
     isActive: boolean,
@@ -342,15 +398,35 @@ export class AdminService implements OnModuleInit {
     reason?: string,
     manager?: EntityManager,
   ): Promise<User> {
-    const usersRepo = manager ? manager.getRepository(User) : this.usersRepository;
-    const user = await usersRepo.findOne({
-      where: { id: targetUserId },
-    });
+    const work = async (repo: Repository<User>) => {
+      const user = await repo.findOne({ where: { id: targetUserId } });
+      if (!user) {
+        throw new NotFoundException(`User ${targetUserId} not found`);
+      }
+      await this.assertPrivilegeChangeAllowed(repo, user, adminUserId, !isActive);
+
+      const snapshot = {
+        isActive: user.isActive,
+        role: user.role,
+        kycStatus: user.kycStatus,
+        email: user.email,
+      };
+      user.isActive = isActive;
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+      return { before: snapshot, updated: await repo.save(user) };
+    };
+
+    const { before, updated } = manager
+      ? await work(manager.getRepository(User))
+      : await this.inUserTransaction(work);
 
     this.events?.emit(TOKEN_VERSION_CHANGED_EVENT, { userId: targetUserId });
-
-    user.isActive = isActive;
-    const updated = await usersRepo.save(user);
+    const accessChanged: UserAccessChangedEvent = {
+      userId: targetUserId,
+      reason: isActive ? 'activated' : 'suspended',
+      revokeTokens: !isActive,
+    };
+    this.events?.emit(USER_ACCESS_CHANGED_EVENT, accessChanged);
 
     await this.auditService.log({
       userId: adminUserId,
@@ -418,32 +494,6 @@ export class AdminService implements OnModuleInit {
     return updated;
   }
 
-  private readonly spreadsMap = new Map<string, number>([
-    ['USD/NGN', 0.015],
-    ['USD/EUR', 0.005],
-  ]);
-
-  getSpreads() {
-    const result: Record<string, number> = {};
-    for (const [pair, spread] of this.spreadsMap.entries()) {
-      result[pair] = spread;
-    }
-    return result;
-  }
-
-  async updateSpread(pair: string, spreadPercentage: number, adminUserId: string) {
-    const upperPair = pair.toUpperCase();
-    this.spreadsMap.set(upperPair, spreadPercentage);
-    await this.auditService.log({
-      userId: adminUserId,
-      action: 'admin.spread.update',
-      entityType: 'exchange_rate_spread',
-      entityId: upperPair,
-      after: { pair: upperPair, spreadPercentage },
-    });
-    return { pair: upperPair, spreadPercentage };
-  }
-
   /** Lifetime of an impersonation session; there is no revoke endpoint, the TTL is the limit. */
   static readonly IMPERSONATION_TTL = '15m';
 
@@ -474,6 +524,8 @@ export class AdminService implements OnModuleInit {
         role: user.role,
         isEmailVerified: user.isEmailVerified,
         typ: TokenType.ACCESS,
+        // Without `tv` TokenVersionGuard would reject this token as stale.
+        tv: user.tokenVersion ?? 0,
         act: { sub: adminUserId },
         impersonation: true,
       },

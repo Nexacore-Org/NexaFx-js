@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { LessThanOrEqual, Repository } from 'typeorm';
 import {
   ScheduledReport,
@@ -45,7 +46,7 @@ export class ScheduledReportsService {
     return this.reportRepo.save(report);
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @ClusterCron(CronExpression.EVERY_MINUTE, 'scheduled-reports:process-due')
   async processDueReports(): Promise<void> {
     const now = new Date();
     const due = await this.reportRepo.find({

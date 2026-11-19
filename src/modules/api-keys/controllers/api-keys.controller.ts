@@ -8,12 +8,13 @@ import {
   UseGuards,
   Request,
   ParseUUIDPipe,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuditService } from '../../../audit/audit.service';
 import { AuditAction } from '../../admin-audit/audit-actions';
 import { ApiKeysService, toApiKeyView } from '../services/api-keys.service';
-import { ApiKeyAllowed } from '../api-key-scopes';
+import { ApiKeyAllowed, ApiKeyScope } from '../api-key-scopes';
 import { CreateApiKeyDto } from '../dto/create-api-key.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 
@@ -31,6 +32,11 @@ export class ApiKeysController {
   @ApiOperation({ summary: 'Create a new API key' })
   async create(@Body() dto: CreateApiKeyDto, @Request() req: any) {
     const userId = req.user?.id || req.user?.sub;
+    // Keys act as role `user` regardless, but privileged accounts should not mint money-moving keys at all.
+    const privileged = req.user?.role === 'admin' || req.user?.role === 'compliance';
+    if (privileged && dto.scopes?.includes(ApiKeyScope.WRITE_TRANSFERS)) {
+      throw new ForbiddenException('Admin and compliance accounts cannot create API keys with write scopes');
+    }
     const { apiKey, plainKey } = await this.apiKeysService.createApiKey(userId, {
       name: dto.name,
       scopes: dto.scopes,

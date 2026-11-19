@@ -1,5 +1,9 @@
 # Database Index Strategy
 
+Every index named here exists in an entity `@Index(...)` **and** in a migration; `src/database/index-docs.spec.ts`
+fails if a Transaction or AuditLog row below stops being true. New indexes are created with
+`CREATE INDEX CONCURRENTLY IF NOT EXISTS` in a migration with `transaction = false`.
+
 ## Transaction
 
 | Index | Columns | Rationale |
@@ -20,8 +24,10 @@
 | Index | Columns | Rationale |
 |-------|---------|-----------|
 | Unique composite | `(accountId, currency)` | Every balance lookup — one row per account+currency |
-| Single | `isPrimary` | Primary wallet lookup for user accounts |
-| Single | `keyVersion` | KMS key version tracking for encrypted balances |
+
+> `isPrimary` and `keyVersion` are **not** indexed: both are low-cardinality columns that are only read after the
+> `(accountId, currency)` lookup (or scanned in full by the key-rotation job, where an index would not help). The earlier
+> version of this document listed them, but no entity or migration ever created them (issue #1544).
 
 ## AuditLog
 

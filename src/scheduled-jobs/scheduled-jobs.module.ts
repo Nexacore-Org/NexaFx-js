@@ -8,6 +8,7 @@ import { PasswordResetToken } from '../auth/password-reset.entity';
 import { ScheduledJobsService } from './scheduled-jobs.service';
 import { WalletsModule } from '../wallet/wallets.module';
 import { AuditModule } from '../audit/audit.module';
+import { TokensModule } from '../tokens/tokens.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AuditModule } from '../audit/audit.module';
     TypeOrmModule.forFeature([Transaction, Otp, PasswordResetToken]),
     WalletsModule,
     AuditModule,
+    TokensModule,
   ],
   providers: [ScheduledJobsService],
   exports: [ScheduledJobsService],

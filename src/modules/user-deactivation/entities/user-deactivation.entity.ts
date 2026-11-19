@@ -8,6 +8,8 @@ import {
 
 @Entity('user_deactivations')
 @Index('idx_user_deactivations_user_id', ['userId'])
+// Partial unique index (migration AddActiveUserDeactivationUniqueIndex1753200000001):
+// at most one active deactivation per user.
 export class UserDeactivationEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
