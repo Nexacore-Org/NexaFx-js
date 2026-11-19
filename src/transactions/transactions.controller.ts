@@ -7,6 +7,7 @@ import {
   Body,
   Query,
   Param,
+  ParseUUIDPipe,
   Ip,
   Headers,
   HttpCode,
@@ -18,20 +19,25 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { Observable } from 'rxjs';
-import { map, filter } from 'rxjs/operators';
+import { map } from 'rxjs/operators';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   TransactionsService,
-  TransferDto,
   ReverseTransactionDto,
   TransactionFilters,
-  DepositDto,
-  WithdrawalDto,
-  SwapDto,
-  SwapPreviewDto,
 } from './transactions.service';
 import { TransactionStatus } from './transaction.entity';
-import { CreateInternalTransferDto } from './dto/money.dto';
+import {
+  CreateDepositDto,
+  CreateInternalTransferDto,
+  CreateSwapDto,
+  CreateTransferDto,
+  CreateWithdrawalDto,
+} from './dto/money.dto';
+import { ConfirmDepositDto } from './dto/confirm-deposit.dto';
+import { UpdateTagsDto } from './dto/update-tags.dto';
+import { AddCommentDto } from './dto/add-comment.dto';
+import { SimulateTransactionDto } from './dto/simulate-transaction.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
@@ -62,51 +68,92 @@ export class TransactionsController {
   transfer(@Body() dto: any, @CurrentUser('sub') userId: string) {
     const dtoWithSender = { ...(dto as any), senderId: userId };
     return this.txService.transfer(dtoWithSender);
+  // Idempotent() + IdempotencyGuard make the Idempotency-Key header mandatory, which also
+  // covers API-key callers (an automated client that retries must not double-send).
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
+  transfer(@Body() dto: CreateTransferDto, @CurrentUser('sub') userId: string) {
+    // Rebuild the service input from validated fields: client-supplied
+    // senderId/ipAddress/userAgent can never replace the JWT-derived identity.
+    return this.txService.transfer({
+      senderId: userId,
+      receiverId: dto.receiverId,
+      amount: dto.amount,
+      currency: dto.currency,
+      reference: dto.reference as string,
+      metadata: dto.metadata,
+    });
   }
 
   @Post('deposit')
   @HttpCode(HttpStatus.CREATED)
   @IdempotentRoute()
   deposit(
-    @Body() dto: any,
+    @Body() dto: CreateDepositDto,
     @CurrentUser('sub') userId: string,
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string,
   ) {
-    return this.txService.createDeposit({ ...(dto as any), userId, ipAddress: ip, userAgent });
+    return this.txService.createDeposit({
+      userId,
+      amount: dto.amount,
+      currency: dto.currency,
+      reference: dto.reference as string,
+      metadata: dto.metadata,
+      ipAddress: ip,
+      userAgent,
+    });
   }
 
   @Post('deposit/:id/confirm')
   @HttpCode(HttpStatus.OK)
   @IdempotentRoute()
   confirmDeposit(
-    @Param('id') id: string,
-    @Body() body: { txHash?: string },
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: ConfirmDepositDto,
     @CurrentUser('sub') userId: string,
   ) {
-    return this.txService.confirmDeposit(userId, id, body?.txHash ?? '');
+    return this.txService.confirmDeposit(userId, id, body.txHash ?? '');
   }
 
   @Post('withdrawal')
   @HttpCode(HttpStatus.CREATED)
   @IdempotentRoute()
   withdrawal(
-    @Body() dto: any,
+    @Body() dto: CreateWithdrawalDto,
     @CurrentUser('sub') userId: string,
   ) {
-    return this.txService.createWithdrawal({ ...(dto as any), userId });
+    return this.txService.createWithdrawal({
+      userId,
+      amount: dto.amount,
+      currency: dto.currency,
+      destinationAddress: dto.destinationAddress,
+      reference: dto.reference as string,
+      metadata: dto.metadata,
+    });
   }
 
   @Post('swap')
   @HttpCode(HttpStatus.CREATED)
   @IdempotentRoute()
   swap(
-    @Body() dto: any,
+    @Body() dto: CreateSwapDto,
     @CurrentUser('sub') userId: string,
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string,
   ) {
-    return this.txService.createSwap({ ...(dto as any), userId, ipAddress: ip, userAgent });
+    return this.txService.createSwap({
+      userId,
+      fromAmount: dto.fromAmount,
+      fromCurrency: dto.fromCurrency,
+      toAmount: dto.toAmount as number,
+      toCurrency: dto.toCurrency,
+      reference: dto.reference as string,
+      metadata: dto.metadata,
+      ipAddress: ip,
+      userAgent,
+    });
   }
 
   @Get('swap/preview')
@@ -164,7 +211,10 @@ export class TransactionsController {
   }
 
   @Get(':id/comments')
-  getComments(@Param('id') id: string, @CurrentUser('sub') userId: string) {
+  getComments(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser('sub') userId: string,
+  ) {
     return this.txService.findByIdForUser(id, userId).then(() => this.txService.getComments(id));
   }
 
@@ -184,12 +234,15 @@ export class TransactionsController {
   }
 
   @Post('simulate')
-  simulateTransaction(@Body() dto: { type: string; amount: number; fromCurrency: string; toCurrency?: string }) {
+  simulateTransaction(@Body() dto: SimulateTransactionDto) {
     return this.txService.simulateTransaction(dto);
   }
 
   @Sse(':id/status/stream')
-  subscribeToTransactionStatus(@Param('id') id: string, @CurrentUser('sub') userId: string): Observable<MessageEvent> {
+  subscribeToTransactionStatus(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser('sub') userId: string,
+  ): Observable<MessageEvent> {
     // Scope check via service
     this.txService.findByIdForUser(id, userId).catch(() => {
       // Let stream fail silently by emitting error? But SSE behavior - just ensure it exists for user
@@ -227,14 +280,17 @@ export class TransactionsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @CurrentUser('sub') userId: string) {
+  findOne(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser('sub') userId: string,
+  ) {
     return this.txService.findByIdForUser(id, userId);
   }
 
   @Patch(':id/tags')
   updateTags(
-    @Param('id') id: string,
-    @Body() body: { tag?: string; tags?: string[] },
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: UpdateTagsDto,
     @Req() request: AuthenticatedRequest,
   ) {
     return this.txService.updateTags(id, request.user?.sub ?? '', body.tag, body.tags);
@@ -242,7 +298,10 @@ export class TransactionsController {
 
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
-  cancel(@Param('id') id: string, @CurrentUser('sub') userId: string) {
+  cancel(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser('sub') userId: string,
+  ) {
     return this.txService.findByIdForUser(id, userId).then(() => this.txService.cancelTransaction(id));
   }
 
@@ -250,7 +309,7 @@ export class TransactionsController {
   @Post(':id/reverse')
   @IdempotentRoute()
   reverse(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: ReverseTransactionDto,
     @CurrentUser('sub') userId: string,
   ) {
@@ -262,8 +321,8 @@ export class TransactionsController {
 
   @Post(':id/comments')
   addComment(
-    @Param('id') id: string,
-    @Body() body: { text: string },
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: AddCommentDto,
     @CurrentUser('sub') userId: string,
   ) {
     return this.txService.findByIdForUser(id, userId).then(() => this.txService.addComment(id, userId, body.text));

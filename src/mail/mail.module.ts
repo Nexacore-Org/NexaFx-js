@@ -1,12 +1,16 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
-import { QUEUE_NAMES } from '../queues/queue.constants';
+import {
+  QUEUE_NAMES,
+  getDefaultJobOptions,
+} from '../queues/queue.constants';
+import { EmailQueueService } from './email-queue.service';
 import { MailProcessor } from './mail.processor';
 import { MailService } from './mail.service';
 
 @Module({
-  providers: [MailService],
-  exports: [MailService],
+  providers: [MailService, EmailQueueService],
+  exports: [MailService, EmailQueueService],
 })
 export class MailModule {}
 
@@ -15,15 +19,7 @@ export class MailModule {}
     MailModule,
     BullModule.registerQueue({
       name: QUEUE_NAMES.EMAIL,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-        removeOnComplete: true,
-        removeOnFail: false,
-      },
+      defaultJobOptions: getDefaultJobOptions(),
     }),
   ],
   providers: [MailProcessor],

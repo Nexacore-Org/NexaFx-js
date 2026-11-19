@@ -1,8 +1,13 @@
+import {
+  OnQueueError,
+  OnQueueFailed,
+  Process,
+  Processor,
+} from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { EMAIL_JOB_NAMES, QUEUE_NAMES } from '../queues/queue.constants';
 import { MailService } from './mail.service';
-import { MailProcessor, SendEmailJobData } from './mail.processor';
 
 export interface PasswordResetJobData {
   to: string;
@@ -38,7 +43,8 @@ export class MailProcessor {
 
     try {
       // Send the queued body unchanged: it is already a rendered template.
-      await this.mailService.send({ to, subject, html, text, from });
+      // sendRaw never applies the admin-alert wrapper and honours `from`.
+      await this.mailService.sendRaw({ to, subject, html, text, from });
     } catch (err) {
       if (this.isPermanentFailure(err)) {
         job.discard();

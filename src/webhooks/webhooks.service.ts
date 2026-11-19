@@ -3,7 +3,9 @@ import {
   ConflictException,
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
@@ -17,9 +19,9 @@ import {
   Repository,
 } from 'typeorm';
 import { Queue } from 'bull';
-import { randomUUID } from 'crypto';
-import * as dns from 'dns';
-import * as net from 'net';
+import { randomBytes, randomUUID } from 'crypto';
+import { EncryptionService } from '../common/encryption/encryption.service';
+import { QUEUE_NAMES } from '../queues/queue.constants';
 import { WebhookEndpoint } from './webhook-endpoint.entity';
 import {
   WebhookDelivery,
@@ -27,12 +29,30 @@ import {
 } from './webhook-delivery.entity';
 import { isCustomerWebhookEvent } from './webhook-events';
 import { ListDeliveriesQueryDto } from './dto/list-deliveries-query.dto';
+import {
+  toWebhookEndpointResponse,
+  WebhookEndpointResponseDto,
+} from './dto/webhook-endpoint.dto';
+import {
+  assertPublicWebhookAddresses,
+  resolveWebhookAddresses,
+} from './webhook-ip';
+import { sealWebhookSecret } from './webhook-secret';
 
 export interface CreateWebhookEndpointDto {
   ownerId: string;
   url: string;
-  secret: string;
   events: string[];
+}
+
+export interface UpdateWebhookEndpointDto {
+  url?: string;
+  events?: string[];
+}
+
+export interface CreatedWebhookEndpoint {
+  endpoint: WebhookEndpointResponseDto;
+  secret: string;
 }
 
 /** A delivery row without its (potentially large) stored request body. */
@@ -48,46 +68,30 @@ export interface PaginatedDeliveries {
 export const DEFAULT_DELIVERY_PAGE_SIZE = 20;
 export const MAX_DELIVERY_PAGE_SIZE = 100;
 
+/** Bound the recovery sweeps so one tick can never scan the whole table. */
+const SWEEP_BATCH_SIZE = 100;
+/** A PENDING row older than this with no live Bull job is considered stranded. */
+const STALE_PENDING_MINUTES = 5;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function deliveryJobOptions(deliveryId: string) {
+  return {
+    jobId: deliveryId,
+    attempts: Number(process.env.WEBHOOK_MAX_ATTEMPTS || '5'),
+    backoff: {
+      type: 'exponential' as const,
+      delay: Number(process.env.WEBHOOK_BACKOFF_DELAY_MS || '1000'),
+    },
+    removeOnComplete: true,
+    removeOnFail: true,
+  };
+}
+
 const MAX_ENDPOINTS_PER_USER =
   parseInt(process.env.WEBHOOK_MAX_ENDPOINTS_PER_USER ?? '10', 10) || 10;
-const PRIVATE_CIDR_RANGES = [
-  { start: ip2int('10.0.0.0'), end: ip2int('10.255.255.255') },
-  { start: ip2int('172.16.0.0'), end: ip2int('172.31.255.255') },
-  { start: ip2int('192.168.0.0'), end: ip2int('192.168.255.255') },
-  { start: ip2int('127.0.0.0'), end: ip2int('127.255.255.255') },
-  { start: ip2int('169.254.0.0'), end: ip2int('169.254.255.255') },
-  { start: ip2int('100.64.0.0'), end: ip2int('100.127.255.255') },
-];
-
-function ip2int(ip: string): number {
-  return (
-    ip
-      .split('.')
-      .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0
-  );
-}
-
-function isPrivateIp(ip: string): boolean {
-  if (!net.isIPv4(ip)) return true;
-  const n = ip2int(ip);
-  return PRIVATE_CIDR_RANGES.some((r) => n >= r.start && n <= r.end);
-}
-
-async function resolveAndRejectPrivate(hostname: string): Promise<void> {
-  const addresses = await new Promise<string[]>((resolve, reject) => {
-    dns.resolve4(hostname, (err, addrs) => {
-      if (err) reject(err);
-      else resolve(addrs);
-    });
-  });
-  for (const addr of addresses) {
-    if (isPrivateIp(addr)) {
-      throw new BadRequestException(
-        `Webhook URL resolves to a private/internal IP address (${addr}) — SSRF not permitted`,
-      );
-    }
-  }
-}
 
 async function validateWebhookUrl(rawUrl: string): Promise<void> {
   let parsed: URL;
@@ -96,44 +100,48 @@ async function validateWebhookUrl(rawUrl: string): Promise<void> {
   } catch {
     throw new BadRequestException('Webhook URL is not a valid URL');
   }
+  if (parsed.protocol !== 'https:') {
+    throw new BadRequestException('Webhook URL must use HTTPS');
+  }
 
-  const hostname = parsed.hostname;
-
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
   if (
     hostname === 'localhost' ||
-    hostname === '0.0.0.0' ||
-    hostname.endsWith('.local')
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal')
   ) {
     throw new BadRequestException(
       'Webhook URL must not target localhost or link-local addresses',
     );
   }
 
-  if (net.isIP(hostname)) {
-    if (isPrivateIp(hostname)) {
-      throw new BadRequestException(
-        'Webhook URL must not target private or internal IP ranges',
-      );
-    }
-  } else {
-    await resolveAndRejectPrivate(hostname);
+  try {
+    const addresses = await resolveWebhookAddresses(hostname);
+    assertPublicWebhookAddresses(addresses);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'invalid address';
+    throw new BadRequestException(
+      `Webhook URL is not permitted: ${detail}`,
+    );
   }
 }
 
 @Injectable()
 export class WebhooksService {
+  private readonly logger = new Logger(WebhooksService.name);
+
   constructor(
     @InjectRepository(WebhookEndpoint)
     private readonly endpointsRepository: Repository<WebhookEndpoint>,
     @InjectRepository(WebhookDelivery)
     private readonly deliveriesRepository: Repository<WebhookDelivery>,
-    @InjectQueue('webhooks')
-    private readonly webhooksQueue: Queue,
+    private readonly encryption: EncryptionService,
+    @Optional()
+    @InjectQueue(QUEUE_NAMES.WEBHOOKS)
+    private readonly webhooksQueue?: Queue,
   ) {}
 
-  async createEndpoint(
-    dto: CreateWebhookEndpointDto,
-  ): Promise<WebhookEndpoint> {
+  async createEndpoint(dto: CreateWebhookEndpointDto): Promise<CreatedWebhookEndpoint> {
     const activeCount = await this.endpointsRepository.count({
       where: { ownerId: dto.ownerId, isActive: true },
     });
@@ -145,11 +153,17 @@ export class WebhooksService {
     await validateWebhookUrl(dto.url);
     this.assertSubscribableEvents(dto.events);
 
+    // 32 random bytes, generated here so clients cannot reuse a weak secret.
+    const secret = randomBytes(32).toString('hex');
     const endpoint = this.endpointsRepository.create({
-      ...dto,
+      ownerId: dto.ownerId,
+      url: dto.url,
+      events: dto.events,
+      secret: sealWebhookSecret(this.encryption, secret),
       isActive: true,
     });
-    return this.endpointsRepository.save(endpoint);
+    const saved = await this.endpointsRepository.save(endpoint);
+    return { endpoint: toWebhookEndpointResponse(saved), secret };
   }
 
   /**
@@ -173,11 +187,38 @@ export class WebhooksService {
     }
   }
 
-  async listEndpoints(ownerId: string): Promise<WebhookEndpoint[]> {
-    return this.endpointsRepository.find({
+  async listEndpoints(ownerId: string): Promise<WebhookEndpointResponseDto[]> {
+    const endpoints = await this.endpointsRepository.find({
       where: { ownerId },
       order: { createdAt: 'DESC' },
     });
+    return endpoints.map(toWebhookEndpointResponse);
+  }
+
+  async getEndpoint(
+    ownerId: string,
+    endpointId: string,
+  ): Promise<WebhookEndpointResponseDto> {
+    return toWebhookEndpointResponse(
+      await this.findEndpointForOwner(endpointId, ownerId),
+    );
+  }
+
+  async updateEndpoint(
+    ownerId: string,
+    endpointId: string,
+    dto: UpdateWebhookEndpointDto,
+  ): Promise<WebhookEndpointResponseDto> {
+    const endpoint = await this.findEndpointForOwner(endpointId, ownerId);
+    if (dto.url !== undefined) {
+      await validateWebhookUrl(dto.url);
+      endpoint.url = dto.url;
+    }
+    if (dto.events !== undefined) {
+      this.assertSubscribableEvents(dto.events);
+      endpoint.events = dto.events;
+    }
+    return toWebhookEndpointResponse(await this.endpointsRepository.save(endpoint));
   }
 
   async countActiveEndpoints(ownerId: string): Promise<number> {
@@ -285,25 +326,59 @@ export class WebhooksService {
     const targets = endpoints.filter((endpoint) =>
       endpoint.events.includes(eventName),
     );
+    if (targets.length === 0) {
+      return;
+    }
 
-    for (const endpoint of targets) {
-      const recipientPayload = this.buildRecipientPayload(
-        endpoint.ownerId,
-        payload,
-      );
+    const correlationId = getCorrelationId();
+    const newDeliveries = targets.map((endpoint) =>
+      this.deliveriesRepository.create({
+        id: randomUUID(),
+        endpointId: endpoint.id,
+        eventName,
+        requestBody: this.buildRecipientPayload(endpoint.ownerId, payload),
+        attemptCount: 0,
+        status: WebhookDeliveryStatus.PENDING,
+      }),
+    );
 
-      const delivery = await this.deliveriesRepository.save(
-        this.deliveriesRepository.create({
-          id: randomUUID(),
-          endpointId: endpoint.id,
-          eventName,
-          requestBody: recipientPayload,
-          attemptCount: 0,
-          status: WebhookDeliveryStatus.PENDING,
-        }),
-      );
+    // One insert for the whole event (#1612). The UUIDs are generated here so
+    // re-running the insert or the enqueue below cannot create duplicate rows.
+    const saved = await this.deliveriesRepository.save(newDeliveries);
+    const deliveries = Array.isArray(saved) ? saved : [saved];
 
-      await this.webhooksQueue.add(
+    const jobs = deliveries.map((delivery) => ({
+      name: 'deliver',
+      data: { deliveryId: delivery.id, correlationId },
+      opts: deliveryJobOptions(delivery.id),
+    }));
+
+    try {
+      await this.webhooksQueue.addBulk(jobs);
+    } catch (bulkError) {
+      // A Redis blip must neither strand these rows as PENDING nor stop the
+      // other endpoints being queued. `jobId` makes re-adding safe if the bulk
+      // call partially succeeded before throwing.
+      const failed: WebhookDelivery[] = [];
+      for (const [index, job] of jobs.entries()) {
+        const delivery = deliveries[index];
+        if (!delivery) continue;
+        try {
+          await this.webhooksQueue.add(job.name, job.data, job.opts);
+        } catch (addError) {
+          delivery.status = WebhookDeliveryStatus.FAILED;
+          delivery.errorMessage =
+            `Failed to enqueue webhook delivery: ${errorMessage(addError)}`;
+          failed.push(delivery);
+        }
+      }
+      if (failed.length > 0) {
+        await this.deliveriesRepository.save(failed);
+      }
+      this.logger.warn(
+        `Bulk webhook enqueue failed (${errorMessage(bulkError)}); ` +
+          `${failed.length}/${deliveries.length} delivery(ies) marked FAILED`,
+      await this.webhooksQueue?.add(
         'deliver',
         { deliveryId: delivery.id, correlationId: getCorrelationId() },
         {
@@ -313,8 +388,8 @@ export class WebhooksService {
             type: 'exponential',
             delay: Number(process.env.WEBHOOK_BACKOFF_DELAY_MS || '1000'),
           },
-          removeOnComplete: true,
-          removeOnFail: true,
+          // Retention comes from getDefaultJobOptions(): failures stay queryable
+          // and retryable for seven days instead of disappearing (#1607).
         },
       );
     }
@@ -356,6 +431,107 @@ export class WebhooksService {
     // Single-sided events (deposit/withdrawal/swap/reversal) carry no
     // counterparty, so the payload is already scoped to the owner.
     return payload;
+  }
+
+  /**
+   * Re-enqueue failed deliveries whose backoff has elapsed (#1612).
+   * Bull's processor performs the HTTP retry; this sweep only repairs rows
+   * whose job was lost or was never created.
+   */
+  async recoverFailedDeliveries(): Promise<number> {
+    const due = await this.deliveriesRepository.find({
+      where: {
+        status: WebhookDeliveryStatus.FAILED,
+        nextRetryAt: LessThanOrEqual(new Date()),
+      },
+      take: SWEEP_BATCH_SIZE,
+      order: { updatedAt: 'ASC' },
+    });
+    return this.enqueueStoredDeliveries(
+      due.filter((delivery) => delivery.retryCount < delivery.maxRetries),
+    );
+  }
+
+  /**
+   * Re-enqueue PENDING rows stranded for a few minutes with no live job
+   * (#1612) — for example when the process died between the insert and the
+   * enqueue, or when a bulk enqueue failed but its fallback also missed a row.
+   */
+  async recoverStuckPendingDeliveries(
+    staleAfterMinutes: number = STALE_PENDING_MINUTES,
+  ): Promise<number> {
+    const minutes =
+      Number.isFinite(staleAfterMinutes) && staleAfterMinutes > 0
+        ? staleAfterMinutes
+        : STALE_PENDING_MINUTES;
+    const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+    const stale = await this.deliveriesRepository.find({
+      where: {
+        status: WebhookDeliveryStatus.PENDING,
+        createdAt: LessThan(cutoff),
+      },
+      take: SWEEP_BATCH_SIZE,
+      order: { createdAt: 'ASC' },
+    });
+    return this.enqueueStoredDeliveries(stale, true);
+  }
+
+  /** Re-queue one delivery on demand (backing the manual retry endpoint). */
+  async retryDelivery(
+    deliveryId: string,
+  ): Promise<{ deliveryId: string; status: string }> {
+    const delivery = await this.deliveriesRepository.findOne({
+      where: { id: deliveryId },
+    });
+    if (!delivery) {
+      throw new NotFoundException(`Webhook delivery ${deliveryId} not found`);
+    }
+
+    await this.webhooksQueue.add(
+      'deliver',
+      { deliveryId, correlationId: getCorrelationId() },
+      deliveryJobOptions(deliveryId),
+    );
+
+    delivery.status = WebhookDeliveryStatus.PENDING;
+    delivery.errorMessage = null;
+    delivery.nextRetryAt = null;
+    delivery.retryCount = 0;
+    await this.deliveriesRepository.save(delivery);
+    return { deliveryId, status: 'queued' };
+  }
+
+  private async enqueueStoredDeliveries(
+    deliveries: WebhookDelivery[],
+    skipLiveJobs = false,
+  ): Promise<number> {
+    let requeued = 0;
+    for (const delivery of deliveries) {
+      try {
+        if (
+          skipLiveJobs &&
+          typeof this.webhooksQueue.getJob === 'function' &&
+          (await this.webhooksQueue.getJob(delivery.id))
+        ) {
+          continue;
+        }
+        await this.webhooksQueue.add(
+          'deliver',
+          { deliveryId: delivery.id, correlationId: getCorrelationId() },
+          deliveryJobOptions(delivery.id),
+        );
+        requeued++;
+      } catch (error) {
+        this.logger.warn(
+          `Failed to re-enqueue webhook delivery ${delivery.id}: ` +
+            errorMessage(error),
+        );
+      }
+    }
+    return requeued;
+  }
+
+  /**
    * Delete deliveries older than `retentionDays` (#1446). Retention is opt-in:
    * a non-positive or unset value prunes nothing, so nothing is deleted by
    * accident. Returns the number of rows removed.

@@ -28,6 +28,11 @@ import { TransactionApprovalModule } from '../multi-signature-approval/multi-sig
 import { CurrencyPair } from '../fx/currency-pair.entity';
 import { SpreadService } from '../fx/spread.service';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
+import {
+  QUEUE_NAMES,
+  getDefaultJobOptions,
+  isBullEnabled,
+} from '../queues/queue.constants';
 
 @Module({
   imports: [
@@ -41,7 +46,14 @@ import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
       WalletBalanceEntity,
       CurrencyPair,
     ]),
-    BullModule.registerQueue({ name: 'admin-exports' }),
+    ...(isBullEnabled()
+      ? [
+          BullModule.registerQueue({
+            name: QUEUE_NAMES.ADMIN_EXPORTS,
+            defaultJobOptions: getDefaultJobOptions(),
+          }),
+        ]
+      : []),
     SecurityModule,
     EncryptionModule,
     HttpModule,

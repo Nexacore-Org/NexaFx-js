@@ -3,6 +3,11 @@ import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { dateDiffInDays } from './date-diff';
 
 export { dateDiffInDays } from './date-diff';
+import {
+  BadRequestException,
+  Injectable,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, IsNull, Raw, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
@@ -14,6 +19,8 @@ import {
 import { FxTrade } from '../fx/fx-trade.entity';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
+import { EmailQueueService } from '../mail/email-queue.service';
+import { QUEUE_NAMES } from '../queues/queue.constants';
 import { PdfService } from '../documents/pdf.service';
 import { StatementLine, StatementView } from './statements.types';
 
@@ -28,6 +35,15 @@ export interface StatementRequest {
 const ASYNC_RANGE_DAYS = 31;
 const MAX_RANGE_DAYS = 366;
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 @Injectable()
 export class StatementsService {
   constructor(
@@ -38,8 +54,9 @@ export class StatementsService {
     private readonly usersService: UsersService,
     private readonly pdfService: PdfService,
     private readonly mailService: MailService,
+    private readonly emailQueue: EmailQueueService,
     @Optional()
-    @InjectQueue('statements')
+    @InjectQueue(QUEUE_NAMES.STATEMENTS)
     private readonly statementsQueue?: Queue,
   ) {}
 
@@ -109,15 +126,22 @@ export class StatementsService {
     _request: StatementRequest,
     statement: StatementView,
   ): Promise<void> {
-    await this.mailService.sendStatementReadyEmail({
-      to: statement.user.email,
-      fullName: `${statement.user.firstName} ${statement.user.lastName}`,
-      currency: statement.currency,
-      from: statement.period.from,
-      toDate: statement.period.to,
-      openingBalance: statement.openingBalance,
-      closingBalance: statement.closingBalance,
-    });
+    const to = statement.user.email;
+    const fullName = `${statement.user.firstName} ${statement.user.lastName}`.trim();
+    const subject = `Your ${statement.currency} statement is ready`;
+    const summary =
+      `${statement.currency} statement for ${statement.period.from} - ${statement.period.to}. ` +
+      `Opening balance: ${statement.openingBalance}. Closing balance: ${statement.closingBalance}.`;
+    const html =
+      `<p>Hi ${escapeHtml(fullName)},</p><p>${escapeHtml(summary)}</p>` +
+      `<p>Your statement is available in your NexaFx account.</p>`;
+    const payload = { to, subject, html, text: summary };
+
+    // Real producer for the email queue (#1610); falls back to a direct send
+    // when Bull is disabled (tests / DISABLE_BULL=true).
+    if (!(await this.emailQueue.enqueue(payload))) {
+      await this.mailService.sendRaw(payload);
+    }
   }
 
   private normalizeRequest(request: StatementRequest): StatementRequest {

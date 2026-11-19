@@ -99,9 +99,13 @@ import { WalletHistoryModule } from './modules/wallet-history/wallet-history.mod
 import { KycTiersModule } from './modules/kyc-tiers/kyc-tiers.module';
 import { AppGraphQLModule } from './graphql/graphql.module';
 import { QueuesModule } from './queues/queues.module';
+import {
+  QUEUE_NAMES,
+  getDefaultJobOptions,
+  isBullEnabled,
+} from './queues/queue.constants';
 
-const enableBull =
-  process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
+const enableBull = isBullEnabled();
 
 async function createCacheOptions(configService: ConfigService<Configuration>) {
   const redis = configService.get<Configuration['redis']>('redis');
@@ -226,19 +230,14 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
                     return Math.min(1000 * 2 ** attempts, 30_000);
                   },
                 },
-                defaultJobOptions: {
-                  attempts: 3,
-                  backoff: {
-                    type: 'exponential',
-                    delay: 2000,
-                  },
-                  removeOnComplete: true,
-                  removeOnFail: true,
-                },
+                defaultJobOptions: getDefaultJobOptions(),
               };
             },
           }),
-          BullModule.registerQueue({ name: 'default' }),
+          BullModule.registerQueue({
+            name: QUEUE_NAMES.DEFAULT,
+            defaultJobOptions: getDefaultJobOptions(),
+          }),
           MailQueueModule,
           TransactionQueueModule,
           QueuesModule,
