@@ -1,10 +1,8 @@
-import { InjectQueue } from '@nestjs/bull';
-import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
-import type { Queue } from 'bull';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from '../mail/mail.service';
+import { EmailQueueService } from '../mail/email-queue.service';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from '../tokens/refresh-tokens.service';
 import { PasswordPolicyService } from './password-policy.service';
@@ -12,11 +10,10 @@ import { PasswordResetService } from './password-reset.service';
 import { PasswordService } from './password.service';
 import { PasswordResetRateLimiter } from './password-reset-rate-limiter';
 import { AuditService } from '../audit/audit.service';
-import { EMAIL_JOB_NAMES, QUEUE_NAMES } from '../queues/queue.constants';
+import { TOKEN_VERSION_CHANGED_EVENT } from './token-version.service';
 
 /** A second request within this window keeps the existing link instead of replacing it. */
 const RESET_LINK_COOLDOWN_MS = 5 * 60 * 1000;
-import { TOKEN_VERSION_CHANGED_EVENT } from './token-version.service';
 
 /** Same message whether or not the email exists, so the endpoint reveals nothing. */
 export const FORGOT_PASSWORD_RESPONSE = {
@@ -40,8 +37,8 @@ export class PasswordResetFlowService {
     private readonly refreshTokens: RefreshTokensService,
     private readonly config: ConfigService,
     private readonly limiter: PasswordResetRateLimiter,
+    private readonly emailQueue: EmailQueueService,
     @Optional() private readonly audit?: AuditService,
-    @Optional() @InjectQueue(QUEUE_NAMES.EMAIL) private readonly emailQueue?: Queue,
     @Optional() private readonly events?: EventEmitter2,
   ) {}
 
@@ -90,9 +87,7 @@ export class PasswordResetFlowService {
 
     const rawToken = await this.resetService.createResetToken(userId);
     const resetUrl = this.resetUrl(rawToken);
-    if (this.emailQueue) {
-      await this.emailQueue.add(EMAIL_JOB_NAMES.PASSWORD_RESET, { to: email, resetUrl });
-    } else {
+    if (!(await this.emailQueue.enqueuePasswordReset(email, resetUrl))) {
       await this.mailService.sendPasswordResetLink(email, resetUrl);
     }
     await this.auditRequest(userId, emailHash, 'link_issued');

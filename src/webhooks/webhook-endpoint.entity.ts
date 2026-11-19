@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import {
   Column,
   CreateDateColumn,
@@ -19,6 +20,8 @@ export class WebhookEndpoint {
   @Column()
   url: string;
 
+  /** Encrypted after the #1609 backfill; never serialised to API responses. */
+  @Exclude()
   @Column()
   secret: string;
 

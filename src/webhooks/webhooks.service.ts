@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
@@ -18,9 +19,9 @@ import {
   Repository,
 } from 'typeorm';
 import { Queue } from 'bull';
-import { randomUUID } from 'crypto';
-import * as dns from 'dns';
-import * as net from 'net';
+import { randomBytes, randomUUID } from 'crypto';
+import { EncryptionService } from '../common/encryption/encryption.service';
+import { QUEUE_NAMES } from '../queues/queue.constants';
 import { WebhookEndpoint } from './webhook-endpoint.entity';
 import {
   WebhookDelivery,
@@ -28,12 +29,30 @@ import {
 } from './webhook-delivery.entity';
 import { isCustomerWebhookEvent } from './webhook-events';
 import { ListDeliveriesQueryDto } from './dto/list-deliveries-query.dto';
+import {
+  toWebhookEndpointResponse,
+  WebhookEndpointResponseDto,
+} from './dto/webhook-endpoint.dto';
+import {
+  assertPublicWebhookAddresses,
+  resolveWebhookAddresses,
+} from './webhook-ip';
+import { sealWebhookSecret } from './webhook-secret';
 
 export interface CreateWebhookEndpointDto {
   ownerId: string;
   url: string;
-  secret: string;
   events: string[];
+}
+
+export interface UpdateWebhookEndpointDto {
+  url?: string;
+  events?: string[];
+}
+
+export interface CreatedWebhookEndpoint {
+  endpoint: WebhookEndpointResponseDto;
+  secret: string;
 }
 
 /** A delivery row without its (potentially large) stored request body. */
@@ -73,44 +92,6 @@ function deliveryJobOptions(deliveryId: string) {
 
 const MAX_ENDPOINTS_PER_USER =
   parseInt(process.env.WEBHOOK_MAX_ENDPOINTS_PER_USER ?? '10', 10) || 10;
-const PRIVATE_CIDR_RANGES = [
-  { start: ip2int('10.0.0.0'), end: ip2int('10.255.255.255') },
-  { start: ip2int('172.16.0.0'), end: ip2int('172.31.255.255') },
-  { start: ip2int('192.168.0.0'), end: ip2int('192.168.255.255') },
-  { start: ip2int('127.0.0.0'), end: ip2int('127.255.255.255') },
-  { start: ip2int('169.254.0.0'), end: ip2int('169.254.255.255') },
-  { start: ip2int('100.64.0.0'), end: ip2int('100.127.255.255') },
-];
-
-function ip2int(ip: string): number {
-  return (
-    ip
-      .split('.')
-      .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0
-  );
-}
-
-function isPrivateIp(ip: string): boolean {
-  if (!net.isIPv4(ip)) return true;
-  const n = ip2int(ip);
-  return PRIVATE_CIDR_RANGES.some((r) => n >= r.start && n <= r.end);
-}
-
-async function resolveAndRejectPrivate(hostname: string): Promise<void> {
-  const addresses = await new Promise<string[]>((resolve, reject) => {
-    dns.resolve4(hostname, (err, addrs) => {
-      if (err) reject(err);
-      else resolve(addrs);
-    });
-  });
-  for (const addr of addresses) {
-    if (isPrivateIp(addr)) {
-      throw new BadRequestException(
-        `Webhook URL resolves to a private/internal IP address (${addr}) — SSRF not permitted`,
-      );
-    }
-  }
-}
 
 async function validateWebhookUrl(rawUrl: string): Promise<void> {
   let parsed: URL;
@@ -119,27 +100,29 @@ async function validateWebhookUrl(rawUrl: string): Promise<void> {
   } catch {
     throw new BadRequestException('Webhook URL is not a valid URL');
   }
+  if (parsed.protocol !== 'https:') {
+    throw new BadRequestException('Webhook URL must use HTTPS');
+  }
 
-  const hostname = parsed.hostname;
-
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
   if (
     hostname === 'localhost' ||
-    hostname === '0.0.0.0' ||
-    hostname.endsWith('.local')
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal')
   ) {
     throw new BadRequestException(
       'Webhook URL must not target localhost or link-local addresses',
     );
   }
 
-  if (net.isIP(hostname)) {
-    if (isPrivateIp(hostname)) {
-      throw new BadRequestException(
-        'Webhook URL must not target private or internal IP ranges',
-      );
-    }
-  } else {
-    await resolveAndRejectPrivate(hostname);
+  try {
+    const addresses = await resolveWebhookAddresses(hostname);
+    assertPublicWebhookAddresses(addresses);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'invalid address';
+    throw new BadRequestException(
+      `Webhook URL is not permitted: ${detail}`,
+    );
   }
 }
 
@@ -152,13 +135,13 @@ export class WebhooksService {
     private readonly endpointsRepository: Repository<WebhookEndpoint>,
     @InjectRepository(WebhookDelivery)
     private readonly deliveriesRepository: Repository<WebhookDelivery>,
-    @InjectQueue('webhooks')
-    private readonly webhooksQueue: Queue,
+    private readonly encryption: EncryptionService,
+    @Optional()
+    @InjectQueue(QUEUE_NAMES.WEBHOOKS)
+    private readonly webhooksQueue?: Queue,
   ) {}
 
-  async createEndpoint(
-    dto: CreateWebhookEndpointDto,
-  ): Promise<WebhookEndpoint> {
+  async createEndpoint(dto: CreateWebhookEndpointDto): Promise<CreatedWebhookEndpoint> {
     const activeCount = await this.endpointsRepository.count({
       where: { ownerId: dto.ownerId, isActive: true },
     });
@@ -170,11 +153,17 @@ export class WebhooksService {
     await validateWebhookUrl(dto.url);
     this.assertSubscribableEvents(dto.events);
 
+    // 32 random bytes, generated here so clients cannot reuse a weak secret.
+    const secret = randomBytes(32).toString('hex');
     const endpoint = this.endpointsRepository.create({
-      ...dto,
+      ownerId: dto.ownerId,
+      url: dto.url,
+      events: dto.events,
+      secret: sealWebhookSecret(this.encryption, secret),
       isActive: true,
     });
-    return this.endpointsRepository.save(endpoint);
+    const saved = await this.endpointsRepository.save(endpoint);
+    return { endpoint: toWebhookEndpointResponse(saved), secret };
   }
 
   /**
@@ -198,11 +187,38 @@ export class WebhooksService {
     }
   }
 
-  async listEndpoints(ownerId: string): Promise<WebhookEndpoint[]> {
-    return this.endpointsRepository.find({
+  async listEndpoints(ownerId: string): Promise<WebhookEndpointResponseDto[]> {
+    const endpoints = await this.endpointsRepository.find({
       where: { ownerId },
       order: { createdAt: 'DESC' },
     });
+    return endpoints.map(toWebhookEndpointResponse);
+  }
+
+  async getEndpoint(
+    ownerId: string,
+    endpointId: string,
+  ): Promise<WebhookEndpointResponseDto> {
+    return toWebhookEndpointResponse(
+      await this.findEndpointForOwner(endpointId, ownerId),
+    );
+  }
+
+  async updateEndpoint(
+    ownerId: string,
+    endpointId: string,
+    dto: UpdateWebhookEndpointDto,
+  ): Promise<WebhookEndpointResponseDto> {
+    const endpoint = await this.findEndpointForOwner(endpointId, ownerId);
+    if (dto.url !== undefined) {
+      await validateWebhookUrl(dto.url);
+      endpoint.url = dto.url;
+    }
+    if (dto.events !== undefined) {
+      this.assertSubscribableEvents(dto.events);
+      endpoint.events = dto.events;
+    }
+    return toWebhookEndpointResponse(await this.endpointsRepository.save(endpoint));
   }
 
   async countActiveEndpoints(ownerId: string): Promise<number> {
@@ -362,6 +378,19 @@ export class WebhooksService {
       this.logger.warn(
         `Bulk webhook enqueue failed (${errorMessage(bulkError)}); ` +
           `${failed.length}/${deliveries.length} delivery(ies) marked FAILED`,
+      await this.webhooksQueue?.add(
+        'deliver',
+        { deliveryId: delivery.id, correlationId: getCorrelationId() },
+        {
+          jobId: delivery.id,
+          attempts: Number(process.env.WEBHOOK_MAX_ATTEMPTS || '5'),
+          backoff: {
+            type: 'exponential',
+            delay: Number(process.env.WEBHOOK_BACKOFF_DELAY_MS || '1000'),
+          },
+          // Retention comes from getDefaultJobOptions(): failures stay queryable
+          // and retryable for seven days instead of disappearing (#1607).
+        },
       );
     }
   }
