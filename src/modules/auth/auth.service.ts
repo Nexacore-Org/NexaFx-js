@@ -152,7 +152,7 @@ export class AuthService {
   async linkReferralOnRegistration(newUserId: string, referralCode?: string): Promise<void> {
     if (!referralCode) return;
     try {
-      await this.referralService.applyReferralCode(newUserId, referralCode);
+      await this.referralService.applyCode(referralCode, newUserId);
     } catch (err: any) {
       console.warn(
         `[AuthService] Referral code '${referralCode}' could not be applied for user ${newUserId}: ${err?.message}`,

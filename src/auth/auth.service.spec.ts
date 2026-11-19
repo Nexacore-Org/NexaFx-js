@@ -26,6 +26,12 @@ function build() {
     verify: jest.fn(),
   };
   const passwordPolicyService = { validate: jest.fn() };
+  const refreshTokens = {
+    createToken: jest.fn(),
+    rotateToken: jest.fn(),
+    revokeByRawToken: jest.fn(),
+    revokeToken: jest.fn(),
+  };
 
   const service = new AuthService(
     usersService as any,
@@ -38,6 +44,7 @@ function build() {
     configService as any,
     passwordService as any,
     passwordPolicyService as any,
+    refreshTokens as any,
   );
   return {
     service,
@@ -49,6 +56,7 @@ function build() {
     mailService,
     events,
     passwordService,
+    refreshTokens,
   };
 }
 
@@ -286,36 +294,61 @@ describe('AuthService', () => {
   });
 
   describe('rotateRefreshToken', () => {
-    const payload = { sub: 'user-1', typ: 'refresh' };
+    const rotated = {
+      id: 'session-2',
+      userId: 'user-1',
+      token: 'new-refresh',
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+
+    it('refuses an empty token', async () => {
+      const { service } = build();
+      await expect(service.rotateRefreshToken('')).rejects.toBeInstanceOf(UnauthorizedException);
+    });
 
     it('refuses to renew for a suspended user', async () => {
-      const { service, usersService, jwtService } = build();
-      jwtService.verify.mockReturnValue(payload);
+      const { service, usersService, refreshTokens } = build();
+      refreshTokens.rotateToken.mockResolvedValue(rotated);
       usersService.findByIdOrNull.mockResolvedValue(baseUser({ isActive: false }));
       await expect(service.rotateRefreshToken('r1')).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
     it('refuses to renew for a deactivated user', async () => {
-      const { service, usersService, jwtService, deactivationService } = build();
-      jwtService.verify.mockReturnValue(payload);
+      const { service, usersService, refreshTokens, deactivationService } = build();
+      refreshTokens.rotateToken.mockResolvedValue(rotated);
       usersService.findByIdOrNull.mockResolvedValue(baseUser());
       deactivationService.isUserDeactivated.mockResolvedValue(true);
       await expect(service.rotateRefreshToken('r2')).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
     it('refuses to renew for a deleted user', async () => {
-      const { service, usersService, jwtService } = build();
-      jwtService.verify.mockReturnValue(payload);
+      const { service, usersService, refreshTokens } = build();
+      refreshTokens.rotateToken.mockResolvedValue(rotated);
       usersService.findByIdOrNull.mockResolvedValue(null);
       await expect(service.rotateRefreshToken('r3')).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
-    it('renews for an active user', async () => {
-      const { service, usersService, jwtService } = build();
-      jwtService.verify.mockReturnValue(payload);
+    it('renews for an active user with the new session id', async () => {
+      const { service, usersService, refreshTokens, jwtService } = build();
+      refreshTokens.rotateToken.mockResolvedValue(rotated);
       usersService.findByIdOrNull.mockResolvedValue(baseUser());
       await expect(service.rotateRefreshToken('r4')).resolves.toEqual(
-        expect.objectContaining({ accessToken: 'signed' }),
+        expect.objectContaining({
+          accessToken: 'signed',
+          refreshToken: 'new-refresh',
+          refreshTokenExpiresAt: rotated.expiresAt,
+        }),
+      );
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: 'user-1', sid: 'session-2' }),
+      );
+    });
+
+    it('maps a rotated-token replay to a 401 without leaking internals', async () => {
+      const { service, refreshTokens } = build();
+      refreshTokens.rotateToken.mockRejectedValue(new Error('unique violation'));
+      await expect(service.rotateRefreshToken('replayed')).rejects.toBeInstanceOf(
+        UnauthorizedException,
       );
     });
   });

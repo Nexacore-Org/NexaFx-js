@@ -13,6 +13,7 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { PasswordPolicyService } from './password-policy.service';
 import { PasswordResetFlowService } from './password-reset-flow.service';
 import { PasswordPolicy, PasswordPolicyService } from './password-policy.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';

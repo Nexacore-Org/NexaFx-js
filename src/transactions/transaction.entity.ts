@@ -19,14 +19,16 @@ export enum TransactionStatus {
 }
 
 @Entity('transactions')
-@Index(['senderId', 'createdAt'])
-@Index(['status', 'createdAt'])
-@Index(['currency', 'createdAt'])
-@Index(['senderId'])
-@Index(['receiverId'])
-@Index(['createdAt'])
-@Index(['txHash'])
-@Index(['senderId', 'status'])
+// Index names match the migrations (InitialSchema + AddMissingCoreIndexes) so TypeORM's
+// schema diff does not try to rename or recreate them (issue #1544).
+@Index('IDX_transactions_senderId_createdAt', ['senderId', 'createdAt'])
+@Index('IDX_transactions_status_createdAt', ['status', 'createdAt'])
+@Index('IDX_transactions_currency_createdAt', ['currency', 'createdAt'])
+@Index('IDX_transactions_senderId', ['senderId'])
+@Index('IDX_transactions_receiverId', ['receiverId'])
+@Index('IDX_transactions_createdAt', ['createdAt'])
+@Index('IDX_transactions_txHash', ['txHash'])
+@Index('IDX_transactions_senderId_status', ['senderId', 'status'])
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

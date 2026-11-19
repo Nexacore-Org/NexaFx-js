@@ -100,6 +100,9 @@ export class AuthService {
 
     // Terms were accepted in the same transaction, so nothing is pending.
     return this.issueSession(user, context, null);
+    return this.issueToken(user.id, user.email, user.role, {
+      tokenVersion: user.tokenVersion,
+    });
   }
 
   /**
@@ -231,6 +234,9 @@ export class AuthService {
     });
 
     return this.issueSession(user, context, requiresAction);
+    return this.issueToken(user.id, user.email, user.role, {
+      tokenVersion: user.tokenVersion,
+    });
   }
 
   /**
@@ -250,6 +256,10 @@ export class AuthService {
     const session = await this.refreshTokens.createToken(user.id, parseDeviceInfo(context));
     return {
       ...this.issueToken(user.id, user.email, user.role, user.tokenVersion, session.id),
+      ...this.issueToken(user.id, user.email, user.role, {
+        tokenVersion: user.tokenVersion,
+        sid: session.id,
+      }),
       refreshToken: session.token,
       refreshTokenExpiresAt: session.expiresAt,
       requiresAction,
@@ -280,10 +290,33 @@ export class AuthService {
     if (!user || user.isActive === false || isDeactivated) {
       await this.refreshTokens.revokeUserTokens(rotated.userId);
       throw new UnauthorizedException('Account is not active');
+    let rotated: { id: string; userId: string; token: string; expiresAt: Date };
+    try {
+      rotated = await this.refreshTokens.rotateToken(
+        refreshToken,
+        parseDeviceInfo(context),
+      );
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    // Take identity and role from the database, not the presented token, so
+    // demotions and deactivations take effect on the next refresh.
+    const user = await this.usersService.findByIdOrNull(rotated.userId);
+    if (!user || user.isActive === false) {
+      throw new UnauthorizedException('Account is not active');
+    }
+    if (await this.deactivationService?.isUserDeactivated(user.id)) {
+      throw new UnauthorizedException('Account is not active');
     }
 
     return {
       ...this.issueToken(user.id, user.email, user.role, user.tokenVersion, rotated.id),
+      ...this.issueToken(user.id, user.email, user.role, {
+        tokenVersion: user.tokenVersion,
+        sid: rotated.id,
+      }),
       refreshToken: rotated.token,
       refreshTokenExpiresAt: rotated.expiresAt,
       requiresAction: null,
@@ -301,6 +334,12 @@ export class AuthService {
   }
 
   private issueToken(userId: string, email: string, role: string, tokenVersion = 0, sid?: string) {
+  private issueToken(
+    userId: string,
+    email: string,
+    role: string,
+    options: { tokenVersion?: number; sid?: string } = {},
+  ) {
     return {
       accessToken: this.jwtService.sign({
         sub: userId,
@@ -309,6 +348,8 @@ export class AuthService {
         typ: TokenType.ACCESS,
         tv: tokenVersion ?? 0,
         ...(sid ? { sid } : {}),
+        tv: options.tokenVersion ?? 0,
+        ...(options.sid ? { sid: options.sid } : {}),
       }),
     };
   }

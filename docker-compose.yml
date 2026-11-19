@@ -10,6 +10,8 @@ services:
       - '5432:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
+      # Creates the disposable nexafx_test database on first start (issue #1545).
+      - ./scripts/db/init-test-db.sql:/docker-entrypoint-initdb.d/10-init-test-db.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s

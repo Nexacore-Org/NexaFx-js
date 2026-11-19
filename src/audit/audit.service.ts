@@ -51,6 +51,11 @@ export class AuditService {
       ...rest,
       ...(before !== undefined && {
         before: maskBody(before, 0, AUDIT_MASK_DEPTH) as Record<string, unknown>,
+    // Never persist secrets/PII into the (exportable) audit trail.
+    const entry = this.auditRepo.create({
+      ...event,
+      ...(event.before !== undefined && {
+        before: maskBody(event.before, 0, AUDIT_MASK_DEPTH) as Record<string, unknown>,
       }),
       ...(after !== undefined && {
         after: maskBody(after, 0, AUDIT_MASK_DEPTH) as Record<string, unknown>,

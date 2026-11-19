@@ -2,7 +2,11 @@ import { AmlService, TransactionRecord } from './aml.service';
 
 describe('AmlService.checkVelocityBurst', () => {
   const saveMock = jest.fn((v) => v);
-  const alertRepo = { create: (v: any) => v, save: saveMock } as any;
+  const alertRepo = {
+    create: (v: any) => v,
+    save: saveMock,
+    findOne: jest.fn().mockResolvedValue(null),
+  } as any;
   const config = { get: () => undefined } as any; // fall back to defaults (maxCount=10)
   const events = { emit: jest.fn() } as any;
   const service = new AmlService(alertRepo, config, events);
@@ -33,5 +37,12 @@ describe('AmlService.checkVelocityBurst', () => {
       expect.objectContaining({ ruleTriggered: 'velocity-burst' }),
     );
     expect(events.emit).toHaveBeenCalledWith('aml.alert.created', expect.anything());
+  });
+
+  it('does not duplicate an unreviewed alert inside the window', async () => {
+    alertRepo.findOne.mockResolvedValueOnce({ id: 'existing-alert' });
+    await service.checkVelocityBurst('user-1', makeTxs(11));
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
   });
 });

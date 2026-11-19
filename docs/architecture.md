@@ -53,8 +53,31 @@ run without TLS against a database the app itself connects to with TLS, or vice 
 Both paths now call the shared `buildPostgresConnectionOptions()` in
 `src/config/database-options.ts`, which reads `process.env` directly (it has to — `data-source.ts`
 runs as a plain TypeORM CLI script with no Nest DI context) and returns a TypeORM-ready `ssl`
-value (`false | { rejectUnauthorized: boolean }`). `app.module.ts`'s factory now passes
-`database?.ssl` through instead of dropping it. Issue #1290.
+value (`false | { rejectUnauthorized: boolean; ca?: string }`). `app.module.ts`'s factory now passes
+`database?.ssl` through instead of dropping it. Issue #1290. `src/database/seeds/seed.ts` uses the same helper.
+
+### TLS verification (issue #1541)
+
+With `DB_SSL=true` the server certificate is **verified by default**. Variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DB_SSL` | `false` | Enable TLS to Postgres |
+| `DB_SSL_CA` | unset | PEM contents (use `\n` for newlines) or a path to a PEM file, for private/managed CAs |
+| `DB_SSL_REJECT_UNAUTHORIZED` | `true` | Set to `false` only for local/non-production experiments; startup fails if it is `false` with `NODE_ENV=production` |
+
+## Shutdown order (issue #1539)
+
+`app.enableShutdownHooks()` makes Nest run `onModuleDestroy` / `onApplicationShutdown` for the
+HTTP server, TypeORM, Bull queues and gateways on SIGTERM/SIGINT. `src/tracing.ts` no longer installs a
+signal handler or calls `process.exit`; `TracingShutdownService` (`src/observability/`) flushes spans in
+`onApplicationShutdown`, bounded to 5 s, so it cannot block or truncate the app's own shutdown.
+
+## CORS (issue #1540)
+
+`ALLOWED_ORIGINS` is a comma separated list of exact origins (parsed and normalised in
+`src/config/cors.ts`; `*` is rejected). It is **required when `NODE_ENV=production`**. When unset outside
+production only `localhost` origins are allowed; the API never reflects arbitrary origins.
 ## Removed dead code
 
 - **`CurrencyPair` entity duplication** (issue #1296) — three distinct `@Entity('currency_pairs')`

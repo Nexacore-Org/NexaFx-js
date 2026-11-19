@@ -2,7 +2,6 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -20,6 +19,10 @@ interface JwtPayload {
   email?: string;
   role?: string;
   roles?: string[];
+  /** Token version, bumped when a role/status change must invalidate old tokens. */
+  tv?: number;
+  /** Refresh-token session id. */
+  sid?: string;
   impersonation?: boolean;
   act?: { sub?: string };
 }
@@ -37,7 +40,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly reflector: Reflector,
-    @Optional() private readonly accountStatus?: AccountStatusService,
+    private readonly accountStatus: AccountStatusService,
   ) {}
 
   private getRequest(context: ExecutionContext): AuthenticatedRequest {
@@ -89,31 +92,20 @@ export class JwtAuthGuard implements CanActivate {
     let payload: JwtPayload;
     try {
       const secret = String(this.config.get('jwt.secret') ?? '');
-      const payload = this.jwtService.verify<JwtPayload>(token, { secret });
-      if (payload.typ !== TokenType.ACCESS || !payload.sub) {
-        throw new UnauthorizedException('Invalid authentication token');
-      }
-      request.user = {
-        id: payload.sub,
-        sub: payload.sub,
-        email: payload.email ?? '',
-        role: payload.role ?? '',
-        isEmailVerified: payload.isEmailVerified,
-        ...(payload.impersonation
-          ? { impersonation: true, actorId: payload.act?.sub }
-          : {}),
-      };
-      return true;
+      payload = this.jwtService.verify<JwtPayload>(token, { secret });
     } catch {
+      // Only invalid/expired signatures are re-labelled here; deliberate
+      // UnauthorizedExceptions below are thrown outside this block.
       throw new UnauthorizedException('Invalid authentication token');
     }
+
     if (payload.typ !== TokenType.ACCESS || !payload.sub) {
       throw new UnauthorizedException('Invalid authentication token');
     }
 
     // A signed token is not enough: suspended, deactivated and deleted users
     // lose access immediately even though their token has not expired.
-    if (this.accountStatus && !(await this.accountStatus.isAllowedToAuthenticate(payload.sub))) {
+    if (!(await this.accountStatus.isAllowedToAuthenticate(payload.sub))) {
       throw new UnauthorizedException('Account is not active');
     }
 
@@ -123,6 +115,12 @@ export class JwtAuthGuard implements CanActivate {
       email: payload.email ?? '',
       role: payload.role ?? '',
       isEmailVerified: payload.isEmailVerified,
+      tokenVersion: payload.tv,
+      sid: payload.sid,
+      authMethod: 'jwt',
+      ...(payload.impersonation
+        ? { impersonation: true, actorId: payload.act?.sub }
+        : {}),
     };
     return true;
   }

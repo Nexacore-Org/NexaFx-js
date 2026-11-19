@@ -41,7 +41,7 @@ so multiple key versions can coexist during a rotation window, enabling zero-dow
 |---|---|
 | `WALLET_ENCRYPTION_KEY` | Hex-encoded 32-byte primary key (required) |
 | `WALLET_ENCRYPTION_KEY_VERSION` | Integer version for the primary key (default: `1`) |
-| `WALLET_ENCRYPTION_KEY_V2` … `_V10` | Additional historic key versions kept for decryption |
+| `WALLET_ENCRYPTION_KEY_V1` … `_V10` | Historic key versions kept **for decryption only**. The primary key (above) always encrypts. A `_V<n>` equal to `WALLET_ENCRYPTION_KEY_VERSION` is rejected as a duplicate |
 
 Example — adding a new key as version 2 while keeping version 1 for backward compatibility:
 
@@ -55,8 +55,8 @@ WALLET_ENCRYPTION_KEY_V1=<old-32-byte-hex>
 
 1. **Generate** a new 32-byte key: `openssl rand -hex 32`
 2. **Shift** the current key to a versioned variable, e.g. `WALLET_ENCRYPTION_KEY_V1=<current-key>`.
-3. **Set** the new key: `WALLET_ENCRYPTION_KEY=<new-key>` and `WALLET_ENCRYPTION_KEY_VERSION=2`.
-4. **Deploy** — the service can now decrypt records encrypted with any loaded version.
+3. **Set** the new key: `WALLET_ENCRYPTION_KEY=<new-key>` and `WALLET_ENCRYPTION_KEY_VERSION=2` (previous version + 1).
+4. **Deploy** — the service can now decrypt records encrypted with any loaded version. At boot it checks `SELECT DISTINCT "keyVersion" FROM wallet_balances` and **refuses to start** if a stored version has no configured key (the log lists versions only).
 5. **Re-encrypt** all wallets via the admin endpoint:
    ```
    POST /api/v1/admin/system/rotate-encryption-key
@@ -65,7 +65,7 @@ WALLET_ENCRYPTION_KEY_V1=<old-32-byte-hex>
    The response reports `{ total, rotated, skipped }`. The operation is **idempotent** — safe to
    re-run if interrupted.
 6. **Verify** — confirm `skipped === total` (all records now use the latest key version).
-7. **Remove** old key variables and redeploy to complete the rotation.
+7. **Remove** old key variables and redeploy to complete the rotation. Only do this after step 6 reports every row on the latest version: the boot check will block the deploy if any row still uses a removed version, so a mistake is caught at startup, not at the first wallet operation.
 
 ## Notes
 
