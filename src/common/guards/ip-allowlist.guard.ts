@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { BlockList, isIPv4, isIPv6 } from 'node:net';
 
 function normalizeIp(address?: string): string {
   if (!address) {
@@ -20,48 +21,40 @@ function normalizeIp(address?: string): string {
   return address;
 }
 
-function ipv4ToNumber(address: string): number | null {
-  const parts = address.split('.');
-  if (parts.length !== 4) {
-    return null;
-  }
-
-  const bytes = parts.map((part) => {
-    const value = Number(part);
-    return Number.isInteger(value) && value >= 0 && value <= 255 ? value : NaN;
-  });
-
-  if (bytes.some(Number.isNaN)) {
-    return null;
-  }
-
-  return (
-    ((bytes[0] << 24) + (bytes[1] << 16) + (bytes[2] << 8) + bytes[3]) >>> 0
-  );
+function ipFamily(address: string): 'ipv4' | 'ipv6' | null {
+  if (isIPv4(address)) return 'ipv4';
+  if (isIPv6(address)) return 'ipv6';
+  return null;
 }
 
 function cidrContainsIp(ip: string, cidr: string): boolean {
-  const [network, maskLengthRaw] = cidr.split('/');
-  if (!maskLengthRaw) {
-    return normalizeIp(ip) === normalizeIp(network);
-  }
+  const [rawNetwork, maskLengthRaw] = cidr.split('/');
+  const network = normalizeIp(rawNetwork);
+  const address = normalizeIp(ip);
+  const family = ipFamily(network);
 
-  const maskLength = Number(maskLengthRaw);
-  const networkNumber = ipv4ToNumber(normalizeIp(network));
-  const ipNumber = ipv4ToNumber(normalizeIp(ip));
-
-  if (
-    networkNumber === null ||
-    ipNumber === null ||
-    !Number.isInteger(maskLength) ||
-    maskLength < 0 ||
-    maskLength > 32
-  ) {
+  if (!family || family !== ipFamily(address)) {
     return false;
   }
 
-  const mask = maskLength === 0 ? 0 : (0xffffffff << (32 - maskLength)) >>> 0;
-  return (networkNumber & mask) === (ipNumber & mask);
+  const list = new BlockList();
+  if (maskLengthRaw === undefined) {
+    list.addAddress(network, family);
+  } else {
+    const maskLength = Number(maskLengthRaw);
+    const maxLength = family === 'ipv4' ? 32 : 128;
+    if (
+      maskLengthRaw === '' ||
+      !Number.isInteger(maskLength) ||
+      maskLength < 0 ||
+      maskLength > maxLength
+    ) {
+      return false;
+    }
+    list.addSubnet(network, maskLength, family);
+  }
+
+  return list.check(address, family);
 }
 
 @Injectable()
