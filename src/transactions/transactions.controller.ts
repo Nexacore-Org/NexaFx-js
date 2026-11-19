@@ -31,6 +31,7 @@ import {
   SwapPreviewDto,
 } from './transactions.service';
 import { TransactionStatus } from './transaction.entity';
+import { CreateInternalTransferDto } from './dto/money.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
@@ -80,6 +81,9 @@ export class TransactionsController {
 
   @Post('deposit/:id/confirm')
   @HttpCode(HttpStatus.OK)
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   confirmDeposit(
     @Param('id') id: string,
     @Body() body: { txHash?: string },
@@ -173,11 +177,14 @@ export class TransactionsController {
   }
 
   @Post('internal-transfer')
+  @Idempotent()
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   createInternalTransfer(
-    @Body() dto: any,
+    @Body() dto: CreateInternalTransferDto,
     @CurrentUser('sub') userId: string,
   ) {
-    const { recipientEmail, amount, currency } = dto as any;
+    const { recipientEmail, amount, currency } = dto;
     return this.txService.createInternalTransfer({
       senderId: userId,
       recipientEmail,
