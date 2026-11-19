@@ -19,8 +19,8 @@ export enum ReportFrequency {
 }
 
 @Entity('scheduled_reports')
-@Index(['userId', 'isActive'])
-@Index(['nextRunAt'])
+@Index('IDX_scheduled_reports_user_active', ['userId', 'isActive'])
+@Index('IDX_scheduled_reports_next_run', ['nextRunAt'])
 export class ScheduledReport {
   @PrimaryGeneratedColumn('uuid')
   id: string;

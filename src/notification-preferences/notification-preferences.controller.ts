@@ -9,10 +9,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import {
-  NotificationPreferencesService,
-  UpdatePreferenceDto as UpdatePreferenceBody,
-} from './notification-preferences.service';
+import { NotificationPreferencesService } from './notification-preferences.service';
 import { UpdatePreferencesRequestDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -49,7 +46,7 @@ export class NotificationPreferencesController {
   @HttpCode(HttpStatus.OK)
   patchPreferences(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { preferences: UpdatePreferenceBody[] },
+    @Body() body: UpdatePreferencesRequestDto,
   ) {
     const userId = req.user?.sub ?? '';
     return this.preferencesService.updatePreferences(userId, body.preferences);

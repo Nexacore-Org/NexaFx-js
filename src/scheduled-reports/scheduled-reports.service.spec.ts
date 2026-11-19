@@ -4,29 +4,36 @@ import {
   NotificationChannel,
   NotificationEventType,
 } from '../notification-preferences/notification-preference.entity';
+import { ScheduledReportsService } from './scheduled-reports.service';
 import {
-  ScheduledReportsService,
-} from './scheduled-reports.service';
-import { ReportType, ReportFrequency } from './entities/scheduled-report.entity';
+  ReportType,
+  ReportFrequency,
+} from './entities/scheduled-report.entity';
 
 describe('NotificationPreferencesService', () => {
   it('returns true when no preference row exists', async () => {
     const repo = { findOne: jest.fn().mockResolvedValue(null) };
     const service = new NotificationPreferencesService(repo as any);
     await expect(
-      service.shouldNotify('u1', NotificationChannel.EMAIL, NotificationEventType.SECURITY),
+      service.shouldNotify(
+        'u1',
+        NotificationChannel.EMAIL,
+        NotificationEventType.SECURITY,
+      ),
     ).resolves.toBe(true);
   });
 
   it('honors an explicit isEnabled flag', async () => {
     const repo = {
-      findOne: jest
-        .fn()
-        .mockResolvedValue({ isEnabled: false }),
+      findOne: jest.fn().mockResolvedValue({ isEnabled: false }),
     };
     const service = new NotificationPreferencesService(repo as any);
     await expect(
-      service.shouldNotify('u1', NotificationChannel.PUSH, NotificationEventType.KYC),
+      service.shouldNotify(
+        'u1',
+        NotificationChannel.PUSH,
+        NotificationEventType.KYC,
+      ),
     ).resolves.toBe(false);
   });
 
@@ -34,8 +41,12 @@ describe('NotificationPreferencesService', () => {
     const created = { isEnabled: true, batchingEnabled: true };
     const repo = {
       findOne: jest.fn().mockResolvedValue(null),
-      create: jest.fn((dto) => ({ ...dto })),
+      create: jest.fn((dto: unknown) => ({
+        ...(dto as Record<string, unknown>),
+      })),
       save: jest.fn((dto) => Promise.resolve({ ...created, ...dto })),
+      upsert: jest.fn().mockResolvedValue(undefined),
+      findOneOrFail: jest.fn().mockResolvedValue({ ...created }),
     };
     const service = new NotificationPreferencesService(repo as any);
     const result = await service.updatePreference('u1', {
@@ -51,7 +62,9 @@ describe('NotificationPreferencesService', () => {
 describe('ScheduledReportsService', () => {
   it('schedules the first run from the requested frequency', async () => {
     const repo = {
-      create: jest.fn((row) => ({ ...row })),
+      create: jest.fn((row: unknown) => ({
+        ...(row as Record<string, unknown>),
+      })),
       save: jest.fn((row) => Promise.resolve(row)),
       find: jest.fn(),
       findOne: jest.fn(),

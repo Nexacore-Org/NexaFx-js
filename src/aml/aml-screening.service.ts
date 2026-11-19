@@ -1,38 +1,33 @@
-import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
   AmlDisposition,
+  AmlMatchDetail,
   AmlScreening,
   AmlRiskLevel,
 } from './aml-screening.entity';
 import { AmlScreeningReview } from './aml-screening-review.entity';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { AuditService } from '../audit/audit.service';
+import {
+  WATCHLIST_PROVIDER,
+  WatchlistProvider,
+} from './watchlist/watchlist.types';
+import { normaliseName } from './watchlist/name-normalisation';
+import { jaroWinkler } from './watchlist/jaro-winkler';
 
 const DEFAULT_HIGH_VALUE_THRESHOLD_USD = 10000;
 const DEFAULT_CRITICAL_VALUE_THRESHOLD_USD = 50000;
-
-const SANCTIONS_LIST: string[] = [
-  'vladimir putin', 'sergei lavrov', 'dmitry peskov',
-  'ali hosseinmenehbadi', 'ahmad vahidi', 'mohammad javad zarif',
-  'kim jong un', 'choe ryong hae',
-  'bashar al-assad', 'asma al-assad',
-  'nicolas maduro', 'diosdado cabello',
-  'alexander lukashenko', 'viktor sheiman',
-  'omar al-bashir', 'ahmed harun',
-  'yevgeny prigozhin', 'dmitry utkin',
-];
-
-const PEP_LIST: string[] = [
-  'minister', 'president', 'senator', 'governor',
-  'prime minister', 'chief justice', 'speaker',
-  'ambassador', 'secretary', 'chancellor',
-  'parliamentarian', 'congressman', 'congresswoman',
-  'premier', 'dictator', 'monarch', 'king', 'queen',
-  'emir', 'sultan', 'ayatollah', 'general',
-];
+const DEFAULT_SIMILARITY_THRESHOLD = 0.92;
 
 export interface ScreenUserInput {
   userId: string;
@@ -74,25 +69,15 @@ export class AmlScreeningService {
     private readonly reviewRepo: Repository<AmlScreeningReview>,
     private readonly config: ConfigService,
     private readonly rates: ExchangeRatesService,
+    @Inject(WATCHLIST_PROVIDER) private readonly watchlist: WatchlistProvider,
     @Optional() private readonly audit?: AuditService,
   ) {}
 
   async screenUser(input: ScreenUserInput): Promise<AmlScreening> {
-    const flags: string[] = [];
-    let riskScore = 0;
-
-    if (input.fullName) {
-      const lowerName = input.fullName.toLowerCase();
-      if (SANCTIONS_LIST.some((s) => lowerName.includes(s))) {
-        flags.push('sanctions_match');
-        riskScore += 50;
-      }
-      if (PEP_LIST.some((p) => lowerName.includes(p))) {
-        flags.push('pep');
-        riskScore += 30;
-      }
-    }
-
+    const match = input.fullName
+      ? await this.matchWatchlist(input.fullName, input.dateOfBirth)
+      : { flags: [], score: 0, details: [] as AmlMatchDetail[] };
+    const riskScore = match.score;
     const riskLevel = this.calculateRiskLevel(riskScore);
 
     const screening = this.repo.create({
@@ -100,13 +85,16 @@ export class AmlScreeningService {
       transactionId: null,
       riskScore,
       riskLevel,
-      flags,
+      flags: match.flags,
+      matchDetails: match.details,
     });
 
     return this.repo.save(screening);
   }
 
-  async screenTransaction(input: ScreenTransactionInput): Promise<AmlScreening> {
+  async screenTransaction(
+    input: ScreenTransactionInput,
+  ): Promise<AmlScreening> {
     const flags: string[] = [];
     let riskScore = 0;
 
@@ -127,12 +115,12 @@ export class AmlScreeningService {
       riskScore += 30;
     }
 
+    let matchDetails: AmlMatchDetail[] = [];
     if (input.counterpartyName) {
-      const lowerName = input.counterpartyName.toLowerCase();
-      if (SANCTIONS_LIST.some((s) => lowerName.includes(s))) {
-        flags.push('sanctions_match');
-        riskScore += 50;
-      }
+      const match = await this.matchWatchlist(input.counterpartyName);
+      flags.push(...match.flags);
+      riskScore += match.score;
+      matchDetails = match.details;
     }
 
     const riskLevel = this.calculateRiskLevel(riskScore);
@@ -143,6 +131,7 @@ export class AmlScreeningService {
       riskScore,
       riskLevel,
       flags,
+      matchDetails,
     });
 
     return this.repo.save(screening);
@@ -209,6 +198,55 @@ export class AmlScreeningService {
     });
 
     return saved;
+  }
+
+  private async matchWatchlist(
+    candidateName: string,
+    dateOfBirth?: string,
+  ): Promise<{
+    flags: string[];
+    score: number;
+    details: AmlMatchDetail[];
+  }> {
+    const threshold =
+      this.config.get<number>('aml.screeningSimilarityThreshold') ??
+      DEFAULT_SIMILARITY_THRESHOLD;
+    const candidate = normaliseName(candidateName);
+    const entries = await this.watchlist.getEntries();
+    const details: AmlMatchDetail[] = [];
+
+    for (const entry of entries) {
+      const score = jaroWinkler(candidate, normaliseName(entry.name));
+      if (score < threshold) continue;
+      if (
+        entry.dateOfBirth &&
+        dateOfBirth &&
+        entry.dateOfBirth !== dateOfBirth
+      ) {
+        continue;
+      }
+      details.push({
+        list: entry.type,
+        matchedName: entry.name,
+        candidateName,
+        score,
+        ...(entry.dateOfBirth && dateOfBirth
+          ? { dateOfBirthConfirmed: true }
+          : {}),
+      });
+    }
+
+    const flags: string[] = [];
+    let score = 0;
+    if (details.some((detail) => detail.list === 'sanctions')) {
+      flags.push('sanctions_match');
+      score += 50;
+    }
+    if (details.some((detail) => detail.list === 'pep')) {
+      flags.push('pep');
+      score += 30;
+    }
+    return { flags, score, details };
   }
 
   /** Convert to USD (the threshold currency); a missing rate is a hard error. */

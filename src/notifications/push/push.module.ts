@@ -7,12 +7,14 @@ import { DevicesController } from '../devices.controller';
 import { NotificationBatchingService } from '../notification-batching.service';
 import { NotificationListener } from '../notification.listener';
 import { NotificationPreference } from '../../notification-preferences/notification-preference.entity';
+import { NotificationPreferencesModule } from '../../notification-preferences/notification-preferences.module';
 import { FcmV1Provider } from './fcm-v1.provider';
 import { ApnsProvider } from './apns.provider';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DeviceToken, NotificationPreference]),
+    NotificationPreferencesModule,
     HttpModule,
   ],
   controllers: [DevicesController],

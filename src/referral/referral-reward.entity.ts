@@ -17,8 +17,12 @@ export enum RewardStatus {
 }
 
 @Entity('referral_rewards')
-@Index(['referralId'])
-@Index(['referralId', 'recipientId'], { unique: true })
+@Index('IDX_referral_rewards_referral', ['referralId'])
+@Index(
+  'UQ_referral_rewards_referral_recipient',
+  ['referralId', 'recipientId'],
+  { unique: true },
+)
 export class ReferralReward {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -39,7 +43,11 @@ export class ReferralReward {
   @Column({ length: 10 })
   currency!: string;
 
-  @Column({ type: 'simple-enum', enum: RewardStatus, default: RewardStatus.PENDING })
+  @Column({
+    type: 'simple-enum',
+    enum: RewardStatus,
+    default: RewardStatus.PENDING,
+  })
   status!: RewardStatus;
 
   @CreateDateColumn()

@@ -250,7 +250,9 @@ export default () => {
       rewardAmount: parseFloat(process.env.REFERRAL_REWARD_AMOUNT || '10'),
       maxReferrals: parseInt(process.env.REFERRAL_MAX_REFERRALS || '100', 10),
       programActive: (process.env.REFERRAL_PROGRAM_ACTIVE || 'true') === 'true',
-      rewardCurrency: (process.env.REFERRAL_REWARD_CURRENCY || 'USD').toUpperCase(),
+      rewardCurrency: (
+        process.env.REFERRAL_REWARD_CURRENCY || 'USD'
+      ).toUpperCase(),
       refereeRewardAmount: parseFloat(
         process.env.REFERRAL_REFEREE_REWARD_AMOUNT || '0',
       ),
@@ -295,6 +297,10 @@ export default () => {
       criticalValueThresholdUsd: parseFloat(
         process.env.AML_CRITICAL_VALUE_THRESHOLD_USD || '50000',
       ),
+      watchlistPath: process.env.AML_WATCHLIST_PATH || '',
+      screeningSimilarityThreshold: parseFloat(
+        process.env.AML_SCREENING_SIMILARITY_THRESHOLD || '0.92',
+      ),
     },
     // FX configuration
     fx: {
@@ -308,9 +314,7 @@ export default () => {
 
     // Swap / FX slippage — validated via Zod; never read process.env directly
     swap: {
-      slippagePercent: parseFloat(
-        process.env.SWAP_SLIPPAGE_PERCENT || '0.005',
-      ),
+      slippagePercent: parseFloat(process.env.SWAP_SLIPPAGE_PERCENT || '0.005'),
       previewCacheTtlSeconds: parseInt(
         process.env.SWAP_PREVIEW_CACHE_TTL_SECONDS || '30',
         10,
