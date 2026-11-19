@@ -1,5 +1,5 @@
 /**
- * `src/main.ts` calls `app.setGlobalPrefix('api/v1')`, so a controller that also
+ * `src/bootstrap/configure-app.ts` (called from main.ts) calls `app.setGlobalPrefix('api/v1')`, so a controller that also
  * hardcodes the prefix in its `@Controller()` decorator is served at
  * `/api/v1/api/v1/...`. This fails the build when any controller path repeats
  * the global prefix.
@@ -9,7 +9,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
-const MAIN = path.join(SRC, 'main.ts');
+const MAIN = path.join(SRC, 'bootstrap', 'configure-app.ts');
 
 const mainSource = fs.readFileSync(MAIN, 'utf8');
 
@@ -30,7 +30,7 @@ const readGlobalPrefix = () => {
 const rawPrefix = readGlobalPrefix();
 
 if (!rawPrefix) {
-  console.log('No global prefix configured in src/main.ts; nothing to check.');
+  console.log('No global prefix configured in src/bootstrap/configure-app.ts; nothing to check.');
   process.exit(0);
 }
 
@@ -69,7 +69,7 @@ if (offenders.length > 0) {
     console.error(`  - ${file}: @Controller('${controllerPath}')`),
   );
   console.error(
-    `Drop "${globalPrefix}/" from the decorator — setGlobalPrefix in src/main.ts already adds it.`,
+    `Drop "${globalPrefix}/" from the decorator — setGlobalPrefix in src/bootstrap/configure-app.ts already adds it.`,
   );
   process.exit(1);
 }

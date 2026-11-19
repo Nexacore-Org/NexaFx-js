@@ -2,21 +2,14 @@
 // can patch modules (http, typeorm, etc.) before they are first required.
 import './tracing';
 
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import helmet from 'helmet';
-import * as express from 'express';
-import * as compression from 'compression';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
-import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { configureApp } from './bootstrap/configure-app';
 import { Configuration } from './config/configuration';
 import { RedisIoAdapter } from './gateways/redis-adapter';
 import { buildCorsOptions, parseAllowedOrigins } from './config/cors';
-
-const GLOBAL_PREFIX = 'api/v1';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -42,6 +35,8 @@ async function bootstrap() {
   if (!port || isNaN(port)) {
     throw new Error(`Invalid PORT: ${port}`);
   }
+
+  configureApp(app, configService);
   const jsonLimit = configService.get<number>('limits.json') ?? 10 * 1024 * 1024;
   const urlencodedLimit =
     configService.get<number>('limits.urlencoded') ?? 10 * 1024 * 1024;
@@ -112,7 +107,6 @@ async function bootstrap() {
     });
   }
 
-  // `port` is declared and validated at the top of bootstrap(); reuse it here.
   await app.listen(port);
 }
 

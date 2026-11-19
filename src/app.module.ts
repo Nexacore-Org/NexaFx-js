@@ -302,13 +302,14 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
   controllers: [AppController],
   providers: [
     AppService,
+    // Throttler must run first so failed-auth floods are rate limited (issue #1558).
     {
       provide: APP_GUARD,
-      useClass: ApiKeyAuthGuard,
+      useClass: ThrottlerGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass: ApiKeyAuthGuard,
     },
     // Order matters: authenticate, then token version, then the read-only impersonation rule, then
     // role checks (issue #1537). RolesGuard and TokenVersionGuard had dropped out of this list.
@@ -318,10 +319,11 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     },
     {
       provide: APP_GUARD,
-      useClass: ImpersonationGuard,
+      useClass: JwtAuthGuard,
     },
     {
       provide: APP_GUARD,
+      useClass: ImpersonationGuard,
       useClass: TokenVersionGuard,
     },
     {
