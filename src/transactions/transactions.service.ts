@@ -173,6 +173,29 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Insufficient balance');
     }
 
+    // The receiver must exist and be active before any row is written.
+    const receiver = await this.usersService.findByIdOrNull(dto.receiverId);
+    if (!receiver || (await this.deactivationService.isUserDeactivated(dto.receiverId))) {
+      throw new NotFoundException('Receiver not found');
+    }
+
+    // Generate a reference when omitted; replay an identical duplicate, else 409.
+    if (!dto.reference) {
+      dto.reference = `txn_${randomUUID()}`;
+    } else {
+      const existing = await this.txRepo.findOne({ where: { reference: dto.reference } });
+      if (existing) {
+        if (
+          existing.senderId === dto.senderId &&
+          new Big(String(existing.amount)).eq(new Big(String(dto.amount))) &&
+          existing.currency === dto.currency
+        ) {
+          return existing;
+        }
+        throw new ConflictException('Transaction reference already exists');
+      }
+    }
+
     // Phase 1: persist PENDING record before any blockchain/balance changes
     const tx = this.txRepo.create({ ...dto, status: TransactionStatus.PENDING, pendingTimeoutAt: this.nextPendingTimeoutAt() });
     await this.txRepo.save(tx);
