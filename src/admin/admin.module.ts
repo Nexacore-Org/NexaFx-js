@@ -25,6 +25,7 @@ import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 import { SharedJwtModule } from '../common/jwt/jwt.module';
 import { TransactionApprovalModule } from '../multi-signature-approval/multi-signature-approval.module';
+import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { TransactionApprovalModule } from '../multi-signature-approval/multi-sig
     MailModule,
     SharedJwtModule,
     TransactionApprovalModule,
+    ExchangeRatesModule,
   ],
   controllers: [AdminController, SystemAdminController, AdminExportsController, AuditExportController],
   providers: [

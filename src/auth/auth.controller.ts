@@ -1,16 +1,21 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Ip, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Ip, Post } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import {
+  ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { PasswordResetFlowService } from './password-reset-flow.service';
+import { PasswordPolicy, PasswordPolicyService } from './password-policy.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from './decorators/public.decorator';
@@ -31,7 +36,7 @@ export class AuthController {
   @Public()
   @Get('password-policy')
   @ApiOperation({ summary: 'Current password policy' })
-  getPasswordPolicy() {
+  getPasswordPolicy(): PasswordPolicy {
     return this.passwordPolicy.getPolicy();
   }
 
@@ -41,6 +46,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Register a new user account' })
   @ApiBody({ type: RegisterDto })
   @ApiCreatedResponse({ type: AuthTokenResponseDto })
+  @ApiTooManyRequestsResponse({ description: 'Too many registration attempts' })
   register(
     @Body() dto: RegisterDto,
     @Ip() ip?: string,
@@ -56,6 +62,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Authenticate and issue an access token' })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: AuthTokenResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
+  @ApiTooManyRequestsResponse({ description: 'Too many login attempts' })
   login(
     @Body() dto: LoginDto,
     @Ip() ip?: string,
@@ -69,6 +77,7 @@ export class AuthController {
   @Post('refresh')
   @ApiOperation({ summary: 'Rotate refresh token and issue new token pair' })
   @ApiOkResponse({ type: AuthTokenResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid, expired or revoked refresh token' })
   refresh(
     @Body('refreshToken') refreshToken: string,
     @Ip() ip?: string,
@@ -80,7 +89,10 @@ export class AuthController {
   /** End the current session. Send `refreshToken` to revoke a specific one; otherwise the session in the access token (`sid`) is revoked. */
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('logout')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Revoke the current session' })
+  @ApiNoContentResponse({ description: 'Session revoked' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   async logout(
     @CurrentUser('id') userId: string,
     @CurrentUser('sid') sid?: string,

@@ -8,6 +8,8 @@ export interface AuthenticatedUser {
   email?: string;
   role?: string;
   isEmailVerified?: boolean;
+  /** Id of the refresh-token session the access token belongs to (JWT `sid`). */
+  sid?: string;
   /** The token version (`tv` claim) the access token was issued with. */
   tokenVersion?: number;
   /** The refresh-token session id (`sid` claim), used to revoke the session on logout. */
