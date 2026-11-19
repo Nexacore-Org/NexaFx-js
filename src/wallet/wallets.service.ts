@@ -157,6 +157,9 @@ export class WalletsService {
     if (!StrKey.isValidEd25519PublicKey(coldStorageAddress)) {
       throw new BadRequestException('coldStorageAddress is not a valid Stellar Ed25519 public key');
     }
+    if (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0) {
+      throw new BadRequestException('threshold must be a non-negative finite number');
+    }
     const config = { threshold, coldStorageAddress };
     this.autoSweepConfigs.set(userId, config);
     return config;
@@ -169,16 +172,23 @@ export class WalletsService {
   async processAutoSweep(userId: string, currency: string) {
     const config = this.getAutoSweepConfig(userId);
     if (!config) return { swept: false, reason: 'No auto-sweep config set' };
-    const wallet = await this.getBalance(userId, currency);
+    const normalizedCurrency = this.validateCurrency(currency);
+    currency = normalizedCurrency;
+    // Debit + transaction record run in one DB transaction, taking the wallet
+    // row lock first so a concurrent sweep sees the reduced balance.
+    return withTransaction(this.dataSource, async (manager) => {
+    const locked = await manager.findOne(WalletBalanceEntity, {
+      where: { accountId: userId, currency: normalizedCurrency },
+      lock: { mode: 'pessimistic_write' as const },
+    });
     // #1426: Big math — Postgres decimal columns can come back as strings and
     // native float subtraction loses precision at 8dp.
-    const balance = new Big(String(wallet.balance));
+    const balance = new Big(String(locked?.balance ?? 0));
     if (balance.gt(String(config.threshold))) {
       const sweepAmount = balance.minus(new Big(String(config.threshold))).toFixed(8);
-      await this.adjustBalance(userId, currency, -Number(sweepAmount));
       // Record the sweep as a real transaction so history/reconciliation can see it.
       // On-chain Stellar submission to coldStorageAddress is follow-up.
-      const txRepo = this.dataSource.getRepository(Transaction);
+      const txRepo = manager.getRepository(Transaction);
       const tx = txRepo.create({
         senderId: userId,
         receiverId: userId,
@@ -194,6 +204,7 @@ export class WalletsService {
         },
       });
       const savedTx = await txRepo.save(tx);
+      await this.adjustBalance(userId, currency, -Number(sweepAmount), manager, savedTx.id);
       return {
         swept: true,
         sweepAmount,
@@ -203,10 +214,17 @@ export class WalletsService {
       };
     }
     return { swept: false, reason: 'Balance below threshold' };
+    });
   }
 
   async updateCustomization(accountId: string, currency: string, label?: string, color?: string): Promise<WalletBalance> {
     const normalizedCurrency = this.validateCurrency(currency);
+    if (label !== undefined && (typeof label !== 'string' || label.length > 100)) {
+      throw new BadRequestException('label must be a string of at most 100 characters');
+    }
+    if (color !== undefined && (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color))) {
+      throw new BadRequestException('color must be a hex color like #aabbcc');
+    }
     const wallet = await this.walletRepository.findOne({ where: { accountId, currency: normalizedCurrency } });
     if (!wallet) {
       throw new BadRequestException('Wallet not found');
