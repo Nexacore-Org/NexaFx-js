@@ -28,13 +28,13 @@ export class LedgerEntry {
   @Column({ type: 'enum', enum: LedgerEntryType })
   type: LedgerEntryType;
 
-  @Column({ type: 'decimal', precision: 18, scale: 8 })
+  @Column({ type: 'decimal', precision: 20, scale: 8 })
   amount: number;
 
   @Column({ length: 10 })
   currency: string;
 
-  @Column({ type: 'decimal', precision: 18, scale: 8 })
+  @Column({ type: 'decimal', precision: 20, scale: 8 })
   balanceAfter: number;
 
   @Column({ type: 'text', nullable: true })
