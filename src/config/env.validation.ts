@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { checkSecretHygiene } from './secret-hygiene';
 import { parseAllowedOrigins } from './cors';
 
 /**
@@ -591,6 +592,22 @@ export type EnvConfig = z.infer<typeof envSchema>;
  * This ensures fail-fast behavior on startup
  */
 /**
+ * Rejects secrets that satisfy the Zod length/shape rules but are unsafe
+ * (issue #1543): duplicated across variables (any environment), and
+ * placeholders from .env.example or low-entropy values (production only;
+ * a warning elsewhere so local setup from .env.example still works).
+ */
+function assertSecretHygiene(parsed: EnvConfig): void {
+  const { errors, productionErrors } = checkSecretHygiene(parsed);
+  const fatal = parsed.NODE_ENV === 'production' ? [...errors, ...productionErrors] : errors;
+
+  if (fatal.length > 0) {
+    throw new Error(`Environment validation failed:\n${fatal.join('\n')}`);
+  }
+  if (parsed.NODE_ENV !== 'production') {
+    for (const message of productionErrors) {
+      console.warn(`[env] ${message} (rejected when NODE_ENV=production)`);
+    }
  * Cross-field production checks that do not fit a single-key Zod rule.
  * - ALLOWED_ORIGINS must be set and valid in production (issue #1540).
  * - DB_SSL_REJECT_UNAUTHORIZED=false is refused in production (issue #1541).
@@ -619,6 +636,7 @@ function assertProductionDbSsl(
 export function validateEnv(config: Record<string, unknown>): EnvConfig {
   try {
     const parsed = envSchema.parse(config);
+    assertSecretHygiene(parsed);
     assertProductionOrigins(parsed.NODE_ENV, parsed.ALLOWED_ORIGINS);
     assertProductionDbSsl(parsed.NODE_ENV, parsed.DB_SSL, parsed.DB_SSL_REJECT_UNAUTHORIZED);
     return parsed;

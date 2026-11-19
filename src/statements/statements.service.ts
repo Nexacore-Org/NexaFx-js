@@ -1,3 +1,5 @@
+import { getCorrelationId } from '../common/middleware/correlation-id.storage';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   BadRequestException,
   Injectable,
@@ -49,6 +51,7 @@ export class StatementsService {
 
     if (rangeDays > ASYNC_RANGE_DAYS) {
       const job = this.statementsQueue
+        ? await this.statementsQueue.add('generate', { ...request, correlationId: getCorrelationId() })
         ? await this.statementsQueue.add('generate', normalized)
         : { id: 'statement-queued' };
       return {
