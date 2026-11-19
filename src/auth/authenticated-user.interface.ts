@@ -8,6 +8,11 @@ export interface AuthenticatedUser {
   email?: string;
   role?: string;
   isEmailVerified?: boolean;
+  /** How the principal authenticated; API-key principals are always capped to role `user`. */
+  authMethod?: 'jwt' | 'api_key';
+  /** Scopes granted to the API key (API-key principals only). */
+  scopes?: string[];
+  /** Id of the API key used (API-key principals only). */
   /** Id of the refresh-token session the access token belongs to (JWT `sid`). */
   sid?: string;
   /** The token version (`tv` claim) the access token was issued with. */
