@@ -78,6 +78,13 @@ export class ExchangeRatesService implements OnModuleInit {
     const limit = dto.limit ?? 20;
     const offset = (page - 1) * limit;
 
+    if (dto.pair && !SUPPORTED_PAIRS.includes(dto.pair)) {
+      throw new BadRequestException(`Unsupported currency pair ${dto.pair}`);
+    }
+    if (dto.from && dto.to && new Date(dto.from) > new Date(dto.to)) {
+      throw new BadRequestException('"from" must not be after "to"');
+    }
+
     const qb = this.historyRepo.createQueryBuilder('h');
 
     if (dto.pair) {
@@ -85,14 +92,14 @@ export class ExchangeRatesService implements OnModuleInit {
     }
 
     if (dto.from) {
-      qb.andWhere('h.recorded_at >= :from', { from: new Date(dto.from) });
+      qb.andWhere('h.recordedAt >= :from', { from: new Date(dto.from) });
     }
 
     if (dto.to) {
-      qb.andWhere('h.recorded_at <= :to', { to: new Date(dto.to) });
+      qb.andWhere('h.recordedAt <= :to', { to: new Date(dto.to) });
     }
 
-    qb.orderBy('h.recorded_at', 'DESC');
+    qb.orderBy('h.recordedAt', 'DESC');
     qb.take(limit).skip(offset);
 
     const [items, total] = await qb.getManyAndCount();
@@ -116,7 +123,17 @@ export class ExchangeRatesService implements OnModuleInit {
     const rates: ExchangeRateCacheEntity[] = [];
 
     for (const pair of SUPPORTED_PAIRS) {
-      const { rate, provider } = await this.fetchRateFromSource(pair);
+      let rate: number;
+      let provider: string;
+      try {
+        ({ rate, provider } = await this.fetchRateFromSource(pair));
+      } catch (error) {
+        // Isolate per-pair failures: keep the previous row and continue.
+        this.logger.warn(`Failed to refresh ${pair}: ${(error as Error).message}`);
+        const previous = await this.cacheRepo.findOne({ where: { pair } });
+        if (previous) rates.push(previous);
+        continue;
+      }
 
       // Upsert into cache
       let cached = await this.cacheRepo.findOne({ where: { pair } });
