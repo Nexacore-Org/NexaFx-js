@@ -418,5 +418,39 @@ describe('validateEnv secret hygiene (issue #1543)', () => {
     expect(() => validateEnv({ ...VALID_ENV, JWT_SECRET: 'change-me-to-a-long-random-string' })).not.toThrow();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('JWT_SECRET'));
     warn.mockRestore();
+describe('validateEnv production network safety (issues #1540, #1541)', () => {
+  const PROD = { ...VALID_ENV, NODE_ENV: 'production' };
+
+  it('fails fast in production when ALLOWED_ORIGINS is empty', () => {
+    expect(() => validateEnv({ ...PROD, ALLOWED_ORIGINS: '' })).toThrow(/ALLOWED_ORIGINS/);
+  });
+
+  it('accepts production with an explicit origin list', () => {
+    expect(() => validateEnv({ ...PROD, ALLOWED_ORIGINS: 'https://app.nexafx.io' })).not.toThrow();
+  });
+
+  it('rejects a wildcard origin in any environment', () => {
+    expect(() => validateEnv({ ...VALID_ENV, ALLOWED_ORIGINS: '*' })).toThrow();
+  });
+
+  it('allows an empty ALLOWED_ORIGINS outside production', () => {
+    expect(() => validateEnv({ ...VALID_ENV, ALLOWED_ORIGINS: '' })).not.toThrow();
+  });
+
+  it('refuses DB_SSL_REJECT_UNAUTHORIZED=false in production', () => {
+    expect(() =>
+      validateEnv({
+        ...PROD,
+        ALLOWED_ORIGINS: 'https://app.nexafx.io',
+        DB_SSL: 'true',
+        DB_SSL_REJECT_UNAUTHORIZED: 'false',
+      }),
+    ).toThrow(/DB_SSL_REJECT_UNAUTHORIZED/);
+  });
+
+  it('allows DB_SSL_REJECT_UNAUTHORIZED=false outside production', () => {
+    expect(() =>
+      validateEnv({ ...VALID_ENV, DB_SSL: 'true', DB_SSL_REJECT_UNAUTHORIZED: 'false' }),
+    ).not.toThrow();
   });
 });
