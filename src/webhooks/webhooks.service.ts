@@ -3,6 +3,7 @@ import {
   ConflictException,
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -47,6 +48,28 @@ export interface PaginatedDeliveries {
 
 export const DEFAULT_DELIVERY_PAGE_SIZE = 20;
 export const MAX_DELIVERY_PAGE_SIZE = 100;
+
+/** Bound the recovery sweeps so one tick can never scan the whole table. */
+const SWEEP_BATCH_SIZE = 100;
+/** A PENDING row older than this with no live Bull job is considered stranded. */
+const STALE_PENDING_MINUTES = 5;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function deliveryJobOptions(deliveryId: string) {
+  return {
+    jobId: deliveryId,
+    attempts: Number(process.env.WEBHOOK_MAX_ATTEMPTS || '5'),
+    backoff: {
+      type: 'exponential' as const,
+      delay: Number(process.env.WEBHOOK_BACKOFF_DELAY_MS || '1000'),
+    },
+    removeOnComplete: true,
+    removeOnFail: true,
+  };
+}
 
 const MAX_ENDPOINTS_PER_USER =
   parseInt(process.env.WEBHOOK_MAX_ENDPOINTS_PER_USER ?? '10', 10) || 10;
@@ -122,6 +145,8 @@ async function validateWebhookUrl(rawUrl: string): Promise<void> {
 
 @Injectable()
 export class WebhooksService {
+  private readonly logger = new Logger(WebhooksService.name);
+
   constructor(
     @InjectRepository(WebhookEndpoint)
     private readonly endpointsRepository: Repository<WebhookEndpoint>,
@@ -285,37 +310,58 @@ export class WebhooksService {
     const targets = endpoints.filter((endpoint) =>
       endpoint.events.includes(eventName),
     );
+    if (targets.length === 0) {
+      return;
+    }
 
-    for (const endpoint of targets) {
-      const recipientPayload = this.buildRecipientPayload(
-        endpoint.ownerId,
-        payload,
-      );
+    const correlationId = getCorrelationId();
+    const newDeliveries = targets.map((endpoint) =>
+      this.deliveriesRepository.create({
+        id: randomUUID(),
+        endpointId: endpoint.id,
+        eventName,
+        requestBody: this.buildRecipientPayload(endpoint.ownerId, payload),
+        attemptCount: 0,
+        status: WebhookDeliveryStatus.PENDING,
+      }),
+    );
 
-      const delivery = await this.deliveriesRepository.save(
-        this.deliveriesRepository.create({
-          id: randomUUID(),
-          endpointId: endpoint.id,
-          eventName,
-          requestBody: recipientPayload,
-          attemptCount: 0,
-          status: WebhookDeliveryStatus.PENDING,
-        }),
-      );
+    // One insert for the whole event (#1612). The UUIDs are generated here so
+    // re-running the insert or the enqueue below cannot create duplicate rows.
+    const saved = await this.deliveriesRepository.save(newDeliveries);
+    const deliveries = Array.isArray(saved) ? saved : [saved];
 
-      await this.webhooksQueue.add(
-        'deliver',
-        { deliveryId: delivery.id, correlationId: getCorrelationId() },
-        {
-          jobId: delivery.id,
-          attempts: Number(process.env.WEBHOOK_MAX_ATTEMPTS || '5'),
-          backoff: {
-            type: 'exponential',
-            delay: Number(process.env.WEBHOOK_BACKOFF_DELAY_MS || '1000'),
-          },
-          removeOnComplete: true,
-          removeOnFail: true,
-        },
+    const jobs = deliveries.map((delivery) => ({
+      name: 'deliver',
+      data: { deliveryId: delivery.id, correlationId },
+      opts: deliveryJobOptions(delivery.id),
+    }));
+
+    try {
+      await this.webhooksQueue.addBulk(jobs);
+    } catch (bulkError) {
+      // A Redis blip must neither strand these rows as PENDING nor stop the
+      // other endpoints being queued. `jobId` makes re-adding safe if the bulk
+      // call partially succeeded before throwing.
+      const failed: WebhookDelivery[] = [];
+      for (const [index, job] of jobs.entries()) {
+        const delivery = deliveries[index];
+        if (!delivery) continue;
+        try {
+          await this.webhooksQueue.add(job.name, job.data, job.opts);
+        } catch (addError) {
+          delivery.status = WebhookDeliveryStatus.FAILED;
+          delivery.errorMessage =
+            `Failed to enqueue webhook delivery: ${errorMessage(addError)}`;
+          failed.push(delivery);
+        }
+      }
+      if (failed.length > 0) {
+        await this.deliveriesRepository.save(failed);
+      }
+      this.logger.warn(
+        `Bulk webhook enqueue failed (${errorMessage(bulkError)}); ` +
+          `${failed.length}/${deliveries.length} delivery(ies) marked FAILED`,
       );
     }
   }
@@ -356,6 +402,107 @@ export class WebhooksService {
     // Single-sided events (deposit/withdrawal/swap/reversal) carry no
     // counterparty, so the payload is already scoped to the owner.
     return payload;
+  }
+
+  /**
+   * Re-enqueue failed deliveries whose backoff has elapsed (#1612).
+   * Bull's processor performs the HTTP retry; this sweep only repairs rows
+   * whose job was lost or was never created.
+   */
+  async recoverFailedDeliveries(): Promise<number> {
+    const due = await this.deliveriesRepository.find({
+      where: {
+        status: WebhookDeliveryStatus.FAILED,
+        nextRetryAt: LessThanOrEqual(new Date()),
+      },
+      take: SWEEP_BATCH_SIZE,
+      order: { updatedAt: 'ASC' },
+    });
+    return this.enqueueStoredDeliveries(
+      due.filter((delivery) => delivery.retryCount < delivery.maxRetries),
+    );
+  }
+
+  /**
+   * Re-enqueue PENDING rows stranded for a few minutes with no live job
+   * (#1612) — for example when the process died between the insert and the
+   * enqueue, or when a bulk enqueue failed but its fallback also missed a row.
+   */
+  async recoverStuckPendingDeliveries(
+    staleAfterMinutes: number = STALE_PENDING_MINUTES,
+  ): Promise<number> {
+    const minutes =
+      Number.isFinite(staleAfterMinutes) && staleAfterMinutes > 0
+        ? staleAfterMinutes
+        : STALE_PENDING_MINUTES;
+    const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+    const stale = await this.deliveriesRepository.find({
+      where: {
+        status: WebhookDeliveryStatus.PENDING,
+        createdAt: LessThan(cutoff),
+      },
+      take: SWEEP_BATCH_SIZE,
+      order: { createdAt: 'ASC' },
+    });
+    return this.enqueueStoredDeliveries(stale, true);
+  }
+
+  /** Re-queue one delivery on demand (backing the manual retry endpoint). */
+  async retryDelivery(
+    deliveryId: string,
+  ): Promise<{ deliveryId: string; status: string }> {
+    const delivery = await this.deliveriesRepository.findOne({
+      where: { id: deliveryId },
+    });
+    if (!delivery) {
+      throw new NotFoundException(`Webhook delivery ${deliveryId} not found`);
+    }
+
+    await this.webhooksQueue.add(
+      'deliver',
+      { deliveryId, correlationId: getCorrelationId() },
+      deliveryJobOptions(deliveryId),
+    );
+
+    delivery.status = WebhookDeliveryStatus.PENDING;
+    delivery.errorMessage = null;
+    delivery.nextRetryAt = null;
+    delivery.retryCount = 0;
+    await this.deliveriesRepository.save(delivery);
+    return { deliveryId, status: 'queued' };
+  }
+
+  private async enqueueStoredDeliveries(
+    deliveries: WebhookDelivery[],
+    skipLiveJobs = false,
+  ): Promise<number> {
+    let requeued = 0;
+    for (const delivery of deliveries) {
+      try {
+        if (
+          skipLiveJobs &&
+          typeof this.webhooksQueue.getJob === 'function' &&
+          (await this.webhooksQueue.getJob(delivery.id))
+        ) {
+          continue;
+        }
+        await this.webhooksQueue.add(
+          'deliver',
+          { deliveryId: delivery.id, correlationId: getCorrelationId() },
+          deliveryJobOptions(delivery.id),
+        );
+        requeued++;
+      } catch (error) {
+        this.logger.warn(
+          `Failed to re-enqueue webhook delivery ${delivery.id}: ` +
+            errorMessage(error),
+        );
+      }
+    }
+    return requeued;
+  }
+
+  /**
    * Delete deliveries older than `retentionDays` (#1446). Retention is opt-in:
    * a non-positive or unset value prunes nothing, so nothing is deleted by
    * accident. Returns the number of rows removed.

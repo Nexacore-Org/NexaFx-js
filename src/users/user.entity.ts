@@ -84,7 +84,7 @@ export class User {
   @Column({ type: 'varchar', length: 2, default: 'en' })
   preferredLanguage!: string;
 
-  @Column({ type: 'datetime', nullable: true, default: null })
+  @Column({ type: 'timestamptz', nullable: true, default: null })
   passwordChangedAt!: Date | null;
 
   /** Enforce 2FA for admin accounts. When true, admin login requires a valid TOTP code. */
@@ -96,7 +96,7 @@ export class User {
   failedLoginAttempts!: number;
 
   /** Timestamp after which the account is unlocked; null means not locked. */
-  @Column({ type: 'datetime', nullable: true, default: null })
+  @Column({ type: 'timestamptz', nullable: true, default: null })
   lockedUntil!: Date | null;
 
   @CreateDateColumn()

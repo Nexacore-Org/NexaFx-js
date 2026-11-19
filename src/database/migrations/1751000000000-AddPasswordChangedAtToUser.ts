@@ -6,7 +6,7 @@ export class AddPasswordChangedAtToUser1751000000000 implements MigrationInterfa
       'users',
       new TableColumn({
         name: 'passwordChangedAt',
-        type: 'timestamp',
+        type: 'timestamptz',
         isNullable: true,
         default: null,
       }),
