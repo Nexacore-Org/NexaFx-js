@@ -141,3 +141,20 @@ there, so a demoted admin gets the new role on the next refresh.
 
 `request.user` has one shape everywhere (`AuthenticatedUser`): `id` always
 equals `sub`. Read the caller with `@CurrentUser('id')`.
+
+## Mandatory notification combinations
+
+Security alerts must never be silently muted. The following `(channel, eventType)`
+pairs are mandatory:
+
+| Channel | Event type | Behaviour |
+| ------- | ---------- | --------- |
+| `email` | `security` | Cannot be disabled; opt-out attempts return HTTP 400 |
+| `push`  | `security` | Cannot be disabled; opt-out attempts return HTTP 400 |
+
+`PATCH /api/v1/notification-preferences` and `PUT /api/v1/notification-preferences`
+reject `isEnabled: false` for either pair with HTTP 400. An empty or oversized
+batch, an unknown channel/event type, and duplicate `(channel, eventType)` pairs
+are also rejected. `NotificationPreferencesService.shouldNotify()` and the
+batching service always return `true` for these pairs, including when no
+preference row exists or a row was disabled out of band.

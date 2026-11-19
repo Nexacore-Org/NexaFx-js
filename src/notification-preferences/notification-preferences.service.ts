@@ -1,18 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
-  NotificationPreference,
+  isMandatoryPreference,
   NotificationChannel,
   NotificationEventType,
+  NotificationPreference,
+  preferenceKey,
 } from './notification-preference.entity';
+import { UpdatePreferenceDto } from './dto/update-preferences.dto';
 
-export interface UpdatePreferenceDto {
-  channel: NotificationChannel;
-  eventType: NotificationEventType;
-  isEnabled: boolean;
-  batchingEnabled?: boolean;
-}
+export type { UpdatePreferenceDto } from './dto/update-preferences.dto';
+
+const CONFLICT_PATHS = ['userId', 'channel', 'eventType'];
 
 @Injectable()
 export class NotificationPreferencesService {
@@ -37,41 +37,40 @@ export class NotificationPreferencesService {
     userId: string,
     dto: UpdatePreferenceDto,
   ): Promise<NotificationPreference> {
-    let pref = await this.repo.findOne({
-      where: {
-        userId,
-        channel: dto.channel,
-        eventType: dto.eventType,
-      },
+    this.assertMutable(dto);
+    await this.repo.upsert(this.toUpsert(userId, dto), {
+      conflictPaths: CONFLICT_PATHS,
     });
-
-    if (pref) {
-      pref.isEnabled = dto.isEnabled;
-      if (dto.batchingEnabled !== undefined) {
-        pref.batchingEnabled = dto.batchingEnabled;
-      }
-    } else {
-      pref = this.repo.create({
-        userId,
-        channel: dto.channel,
-        eventType: dto.eventType,
-        isEnabled: dto.isEnabled,
-        batchingEnabled: dto.batchingEnabled ?? true,
-      });
-    }
-
-    return this.repo.save(pref);
+    return this.repo.findOneOrFail({
+      where: { userId, channel: dto.channel, eventType: dto.eventType },
+    });
   }
 
   async updatePreferences(
     userId: string,
     dtos: UpdatePreferenceDto[],
   ): Promise<NotificationPreference[]> {
-    const results: NotificationPreference[] = [];
+    const unique = new Map<string, UpdatePreferenceDto>();
     for (const dto of dtos) {
-      results.push(await this.updatePreference(userId, dto));
+      this.assertMutable(dto);
+      unique.set(preferenceKey(dto.channel, dto.eventType), dto);
     }
-    return results;
+
+    return this.repo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(NotificationPreference);
+      const results: NotificationPreference[] = [];
+      for (const dto of unique.values()) {
+        await repo.upsert(this.toUpsert(userId, dto), {
+          conflictPaths: CONFLICT_PATHS,
+        });
+        results.push(
+          await repo.findOneOrFail({
+            where: { userId, channel: dto.channel, eventType: dto.eventType },
+          }),
+        );
+      }
+      return results;
+    });
   }
 
   async shouldNotify(
@@ -79,14 +78,32 @@ export class NotificationPreferencesService {
     channel: NotificationChannel,
     eventType: NotificationEventType,
   ): Promise<boolean> {
+    if (isMandatoryPreference(channel, eventType)) return true;
+
     const pref = await this.repo.findOne({
       where: { userId, channel, eventType },
     });
+    return pref ? pref.isEnabled : true;
+  }
 
-    if (!pref) {
-      return true;
+  private assertMutable(dto: UpdatePreferenceDto): void {
+    if (
+      dto.isEnabled === false &&
+      isMandatoryPreference(dto.channel, dto.eventType)
+    ) {
+      throw new BadRequestException(
+        `Security notifications on ${dto.channel} cannot be disabled`,
+      );
     }
+  }
 
-    return pref.isEnabled;
+  private toUpsert(userId: string, dto: UpdatePreferenceDto) {
+    return {
+      userId,
+      channel: dto.channel,
+      eventType: dto.eventType,
+      isEnabled: dto.isEnabled,
+      batchingEnabled: dto.batchingEnabled ?? true,
+    };
   }
 }

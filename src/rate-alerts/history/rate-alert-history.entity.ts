@@ -7,9 +7,12 @@ import {
 } from 'typeorm';
 
 @Entity('rate_alert_history')
-@Index(['userId', 'createdAt'])
-@Index(['alertId'])
-@Index(['currencyPair', 'createdAt'])
+@Index('IDX_rate_alert_history_user_created', ['userId', 'createdAt'])
+@Index('IDX_rate_alert_history_alert', ['alertId'])
+@Index('IDX_rate_alert_history_currency_pair_created', [
+  'currencyPair',
+  'createdAt',
+])
 export class RateAlertHistory {
   @PrimaryGeneratedColumn('uuid')
   id: string;

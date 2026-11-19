@@ -1,8 +1,14 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity('rate_alerts')
-@Index(['userId'])
-@Index(['currencyPair'])
+@Index('IDX_rate_alerts_user', ['userId'])
+@Index('IDX_rate_alerts_currency_pair', ['currencyPair'])
 export class RateAlertEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

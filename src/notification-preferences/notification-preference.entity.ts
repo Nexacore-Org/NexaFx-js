@@ -22,8 +22,35 @@ export enum NotificationEventType {
   SYSTEM = 'system',
 }
 
+export function preferenceKey(
+  channel: NotificationChannel,
+  eventType: NotificationEventType,
+): string {
+  return `${channel}:${eventType}`;
+}
+
+export const MANDATORY_NOTIFICATION_COMBINATIONS: ReadonlySet<string> = new Set(
+  [
+    preferenceKey(NotificationChannel.EMAIL, NotificationEventType.SECURITY),
+    preferenceKey(NotificationChannel.PUSH, NotificationEventType.SECURITY),
+  ],
+);
+
+export function isMandatoryPreference(
+  channel: NotificationChannel,
+  eventType: NotificationEventType,
+): boolean {
+  return MANDATORY_NOTIFICATION_COMBINATIONS.has(
+    preferenceKey(channel, eventType),
+  );
+}
+
 @Entity('notification_preferences')
-@Index(['userId', 'channel', 'eventType'], { unique: true })
+@Index(
+  'UQ_notification_preferences_user_channel_event',
+  ['userId', 'channel', 'eventType'],
+  { unique: true },
+)
 export class NotificationPreference {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
