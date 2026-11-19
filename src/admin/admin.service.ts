@@ -1,8 +1,19 @@
-import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { JwtService } from '@nestjs/jwt';
 import { ApprovalService } from '../multi-signature-approval/approval.service';
 import { ApprovalActionType } from '../multi-signature-approval/dto/approval.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, ILike, Repository, Between } from 'typeorm';
+import { EntityManager, Repository, Between, Not } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { KycDocument } from '../kyc/kyc-document.entity';
@@ -11,6 +22,11 @@ import { SupportTicketEntity } from '../modules/support-tickets/entities/support
 import { WebhookEndpoint } from '../webhooks/webhook-endpoint.entity';
 import { AmlAlert } from '../aml/aml-alert.entity';
 import { AuditService } from '../audit/audit.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { TokenType } from '../auth/token-types';
+import { TOKEN_VERSION_CHANGED_EVENT } from '../auth/token-version.service';
+import { USER_ACCESS_CHANGED_EVENT, UserAccessChangedEvent } from '../auth/account-status.service';
+import { CbnReportPeriod } from './dto/cbn-report-query.dto';
 
 const ADMIN_SEARCH_LIMIT = 10;
 
@@ -41,6 +57,9 @@ export class AdminService implements OnModuleInit {
     private readonly alertsRepository: Repository<AmlAlert>,
     private readonly auditService: AuditService,
     @Optional() private readonly approvalService?: ApprovalService,
+    @Optional() private readonly events?: EventEmitter2,
+    @Optional() private readonly jwtService?: JwtService,
+    @Optional() private readonly rateService?: ExchangeRatesService,
   ) {}
 
   /** Tell the approval workflow how to run the actions this service owns. */
@@ -214,7 +233,7 @@ export class AdminService implements OnModuleInit {
     if (currency.toUpperCase() === 'USD') return 1;
     if (!this.rateService) return null;
     try {
-      const { rate } = await this.rateService.getRate(currency, 'USD');
+      const { rate } = await this.rateService.calculateConversion(currency, 'USD', 1);
       return Number.isFinite(rate) && rate > 0 ? rate : null;
     } catch {
       return null;
@@ -355,6 +374,12 @@ export class AdminService implements OnModuleInit {
     }
   }
 
+  /**
+   * Suspend or reactivate a user. Mirrors `updateUserRole`: runs in one transaction
+   * (or the approval workflow's `manager`), applies the self-change and last-admin
+   * guardrails, bumps `tokenVersion`, and announces the change so access tokens and
+   * refresh tokens stop working immediately when the user is suspended (issue #1518).
+   */
   async updateUserStatus(
     targetUserId: string,
     isActive: boolean,
@@ -362,15 +387,35 @@ export class AdminService implements OnModuleInit {
     reason?: string,
     manager?: EntityManager,
   ): Promise<User> {
-    const usersRepo = manager ? manager.getRepository(User) : this.usersRepository;
-    const user = await usersRepo.findOne({
-      where: { id: targetUserId },
-    });
+    const work = async (repo: Repository<User>) => {
+      const user = await repo.findOne({ where: { id: targetUserId } });
+      if (!user) {
+        throw new NotFoundException(`User ${targetUserId} not found`);
+      }
+      await this.assertPrivilegeChangeAllowed(repo, user, adminUserId, !isActive);
+
+      const snapshot = {
+        isActive: user.isActive,
+        role: user.role,
+        kycStatus: user.kycStatus,
+        email: user.email,
+      };
+      user.isActive = isActive;
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+      return { before: snapshot, updated: await repo.save(user) };
+    };
+
+    const { before, updated } = manager
+      ? await work(manager.getRepository(User))
+      : await this.inUserTransaction(work);
 
     this.events?.emit(TOKEN_VERSION_CHANGED_EVENT, { userId: targetUserId });
-
-    user.isActive = isActive;
-    const updated = await usersRepo.save(user);
+    const accessChanged: UserAccessChangedEvent = {
+      userId: targetUserId,
+      reason: isActive ? 'activated' : 'suspended',
+      revokeTokens: !isActive,
+    };
+    this.events?.emit(USER_ACCESS_CHANGED_EVENT, accessChanged);
 
     await this.auditService.log({
       userId: adminUserId,
@@ -468,6 +513,8 @@ export class AdminService implements OnModuleInit {
         role: user.role,
         isEmailVerified: user.isEmailVerified,
         typ: TokenType.ACCESS,
+        // Without `tv` TokenVersionGuard would reject this token as stale.
+        tv: user.tokenVersion ?? 0,
         act: { sub: adminUserId },
         impersonation: true,
       },

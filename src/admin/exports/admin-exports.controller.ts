@@ -1,3 +1,4 @@
+import { getCorrelationId } from '../../common/middleware/correlation-id.storage';
 import { InjectQueue } from '@nestjs/bull';
 import {
   BadRequestException,
@@ -51,6 +52,7 @@ export class AdminExportsController {
       ? await this.exportsQueue.add('export-transactions', {
           ...dto,
           requestedByEmail,
+          correlationId: getCorrelationId(),
         })
       : { id: 'export-queued' };
 
