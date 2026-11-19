@@ -15,12 +15,11 @@ import {
 import { Response } from 'express';
 import { join, resolve, normalize } from 'path';
 import { AdminService } from './admin.service';
-import { AdminApprovalStatus } from './admin-approval.entity';
-import {
-  AdminApprovalActionType,
-  CreateAdminApprovalDto,
-  RejectAdminApprovalDto,
-} from './dto/create-admin-approval.dto';
+import { SpreadService } from '../fx/spread.service';
+import { ApprovalService } from '../multi-signature-approval/approval.service';
+import { ApprovalActionType } from '../multi-signature-approval/dto/approval.dto';
+import { UpdateSpreadDto } from './dto/update-spread.dto';
+import { AdminSearchQueryDto } from './dto/admin-search-query.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
@@ -50,7 +49,11 @@ function assertSafePathSegment(segment: string, paramName: string): void {
 
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly approvalService: ApprovalService,
+    private readonly spreadService: SpreadService,
+  ) {}
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @UseInterceptors(CacheInterceptor)
@@ -69,8 +72,8 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Get('search')
-  searchPlatform(@Query('q') query: string) {
-    return this.adminService.searchPlatform(query ?? '');
+  searchPlatform(@Query() query: AdminSearchQueryDto) {
+    return this.adminService.searchPlatform(query.q);
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
@@ -96,8 +99,8 @@ export class AdminController {
   ) {
     // With dual control on, a single admin can only *request* the change.
     if (this.adminService.isDualControlEnabled()) {
-      return this.adminService.requestAdminApproval(
-        AdminApprovalActionType.OVERRIDE_TRANSACTION_STATUS,
+      return this.approvalService.requestAdminApproval(
+        ApprovalActionType.OVERRIDE_TRANSACTION_STATUS,
         { transactionId: id, newStatus: dto.status, reason: dto.reason },
         adminId,
       );
@@ -118,8 +121,8 @@ export class AdminController {
     @CurrentUser('id') adminId: string,
   ) {
     if (this.adminService.isDualControlEnabled()) {
-      return this.adminService.requestAdminApproval(
-        AdminApprovalActionType.UPDATE_USER_STATUS,
+      return this.approvalService.requestAdminApproval(
+        ApprovalActionType.UPDATE_USER_STATUS,
         { targetUserId: id, isActive: dto.isActive, reason: dto.reason },
         adminId,
       );
@@ -193,22 +196,12 @@ export class AdminController {
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Get('spreads')
   getSpreads() {
-    return this.adminService.getSpreads();
+    return this.spreadService.getSpreads();
   }
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Patch('spreads')
-  updateSpread(
-    @Body('pair') pair: string,
-    @Body('spreadPercentage') spreadPercentage: number,
-    @CurrentUser('id') adminId: string,
-  ) {
-    return this.adminService.updateSpread(pair, spreadPercentage, adminId);
-  }
-
-  @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
-  @Post('users/:id/impersonate')
-  impersonateUser(@Param('id') id: string, @CurrentUser('id') adminId: string) {
-    return this.adminService.impersonateUser(id, adminId);
+  updateSpread(@Body() dto: UpdateSpreadDto, @CurrentUser('id') adminId: string) {
+    return this.spreadService.updateSpread(dto.pair, dto.spreadPercentage, adminId, dto.reason);
   }
 }

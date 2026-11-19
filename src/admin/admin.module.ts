@@ -25,6 +25,8 @@ import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 import { SharedJwtModule } from '../common/jwt/jwt.module';
 import { TransactionApprovalModule } from '../multi-signature-approval/multi-signature-approval.module';
+import { CurrencyPair } from '../fx/currency-pair.entity';
+import { SpreadService } from '../fx/spread.service';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 
 @Module({
@@ -37,6 +39,7 @@ import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
       WebhookEndpoint,
       AmlAlert,
       WalletBalanceEntity,
+      CurrencyPair,
     ]),
     BullModule.registerQueue({ name: 'admin-exports' }),
     SecurityModule,
@@ -51,6 +54,7 @@ import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
   controllers: [AdminController, SystemAdminController, AdminExportsController, AuditExportController],
   providers: [
     AdminService,
+    SpreadService,
     AdminCacheInvalidationService,
     AdminAlertService,
     KeyRotationService,
