@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { WebhooksService } from './webhooks.service';
 
 @Injectable()
@@ -6,9 +8,20 @@ export class WebhookRetryJob {
   private readonly logger = new Logger(WebhookRetryJob.name);
   constructor(private readonly webhooksService: WebhooksService) {}
 
-  async runRetrySweep() {
+  @ClusterCron(CronExpression.EVERY_MINUTE, 'webhooks:retry-sweep')
+  async runRetrySweep(): Promise<void> {
     this.logger.log('Running webhook cron-based retry sweep...');
-    // Real recovery sweep for failed webhook delivery payloads
     await this.webhooksService.recoverFailedDeliveries();
+    const requeued = await this.webhooksService.recoverStuckPendingDeliveries();
+    if (requeued > 0) {
+      this.logger.warn(
+        `Re-enqueued ${requeued} stranded PENDING webhook delivery(ies)`,
+      );
+    }
+  }
+
+  /** Backs the manual "retry delivery" endpoint. */
+  async manualRetry(deliveryId: string) {
+    return this.webhooksService.retryDelivery(deliveryId);
   }
 }
