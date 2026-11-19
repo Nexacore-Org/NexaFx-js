@@ -378,19 +378,6 @@ export class WebhooksService {
       this.logger.warn(
         `Bulk webhook enqueue failed (${errorMessage(bulkError)}); ` +
           `${failed.length}/${deliveries.length} delivery(ies) marked FAILED`,
-      await this.webhooksQueue?.add(
-        'deliver',
-        { deliveryId: delivery.id, correlationId: getCorrelationId() },
-        {
-          jobId: delivery.id,
-          attempts: Number(process.env.WEBHOOK_MAX_ATTEMPTS || '5'),
-          backoff: {
-            type: 'exponential',
-            delay: Number(process.env.WEBHOOK_BACKOFF_DELAY_MS || '1000'),
-          },
-          // Retention comes from getDefaultJobOptions(): failures stay queryable
-          // and retryable for seven days instead of disappearing (#1607).
-        },
       );
     }
   }
@@ -476,21 +463,32 @@ export class WebhooksService {
     return this.enqueueStoredDeliveries(stale, true);
   }
 
-  /** Re-queue one delivery on demand (backing the manual retry endpoint). */
-  async retryDelivery(
+  /**
+   * Re-queue one of the caller's failed deliveries (backing the manual retry
+   * endpoint, #1588). Ownership is enforced by {@link findDeliveryForOwner} so
+   * no authenticated user can re-fire another tenant's delivery.
+   */
+  async retryDeliveryForOwner(
     deliveryId: string,
+    ownerId: string,
   ): Promise<{ deliveryId: string; status: string }> {
-    const delivery = await this.deliveriesRepository.findOne({
-      where: { id: deliveryId },
-    });
-    if (!delivery) {
-      throw new NotFoundException(`Webhook delivery ${deliveryId} not found`);
+    const delivery = await this.findDeliveryForOwner(deliveryId, ownerId);
+
+    if (
+      delivery.status !== WebhookDeliveryStatus.FAILED &&
+      delivery.status !== WebhookDeliveryStatus.EXPIRED
+    ) {
+      throw new BadRequestException(
+        `Only FAILED or EXPIRED deliveries can be retried (current: ${delivery.status})`,
+      );
     }
 
+    // The original job used the delivery id as its jobId, which Bull rejects
+    // while that job still exists, so each manual retry gets a fresh one.
     await this.webhooksQueue.add(
       'deliver',
       { deliveryId, correlationId: getCorrelationId() },
-      deliveryJobOptions(deliveryId),
+      deliveryJobOptions(`${deliveryId}:retry:${Date.now()}`),
     );
 
     delivery.status = WebhookDeliveryStatus.PENDING;
