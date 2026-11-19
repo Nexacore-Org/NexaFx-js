@@ -7,7 +7,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type TicketStatus = 'open' | 'in_progress' | 'waiting_customer' | 'resolved' | 'closed';
+export enum TicketStatus {
+  OPEN = 'open',
+  IN_PROGRESS = 'in_progress',
+  WAITING_CUSTOMER = 'waiting_customer',
+  RESOLVED = 'resolved',
+  CLOSED = 'closed',
+}
+
 export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 @Entity('support_tickets')
@@ -28,7 +35,7 @@ export class SupportTicketEntity {
   @Column({ type: 'text' })
   description: string;
 
-  @Column({ type: 'varchar', length: 30, default: 'open' })
+  @Column({ type: 'varchar', length: 30, default: TicketStatus.OPEN })
   status: TicketStatus;
 
   @Column({ type: 'varchar', length: 20, default: 'medium' })

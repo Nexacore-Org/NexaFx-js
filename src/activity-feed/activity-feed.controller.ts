@@ -3,15 +3,17 @@ import {
   Get,
   Patch,
   Param,
+  ParseUUIDPipe,
   Query,
   Req,
   HttpCode,
   HttpStatus,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
-import { ActivityFeedService, ActivityFeedFilters } from './activity-feed.service';
-import { ActivityType } from './activity-feed-item.entity';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ActivityFeedService } from './activity-feed.service';
+import { ListActivityQueryDto } from './dto/list-activity-query.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 interface AuthenticatedRequest {
   user?: {
@@ -27,28 +29,23 @@ export class ActivityFeedController {
   @Get()
   findAll(
     @Req() req: AuthenticatedRequest,
-    @Query('type') type?: ActivityType,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query(ValidationPipe) dto: ListActivityQueryDto,
   ) {
     const userId = req.user?.sub ?? '';
-    const filters: ActivityFeedFilters = {
-      type,
-      startDate,
-      endDate,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-    };
-    return this.activityFeedService.findAll(userId, filters);
+    return this.activityFeedService.findAll(userId, {
+      type: dto.type,
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+      page: dto.page,
+      limit: dto.limit,
+    });
   }
 
   @Patch(':id/read')
   @HttpCode(HttpStatus.OK)
   markAsRead(
     @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     const userId = req.user?.sub ?? '';
     return this.activityFeedService.markAsRead(userId, id);
