@@ -13,6 +13,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { context, trace } from '@opentelemetry/api';
+import { shutdownWithTimeout } from './tracing-shutdown';
 
 const exporterUrl = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 // No endpoint means no exporter: stop NodeSDK defaulting to localhost:4318 (issue #1404).
@@ -36,10 +37,15 @@ const sdk = new NodeSDK({
 
 sdk.start();
 
-// Flush buffered spans before exiting on SIGTERM (issue #1404).
-process.once('SIGTERM', () => {
-  void sdk.shutdown().finally(() => process.exit(0));
-});
+/**
+ * Flushes buffered spans (issue #1404). Deliberately NOT wired to a signal
+ * handler and never calls process.exit (issue #1539): Nest's shutdown hooks own
+ * the process lifecycle and call this from `TracingShutdownService`, after the
+ * application's own onModuleDestroy / onApplicationShutdown hooks have run.
+ */
+export function shutdownTracing(): Promise<boolean> {
+  return shutdownWithTimeout(() => sdk.shutdown());
+}
 
 /**
  * Returns the current W3C trace ID or an empty string when no active span exists.

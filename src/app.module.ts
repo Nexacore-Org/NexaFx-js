@@ -72,6 +72,7 @@ import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 // in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { ObservabilityModule } from './observability/observability.module';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
 import { EndpointRateLimitModule } from './modules/endpoint-rate-limit/endpoint-rate-limit.module';
@@ -127,6 +128,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
 
 @Module({
   imports: [
+    ObservabilityModule,
     ConfigModule,
     LoggerModule.forRoot({
       pinoHttp: {
