@@ -2,6 +2,13 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bull';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditModule } from '../audit/audit.module';
+import { EncryptionModule } from '../common/encryption/encryption.module';
+import {
+  QUEUE_NAMES,
+  getDefaultJobOptions,
+  isBullEnabled,
+} from '../queues/queue.constants';
 import { WebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
 import { WebhooksProcessor } from './webhooks.processor';
@@ -16,7 +23,16 @@ import { WebhookDeliveryRetentionJob } from './webhook-delivery-retention.job';
   imports: [
     TypeOrmModule.forFeature([WebhookEndpoint, WebhookDelivery]),
     HttpModule,
-    BullModule.registerQueue({ name: 'webhooks' }),
+    ...(isBullEnabled()
+      ? [
+          BullModule.registerQueue({
+            name: QUEUE_NAMES.WEBHOOKS,
+            defaultJobOptions: getDefaultJobOptions(),
+          }),
+        ]
+      : []),
+    EncryptionModule,
+    AuditModule,
     AuthModule,
   ],
   controllers: [WebhooksController],

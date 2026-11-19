@@ -72,8 +72,6 @@ import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 // in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
-import { TokenVersionGuard } from './auth/token-version.guard';
-import { RolesGuard } from './auth/guards/roles.guard';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AccountClosureModule } from './users/account-closure.module';
 import { correlationPinoOptions } from './common/logging/correlation-pino';
@@ -99,9 +97,13 @@ import { WalletHistoryModule } from './modules/wallet-history/wallet-history.mod
 import { KycTiersModule } from './modules/kyc-tiers/kyc-tiers.module';
 import { AppGraphQLModule } from './graphql/graphql.module';
 import { QueuesModule } from './queues/queues.module';
+import {
+  QUEUE_NAMES,
+  getDefaultJobOptions,
+  isBullEnabled,
+} from './queues/queue.constants';
 
-const enableBull =
-  process.env.NODE_ENV !== 'test' && process.env.DISABLE_BULL !== 'true';
+const enableBull = isBullEnabled();
 
 async function createCacheOptions(configService: ConfigService<Configuration>) {
   const redis = configService.get<Configuration['redis']>('redis');
@@ -226,19 +228,14 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
                     return Math.min(1000 * 2 ** attempts, 30_000);
                   },
                 },
-                defaultJobOptions: {
-                  attempts: 3,
-                  backoff: {
-                    type: 'exponential',
-                    delay: 2000,
-                  },
-                  removeOnComplete: true,
-                  removeOnFail: true,
-                },
+                defaultJobOptions: getDefaultJobOptions(),
               };
             },
           }),
-          BullModule.registerQueue({ name: 'default' }),
+          BullModule.registerQueue({
+            name: QUEUE_NAMES.DEFAULT,
+            defaultJobOptions: getDefaultJobOptions(),
+          }),
           MailQueueModule,
           TransactionQueueModule,
           QueuesModule,
@@ -324,15 +321,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     {
       provide: APP_GUARD,
       useClass: ImpersonationGuard,
-      useClass: TokenVersionGuard,
     },
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
     },
   ],
 })

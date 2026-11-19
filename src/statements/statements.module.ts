@@ -1,6 +1,12 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditModule } from '../audit/audit.module';
+import {
+  QUEUE_NAMES,
+  getDefaultJobOptions,
+  isBullEnabled,
+} from '../queues/queue.constants';
 import { StatementsService } from './statements.service';
 import { StatementsController } from './statements.controller';
 import { StatementsProcessor } from './statements.processor';
@@ -14,7 +20,15 @@ import { AuthModule } from '../auth/auth.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Transaction, FxTrade]),
-    BullModule.registerQueue({ name: 'statements' }),
+    ...(isBullEnabled()
+      ? [
+          BullModule.registerQueue({
+            name: QUEUE_NAMES.STATEMENTS,
+            defaultJobOptions: getDefaultJobOptions(),
+          }),
+        ]
+      : []),
+    AuditModule,
     UsersModule,
     DocumentsModule,
     MailModule,
