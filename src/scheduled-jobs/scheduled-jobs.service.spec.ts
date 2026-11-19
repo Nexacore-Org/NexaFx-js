@@ -1,23 +1,35 @@
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { BadRequestException } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
+import { DistributedLockService } from '../common/locks/distributed-lock.service';
 import { ScheduledJobsService } from './scheduled-jobs.service';
-import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
+import {
+  Transaction,
+  TransactionStatus,
+} from '../transactions/transaction.entity';
 import { WalletsService } from '../wallet/wallets.service';
 import { AuditService } from '../audit/audit.service';
-import Redis from 'ioredis';
 
-const makeConfig = () =>
+const makeConfig = (overrides: Record<string, unknown> = {}) =>
   ({
     get: jest.fn((k: string) => {
-      if (k === 'scheduledJobs.lockTtlMs') return 300_000;
-      if (k === 'scheduledJobs.pendingTxTimeoutMinutes') return 30;
-      return undefined;
+      const values: Record<string, unknown> = {
+        'scheduledJobs.lockTtlMs': 300_000,
+        'scheduledJobs.lockHeartbeatMs': 60_000,
+        'scheduledJobs.reconcileBatchSize': 100,
+        'scheduledJobs.reconcileTimeBudgetMs': 4 * 60 * 1000,
+        'scheduledJobs.pendingTxTimeoutMinutes': 30,
+        ...overrides,
+      };
+      return values[k];
     }),
   }) as unknown as ConfigService;
 
-const makeTx = (id: string, overrides: Partial<Transaction> = {}): Transaction =>
+const makeTx = (
+  id: string,
+  overrides: Partial<Transaction> = {},
+): Transaction =>
   ({
     id,
     senderId: 'user-1',
@@ -27,32 +39,104 @@ const makeTx = (id: string, overrides: Partial<Transaction> = {}): Transaction =
     currency: 'USD',
     metadata: { type: 'withdrawal' },
     status: TransactionStatus.PENDING,
-    pendingTimeoutAt: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
+    pendingTimeoutAt: new Date(Date.now() - 60 * 60 * 1000),
     ...overrides,
   }) as Transaction;
 
+class FakeRedis {
+  store = new Map<string, { value: string; expiresAt: number }>();
+
+  set(
+    key: string,
+    value: string,
+    px: 'PX',
+    ttl: number,
+    nx: 'NX',
+  ): Promise<'OK' | null> {
+    void px;
+    void nx;
+    if (this.store.has(key)) return Promise.resolve(null);
+    this.store.set(key, { value, expiresAt: Date.now() + ttl });
+    return Promise.resolve('OK');
+  }
+
+  eval(
+    script: string,
+    count: number,
+    key: string,
+    token: string,
+  ): Promise<number> {
+    void script;
+    void count;
+    if (this.store.get(key)?.value !== token) return Promise.resolve(0);
+    this.store.delete(key);
+    return Promise.resolve(1);
+  }
+}
+
 describe('ScheduledJobsService', () => {
-  let redis: jest.Mocked<Redis>;
-  let txRepo: jest.Mocked<Repository<Transaction>>;
-  let manager: { save: jest.Mock };
+  let txRepo: { createQueryBuilder: jest.Mock };
+  let query: {
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    orderBy: jest.Mock;
+    addOrderBy: jest.Mock;
+    take: jest.Mock;
+    getMany: jest.Mock;
+  };
+  let manager: { findOne: jest.Mock; save: jest.Mock };
   let dataSource: DataSource;
   let wallets: { adjustBalance: jest.Mock };
   let audit: { log: jest.Mock };
   let events: { emit: jest.Mock };
-  let svc: ScheduledJobsService;
+  let locks: { runExclusive: jest.Mock };
+
+  function makeService(
+    config = makeConfig(),
+    lockService: DistributedLockService | { runExclusive: jest.Mock } = locks,
+  ) {
+    return new ScheduledJobsService(
+      txRepo as unknown as Repository<Transaction>,
+      {} as Repository<never>,
+      {} as Repository<never>,
+      config,
+      dataSource,
+      wallets as unknown as WalletsService,
+      audit as unknown as AuditService,
+      events as unknown as EventEmitter2,
+      lockService as DistributedLockService,
+    );
+  }
+
+  function queueBatches(batches: Transaction[][]) {
+    query.getMany.mockImplementation(() =>
+      Promise.resolve(batches.shift() ?? []),
+    );
+  }
 
   beforeEach(() => {
-    redis = {
-      set: jest.fn(),
-      del: jest.fn(),
-    } as unknown as jest.Mocked<Redis>;
+    query = {
+      where: jest.fn(),
+      andWhere: jest.fn(),
+      orderBy: jest.fn(),
+      addOrderBy: jest.fn(),
+      take: jest.fn(),
+      getMany: jest.fn(),
+    };
+    query.where.mockReturnValue(query);
+    query.andWhere.mockReturnValue(query);
+    query.orderBy.mockReturnValue(query);
+    query.addOrderBy.mockReturnValue(query);
+    query.take.mockReturnValue(query);
+    txRepo = { createQueryBuilder: jest.fn().mockReturnValue(query) };
 
-    txRepo = {
-      find: jest.fn(),
-      save: jest.fn(async (e) => e),
-    } as unknown as jest.Mocked<Repository<Transaction>>;
-
-    manager = { save: jest.fn(async (_entity, e) => e) };
+    manager = {
+      findOne: jest.fn(() => Promise.resolve(makeTx('tx-1'))),
+      save: jest.fn((entity: unknown, tx: Transaction) => {
+        void entity;
+        return Promise.resolve(tx);
+      }),
+    };
     dataSource = {
       transaction: jest.fn(async (run: (m: unknown) => Promise<unknown>) =>
         run(manager),
@@ -62,229 +146,269 @@ describe('ScheduledJobsService', () => {
     wallets = { adjustBalance: jest.fn().mockResolvedValue(undefined) };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     events = { emit: jest.fn() };
+    locks = {
+      runExclusive: jest.fn(
+        async (_key: string, _ttl: number, fn: () => unknown) => ({
+          ran: true,
+          result: await fn(),
+        }),
+      ),
+    };
+  });
 
-    svc = new ScheduledJobsService(
-      redis,
-      txRepo,
-      {} as unknown as Repository<never>,
-      {} as unknown as Repository<never>,
-      makeConfig(),
-      dataSource,
-      wallets as unknown as WalletsService,
-      audit as unknown as AuditService,
-      events as unknown as EventEmitter2,
+  it('scans for overdue PENDING rows and skips when no row is timed out', async () => {
+    queueBatches([]);
+    const svc = makeService();
+
+    await svc.reconcilePendingTransactions();
+
+    expect(query.where).toHaveBeenCalledWith('tx.status = :status', {
+      status: TransactionStatus.PENDING,
+    });
+    expect(locks.runExclusive).not.toHaveBeenCalled();
+  });
+
+  it('marks a timed-out PENDING transaction FAILED using the freshly locked row', async () => {
+    const stale = makeTx('tx-1');
+    queueBatches([[stale]]);
+    manager.findOne.mockResolvedValue(makeTx('tx-1'));
+    const svc = makeService();
+
+    await svc.reconcilePendingTransactions();
+
+    expect(locks.runExclusive).toHaveBeenCalledWith(
+      'tx-processing:tx-1',
+      300_000,
+      expect.any(Function),
+      { heartbeatMs: 60_000 },
     );
-  });
-
-  it('skips reconciliation when job lock cannot be acquired', async () => {
-    redis.set.mockResolvedValueOnce(null); // lock not acquired
-
-    await svc.reconcilePendingTransactions();
-
-    expect(txRepo.find).not.toHaveBeenCalled();
-  });
-
-  it('sets timed-out PENDING transactions to FAILED', async () => {
-    redis.set.mockResolvedValue('OK');
-    txRepo.find.mockResolvedValue([makeTx('tx-1')]);
-
-    await svc.reconcilePendingTransactions();
-
+    expect(manager.findOne).toHaveBeenCalledWith(Transaction, {
+      where: { id: 'tx-1' },
+      lock: { mode: 'pessimistic_write' },
+    });
     const saved = manager.save.mock.calls[0][1] as Transaction;
     expect(saved.id).toBe('tx-1');
     expect(saved.status).toBe(TransactionStatus.FAILED);
   });
 
-  it('skips a transaction already being processed (duplicate lock)', async () => {
-    redis.set
-      .mockResolvedValueOnce('OK') // job lock
-      .mockResolvedValueOnce(null); // tx lock already held
+  it('skips a transaction whose per-tx lock is held elsewhere', async () => {
+    queueBatches([[makeTx('tx-2')]]);
+    locks.runExclusive.mockResolvedValue({ ran: false });
+    const svc = makeService();
 
-    txRepo.find.mockResolvedValue([makeTx('tx-2')]);
+    await svc.reconcilePendingTransactions();
+
+    expect(manager.findOne).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the row was confirmed before the lock was acquired', async () => {
+    queueBatches([[makeTx('tx-3')]]);
+    manager.findOne.mockResolvedValue(
+      makeTx('tx-3', { status: TransactionStatus.COMPLETED }),
+    );
+    const svc = makeService();
+
+    await svc.reconcilePendingTransactions();
+
+    expect(wallets.adjustBalance).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the deadline was extended before the lock was acquired', async () => {
+    queueBatches([[makeTx('tx-4')]]);
+    manager.findOne.mockResolvedValue(
+      makeTx('tx-4', { pendingTimeoutAt: new Date(Date.now() + 60_000) }),
+    );
+    const svc = makeService();
 
     await svc.reconcilePendingTransactions();
 
     expect(manager.save).not.toHaveBeenCalled();
   });
 
-  it('releases job lock after processing', async () => {
-    redis.set.mockResolvedValue('OK');
-    txRepo.find.mockResolvedValue([]);
-
-    await svc.reconcilePendingTransactions();
-
-    expect(redis.del).toHaveBeenCalledWith(
-      'lock:scheduled-job:reconcile-pending-txs',
-    );
-  });
-
-  it('releases job lock even when an error is thrown mid-run', async () => {
-    redis.set.mockResolvedValue('OK');
-    txRepo.find.mockRejectedValue(new Error('db error'));
-
-    await expect(svc.reconcilePendingTransactions()).rejects.toThrow('db error');
-
-    expect(redis.del).toHaveBeenCalledWith(
-      'lock:scheduled-job:reconcile-pending-txs',
-    );
-  });
-
-  it('releases per-tx lock after updating status', async () => {
-    redis.set.mockResolvedValue('OK');
-    txRepo.find.mockResolvedValue([makeTx('tx-3')]);
-
-    await svc.reconcilePendingTransactions();
-
-    expect(redis.del).toHaveBeenCalledWith('lock:tx-processing:tx-3');
-  });
-
-  describe('refunding the debited balance', () => {
-    beforeEach(() => {
-      redis.set.mockResolvedValue('OK');
-    });
-
-    it('credits back amount + fee for a timed-out withdrawal', async () => {
-      txRepo.find.mockResolvedValue([makeTx('tx-w')]);
-
-      await svc.reconcilePendingTransactions();
-
-      expect(wallets.adjustBalance).toHaveBeenCalledWith(
-        'user-1',
-        'USD',
-        105,
-        manager,
-      );
-      const saved = manager.save.mock.calls[0][1] as Transaction;
-      expect(saved.status).toBe(TransactionStatus.FAILED);
-      expect(saved.metadata.autoFailRefundedAt).toEqual(expect.any(String));
-    });
-
-    it('notifies the user when a transaction times out and is refunded', async () => {
-      txRepo.find.mockResolvedValue([makeTx('tx-n')]);
-
-      await svc.reconcilePendingTransactions();
-
-      expect(events.emit).toHaveBeenCalledWith(
-        'transaction.timed_out',
-        expect.objectContaining({
-          transactionId: 'tx-n',
-          userId: 'user-1',
-          refunded: true,
+  it('uses the fresh metadata, not the stale snapshot, for the double-refund guard', async () => {
+    queueBatches([
+      [
+        makeTx('tx-5', {
+          metadata: { type: 'withdrawal', autoFailRefundedAt: 'old' },
         }),
-      );
-    });
+      ],
+    ]);
+    manager.findOne.mockResolvedValue(makeTx('tx-5'));
+    const svc = makeService();
 
-    it('credits back amount + fee for a timed-out swap', async () => {
-      txRepo.find.mockResolvedValue([
-        makeTx('tx-s', { metadata: { type: 'swap', toCurrency: 'EUR' } }),
-      ]);
+    await svc.reconcilePendingTransactions();
 
-      await svc.reconcilePendingTransactions();
+    expect(wallets.adjustBalance).toHaveBeenCalledWith(
+      'user-1',
+      'USD',
+      105,
+      manager,
+      'tx-5',
+    );
+  });
 
-      expect(wallets.adjustBalance).toHaveBeenCalledWith(
-        'user-1',
-        'USD',
-        105,
-        manager,
-      );
-    });
+  it('pages through overdue rows with seek-based batches', async () => {
+    const first = Array.from({ length: 100 }, (_, i) =>
+      makeTx(`tx-${i}`, {
+        pendingTimeoutAt: new Date(Date.now() - 200_000 + i),
+      }),
+    );
+    const second = Array.from({ length: 100 }, (_, i) =>
+      makeTx(`tx-${100 + i}`, {
+        pendingTimeoutAt: new Date(Date.now() - 100_000 + i),
+      }),
+    );
+    const third = Array.from({ length: 50 }, (_, i) =>
+      makeTx(`tx-${200 + i}`, {
+        pendingTimeoutAt: new Date(Date.now() - 50_000 + i),
+      }),
+    );
+    queueBatches([first, second, third]);
+    manager.findOne.mockImplementation(
+      (_entity: unknown, options: { where: { id: string } }) => {
+        void _entity;
+        return Promise.resolve(makeTx(options.where.id));
+      },
+    );
+    const svc = makeService();
 
-    it('reverses both legs of a timed-out peer transfer', async () => {
-      txRepo.find.mockResolvedValue([
+    await svc.reconcilePendingTransactions();
+
+    expect(query.getMany).toHaveBeenCalledTimes(3);
+    expect(locks.runExclusive).toHaveBeenCalledTimes(250);
+    expect(query.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('tx.pendingTimeoutAt > :lastTimeout'),
+      expect.objectContaining({ lastId: 'tx-99' }),
+    );
+  });
+
+  it('does not scan when the time budget is already exhausted', async () => {
+    queueBatches([[makeTx('tx-1')]]);
+    const svc = makeService(
+      makeConfig({ 'scheduledJobs.reconcileTimeBudgetMs': 0 }),
+    );
+
+    await svc.reconcilePendingTransactions();
+
+    expect(query.getMany).not.toHaveBeenCalled();
+  });
+
+  it('reverses amount + fee for a timed-out withdrawal', async () => {
+    queueBatches([[makeTx('tx-w')]]);
+    manager.findOne.mockResolvedValue(makeTx('tx-w'));
+    const svc = makeService();
+
+    await svc.reconcilePendingTransactions();
+
+    expect(wallets.adjustBalance).toHaveBeenCalledWith(
+      'user-1',
+      'USD',
+      105,
+      manager,
+      'tx-w',
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'transaction.auto_failed_refunded',
+        entityId: 'tx-w',
+      }),
+    );
+  });
+
+  it('reverses both legs of a timed-out peer transfer', async () => {
+    queueBatches([
+      [
         makeTx('tx-t', {
           senderId: 'sender-1',
           receiverId: 'receiver-1',
           fee: 0,
           metadata: {},
         }),
-      ]);
+      ],
+    ]);
+    manager.findOne.mockResolvedValue(
+      makeTx('tx-t', {
+        senderId: 'sender-1',
+        receiverId: 'receiver-1',
+        fee: 0,
+        metadata: {},
+      }),
+    );
+    const svc = makeService();
 
-      await svc.reconcilePendingTransactions();
+    await svc.reconcilePendingTransactions();
 
-      expect(wallets.adjustBalance).toHaveBeenCalledWith(
-        'sender-1',
-        'USD',
-        100,
-        manager,
-      );
-      expect(wallets.adjustBalance).toHaveBeenCalledWith(
-        'receiver-1',
-        'USD',
-        -100,
-        manager,
-      );
-    });
+    expect(wallets.adjustBalance).toHaveBeenCalledWith(
+      'sender-1',
+      'USD',
+      100,
+      manager,
+      'tx-t',
+    );
+    expect(wallets.adjustBalance).toHaveBeenCalledWith(
+      'receiver-1',
+      'USD',
+      -100,
+      manager,
+      'tx-t',
+    );
+  });
 
-    it('does not credit anything back for a timed-out deposit', async () => {
-      txRepo.find.mockResolvedValue([
-        makeTx('tx-d', { metadata: { type: 'deposit' } }),
-      ]);
+  it('leaves the transaction PENDING when the reversal fails', async () => {
+    queueBatches([[makeTx('tx-r')]]);
+    manager.findOne.mockResolvedValue(makeTx('tx-r'));
+    wallets.adjustBalance.mockRejectedValue(
+      new BadRequestException('Insufficient balance'),
+    );
+    const svc = makeService();
 
-      await svc.reconcilePendingTransactions();
+    await svc.reconcilePendingTransactions();
 
-      expect(wallets.adjustBalance).not.toHaveBeenCalled();
-      const saved = manager.save.mock.calls[0][1] as Transaction;
-      expect(saved.status).toBe(TransactionStatus.FAILED);
-      expect(saved.metadata.autoFailRefundedAt).toBeUndefined();
-    });
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
+  });
 
-    it('records an auditable refund entry', async () => {
-      txRepo.find.mockResolvedValue([makeTx('tx-w')]);
-
-      await svc.reconcilePendingTransactions();
-
-      expect(audit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'transaction.auto_failed_refunded',
-          entityType: 'transaction',
-          entityId: 'tx-w',
-          userId: 'user-1',
-        }),
-      );
-    });
-
-    it('leaves the transaction PENDING when the reversal fails', async () => {
-      txRepo.find.mockResolvedValue([makeTx('tx-w')]);
-      wallets.adjustBalance.mockRejectedValue(
-        new BadRequestException('Insufficient balance'),
-      );
-
-      await svc.reconcilePendingTransactions();
-
-      const tx = (await txRepo.find.mock.results[0].value)[0] as Transaction;
-      expect(tx.status).toBe(TransactionStatus.PENDING);
-      expect(audit.log).not.toHaveBeenCalled();
-    });
-
-    it('does not refund twice when a transaction is picked up again', async () => {
-      txRepo.find.mockResolvedValue([
-        makeTx('tx-w', {
-          metadata: {
-            type: 'withdrawal',
-            autoFailRefundedAt: new Date().toISOString(),
-          },
-        }),
-      ]);
-
-      await svc.reconcilePendingTransactions();
-
-      expect(wallets.adjustBalance).not.toHaveBeenCalled();
-      expect(manager.save).not.toHaveBeenCalled();
-    });
-
-    it('leaves an unrecognised transaction shape PENDING for manual review', async () => {
-      txRepo.find.mockResolvedValue([
+  it('leaves an unrecognised transaction shape PENDING', async () => {
+    queueBatches([
+      [
         makeTx('tx-x', {
           senderId: 'user-1',
           receiverId: 'user-1',
           metadata: {},
         }),
-      ]);
+      ],
+    ]);
+    manager.findOne.mockResolvedValue(
+      makeTx('tx-x', {
+        senderId: 'user-1',
+        receiverId: 'user-1',
+        metadata: {},
+      }),
+    );
+    const svc = makeService();
 
-      await svc.reconcilePendingTransactions();
+    await svc.reconcilePendingTransactions();
 
-      expect(wallets.adjustBalance).not.toHaveBeenCalled();
-      expect(manager.save).not.toHaveBeenCalled();
-    });
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('allows only one of two instances to refund the same transaction', async () => {
+    const redis = new FakeRedis();
+    const realLocks = new DistributedLockService(redis as any);
+    queueBatches([[makeTx('tx-c')]]);
+    const fresh = makeTx('tx-c');
+    manager.findOne.mockImplementation(() => Promise.resolve(fresh));
+
+    await Promise.all([
+      makeService(makeConfig(), realLocks).reconcilePendingTransactions(),
+      makeService(makeConfig(), realLocks).reconcilePendingTransactions(),
+    ]);
+
+    expect(wallets.adjustBalance).toHaveBeenCalledTimes(1);
+    expect(manager.save).toHaveBeenCalledTimes(1);
+    expect(redis.store.size).toBe(0);
   });
 });

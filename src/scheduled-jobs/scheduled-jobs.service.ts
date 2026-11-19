@@ -1,35 +1,49 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { InjectRedis } from '@nestjs-modules/ioredis';
-import { CronExpression } from '@nestjs/schedule';
-import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { ConfigService } from '@nestjs/config';
+import { CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import Redis from 'ioredis';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, LessThan, Repository } from 'typeorm';
-import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
+import { DistributedLockService } from '../common/locks/distributed-lock.service';
+import { TransactionTimedOutEvent } from '../common/events/transaction-timed-out.event';
 import { Otp } from '../otp/otp.entity';
 import { PasswordResetToken } from '../auth/password-reset.entity';
-import { WalletsService } from '../wallet/wallets.service';
 import { AuditService } from '../audit/audit.service';
 import { RefreshTokensService } from '../tokens/refresh-tokens.service';
-import { TransactionTimedOutEvent } from '../common/events/transaction-timed-out.event';
+import {
+  Transaction,
+  TransactionStatus,
+} from '../transactions/transaction.entity';
+import { WalletsService } from '../wallet/wallets.service';
 
-/** A balance movement that must be undone before a transaction is auto-failed. */
 interface BalanceReversal {
   accountId: string;
   currency: string;
   delta: number;
 }
 
+interface FailedTransaction {
+  locked: Transaction;
+  reversals: BalanceReversal[];
+  refundedAt: string;
+}
+
+const DEFAULT_LOCK_TTL_MS = 300_000;
+const DEFAULT_LOCK_HEARTBEAT_MS = 60_000;
+const DEFAULT_RECONCILE_BATCH_SIZE = 100;
+const DEFAULT_RECONCILE_TIME_BUDGET_MS = 4 * 60 * 1000;
+
 @Injectable()
 export class ScheduledJobsService {
   private readonly logger = new Logger(ScheduledJobsService.name);
   private readonly lockTtlMs: number;
+  private readonly lockHeartbeatMs: number;
+  private readonly reconcileBatchSize: number;
+  private readonly reconcileTimeBudgetMs: number;
   private readonly pendingTimeoutMinutes: number;
 
   constructor(
-    @InjectRedis() private readonly redis: Redis,
     @InjectRepository(Transaction)
     private readonly txRepo: Repository<Transaction>,
     @InjectRepository(Otp)
@@ -41,131 +55,169 @@ export class ScheduledJobsService {
     private readonly walletsService: WalletsService,
     private readonly auditService: AuditService,
     private readonly events: EventEmitter2,
+    private readonly locks: DistributedLockService,
     @Optional() private readonly refreshTokens?: RefreshTokensService,
   ) {
-    this.lockTtlMs = (this.config.get<number>('scheduledJobs.lockTtlMs') ?? 300_000);
+    this.lockTtlMs =
+      this.config.get<number>('scheduledJobs.lockTtlMs') ?? DEFAULT_LOCK_TTL_MS;
+    this.lockHeartbeatMs =
+      this.config.get<number>('scheduledJobs.lockHeartbeatMs') ??
+      DEFAULT_LOCK_HEARTBEAT_MS;
+    this.reconcileBatchSize =
+      this.config.get<number>('scheduledJobs.reconcileBatchSize') ??
+      DEFAULT_RECONCILE_BATCH_SIZE;
+    this.reconcileTimeBudgetMs =
+      this.config.get<number>('scheduledJobs.reconcileTimeBudgetMs') ??
+      DEFAULT_RECONCILE_TIME_BUDGET_MS;
     this.pendingTimeoutMinutes =
       this.config.get<number>('scheduledJobs.pendingTxTimeoutMinutes') ?? 30;
   }
 
-  @ClusterCron(CronExpression.EVERY_MINUTE, 'scheduled-jobs:reconcile-pending-txs')
+  @ClusterCron(
+    CronExpression.EVERY_MINUTE,
+    'scheduled-jobs:reconcile-pending-txs',
+    {
+      ttlMs: DEFAULT_LOCK_TTL_MS,
+      heartbeatMs: DEFAULT_LOCK_HEARTBEAT_MS,
+    },
+  )
   async reconcilePendingTransactions(): Promise<void> {
-    const acquiredJobLock = await this.acquireJobLock('reconcile-pending-txs');
-    if (!acquiredJobLock) return;
+    const startedAt = Date.now();
+    const now = new Date();
+    let lastTimeout: Date | undefined;
+    let lastId: string | undefined;
 
-    try {
-      // pendingTimeoutAt is the deadline stamped when the transaction entered
-      // PENDING, so anything whose deadline has passed is timed out.
-      const now = new Date();
+    while (Date.now() - startedAt < this.reconcileTimeBudgetMs) {
+      const query = this.txRepo
+        .createQueryBuilder('tx')
+        .where('tx.status = :status', { status: TransactionStatus.PENDING })
+        .andWhere('tx.pendingTimeoutAt < :now', { now });
 
-      const timedOut = await this.txRepo.find({
-        where: {
-          status: TransactionStatus.PENDING,
-          pendingTimeoutAt: LessThan(now),
-        },
-      });
-
-      for (const tx of timedOut) {
-        const lockKey = `lock:tx-processing:${tx.id}`;
-        const acquired = await this.redis.set(
-          lockKey,
-          '1',
-          'PX',
-          this.lockTtlMs,
-          'NX',
+      if (lastTimeout && lastId) {
+        query.andWhere(
+          '(tx.pendingTimeoutAt > :lastTimeout OR (tx.pendingTimeoutAt = :lastTimeout AND tx.id > :lastId))',
+          { lastTimeout, lastId },
         );
-        if (!acquired) {
-          this.logger.debug(`Skipping ${tx.id} — already being processed`);
-          continue;
-        }
+      }
 
-        try {
-          await this.failTimedOutTransaction(tx);
-        } finally {
-          await this.redis.del(lockKey);
+      const batch = await query
+        .orderBy('tx.pendingTimeoutAt', 'ASC')
+        .addOrderBy('tx.id', 'ASC')
+        .take(this.reconcileBatchSize)
+        .getMany();
+
+      if (batch.length === 0) break;
+
+      for (const tx of batch) {
+        if (Date.now() - startedAt >= this.reconcileTimeBudgetMs) return;
+        const outcome = await this.locks.runExclusive(
+          `tx-processing:${tx.id}`,
+          this.lockTtlMs,
+          () => this.failTimedOutTransaction(tx),
+          { heartbeatMs: this.lockHeartbeatMs },
+        );
+        if (!outcome.ran) {
+          this.logger.debug(`Skipping ${tx.id} — already being processed`);
         }
       }
-    } finally {
-      await this.releaseJobLock('reconcile-pending-txs');
+
+      const last = batch[batch.length - 1];
+      lastTimeout = last.pendingTimeoutAt ?? undefined;
+      lastId = last.id;
+      if (batch.length < this.reconcileBatchSize) break;
     }
   }
 
-  /**
-   * Marks a timed-out PENDING transaction FAILED, first undoing any balance
-   * movement that was already applied when it was created. Withdrawals, swaps
-   * and transfers all debit the wallet before the COMPLETED write, so failing
-   * them without a compensating credit permanently destroys the debited funds.
-   */
-  private async failTimedOutTransaction(tx: Transaction): Promise<void> {
-    const metadata = (tx.metadata ?? {}) as Record<string, unknown>;
+  private async failTimedOutTransaction(stale: Transaction): Promise<void> {
+    const failed = await this.dataSource.transaction<FailedTransaction | null>(
+      async (manager) => {
+        const locked = await manager.findOne(Transaction, {
+          where: { id: stale.id },
+          lock: { mode: 'pessimistic_write' },
+        });
 
-    if (metadata.autoFailRefundedAt) {
-      this.logger.debug(`Transaction ${tx.id} was already refunded; skipping`);
-      return;
-    }
-
-    const reversals = this.reversalsFor(tx);
-
-    if (reversals === null) {
-      this.logger.error(
-        `Cannot determine how to reverse timed-out transaction ${tx.id} ` +
-          `(type=${String(metadata.type ?? 'unknown')}). Leaving it PENDING for manual review.`,
-      );
-      return;
-    }
-
-    const refundedAt = new Date().toISOString();
-
-    try {
-      await this.dataSource.transaction(async (manager) => {
-        for (const reversal of reversals) {
-          await this.walletsService.adjustBalance(
-            reversal.accountId,
-            reversal.currency,
-            reversal.delta,
-            manager,
-          );
+        if (
+          !locked ||
+          locked.status !== TransactionStatus.PENDING ||
+          !locked.pendingTimeoutAt ||
+          locked.pendingTimeoutAt >= new Date()
+        ) {
+          return null;
         }
 
-        tx.status = TransactionStatus.FAILED;
-        tx.metadata = {
+        const metadata = locked.metadata ?? {};
+        if (metadata.autoFailRefundedAt) {
+          this.logger.debug(
+            `Transaction ${locked.id} was already refunded; skipping`,
+          );
+          return null;
+        }
+
+        const reversals = this.reversalsFor(locked);
+        if (reversals === null) {
+          const typeLabel =
+            typeof metadata.type === 'string' ? metadata.type : 'unknown';
+          this.logger.error(
+            `Cannot determine how to reverse timed-out transaction ${locked.id} ` +
+              `(type=${typeLabel}). Leaving it PENDING for manual review.`,
+          );
+          return null;
+        }
+
+        const refundedAt = new Date().toISOString();
+        try {
+          for (const reversal of reversals) {
+            await this.walletsService.adjustBalance(
+              reversal.accountId,
+              reversal.currency,
+              reversal.delta,
+              manager,
+              locked.id,
+            );
+          }
+        } catch (err) {
+          this.logger.error(
+            `Failed to reverse timed-out transaction ${locked.id}; leaving it PENDING. ` +
+              `${(err as Error).message}`,
+            err instanceof Error ? err.stack : undefined,
+          );
+          return null;
+        }
+
+        locked.status = TransactionStatus.FAILED;
+        locked.metadata = {
           ...metadata,
           autoFailedAt: refundedAt,
           ...(reversals.length > 0
             ? { autoFailRefundedAt: refundedAt, autoFailReversals: reversals }
             : {}),
         };
-        await manager.save(Transaction, tx);
-      });
-    } catch (err) {
-      // A reversal can legitimately fail — e.g. a transfer whose recipient has
-      // already spent the credited funds. Leave the row PENDING so the next run
-      // (or an operator) can retry rather than failing it with funds unreturned.
-      this.logger.error(
-        `Failed to reverse timed-out transaction ${tx.id}; leaving it PENDING. ` +
-          `${(err as Error).message}`,
-        err instanceof Error ? err.stack : undefined,
-      );
-      return;
-    }
+        await manager.save(Transaction, locked);
 
+        return { locked, reversals, refundedAt };
+      },
+    );
+
+    if (!failed) return;
+
+    const { locked, reversals } = failed;
     await this.auditService.log({
-      userId: tx.senderId,
+      userId: locked.senderId,
       action:
         reversals.length > 0
           ? 'transaction.auto_failed_refunded'
           : 'transaction.auto_failed',
       entityType: 'transaction',
-      entityId: tx.id,
+      entityId: locked.id,
       reason: `Pending for longer than ${this.pendingTimeoutMinutes} minutes`,
       after: { status: TransactionStatus.FAILED, reversals },
     });
 
     const timedOutEvent: TransactionTimedOutEvent = {
-      transactionId: tx.id,
-      userId: tx.senderId,
-      amount: String(tx.amount),
-      currency: tx.currency,
+      transactionId: locked.id,
+      userId: locked.senderId,
+      amount: String(locked.amount),
+      currency: locked.currency,
       refunded: reversals.length > 0,
       timestamp: new Date(),
     };
@@ -173,19 +225,14 @@ export class ScheduledJobsService {
 
     this.logger.warn(
       reversals.length > 0
-        ? `Auto-failed timed-out pending transaction ${tx.id} and reversed ${reversals.length} balance movement(s)`
-        : `Auto-failed timed-out pending transaction ${tx.id}`,
+        ? `Auto-failed timed-out pending transaction ${locked.id} and reversed ${reversals.length} balance movement(s)`
+        : `Auto-failed timed-out pending transaction ${locked.id}`,
     );
   }
 
-  /**
-   * Returns the balance movements to undo, or `null` when the transaction's
-   * shape is unrecognised and reversing it would be guesswork.
-   */
   private reversalsFor(tx: Transaction): BalanceReversal[] | null {
-    const metadata = (tx.metadata ?? {}) as Record<string, unknown>;
+    const metadata = tx.metadata ?? {};
     const type = metadata.type;
-    // Withdrawals and swaps debit amount + fee up front.
     const debited = Number(tx.amount) + Number(tx.fee ?? 0);
 
     if (type === 'withdrawal' || type === 'swap') {
@@ -195,14 +242,10 @@ export class ScheduledJobsService {
     }
 
     if (type === 'deposit') {
-      // Deposits only credit on the success path, so there is nothing owed back.
-      // A deposit stuck PENDING may have credited before the confirming write,
-      // which is a clawback decision for an operator rather than this job.
       return [];
     }
 
     if (!type && tx.senderId !== tx.receiverId) {
-      // Peer transfer: the sender was debited and the receiver credited.
       const amount = Number(tx.amount);
       return [
         { accountId: tx.senderId, currency: tx.currency, delta: amount },
@@ -213,30 +256,28 @@ export class ScheduledJobsService {
     return null;
   }
 
-  @ClusterCron(CronExpression.EVERY_DAY_AT_MIDNIGHT, 'scheduled-jobs:purge-auth-artifacts')
+  @ClusterCron(
+    CronExpression.EVERY_DAY_AT_MIDNIGHT,
+    'scheduled-jobs:purge-auth-artifacts',
+  )
   async purgeSensitiveAuthArtifacts(): Promise<void> {
     const now = new Date();
     const otpCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const passwordResetCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const expiredTokenCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const passwordResetCutoff = new Date(
+      now.getTime() - 30 * 24 * 60 * 60 * 1000,
+    );
+    const expiredTokenCutoff = new Date(
+      now.getTime() - 7 * 24 * 60 * 60 * 1000,
+    );
 
     await this.otpRepo.delete({ expiresAt: LessThan(otpCutoff) });
-    await this.passwordResetRepo.delete({ createdAt: LessThan(passwordResetCutoff) });
+    await this.passwordResetRepo.delete({
+      createdAt: LessThan(passwordResetCutoff),
+    });
     await this.passwordResetRepo.delete({
       used: true,
       createdAt: LessThan(expiredTokenCutoff),
     });
-    // Expired and long-revoked refresh tokens can never be used again (issue #1529).
     await this.refreshTokens?.purgeStaleTokens();
-  }
-
-  private async acquireJobLock(jobName: string): Promise<boolean> {
-    const key = `lock:scheduled-job:${jobName}`;
-    const result = await this.redis.set(key, '1', 'PX', this.lockTtlMs, 'NX');
-    return result === 'OK';
-  }
-
-  private async releaseJobLock(jobName: string): Promise<void> {
-    await this.redis.del(`lock:scheduled-job:${jobName}`);
   }
 }

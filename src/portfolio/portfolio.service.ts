@@ -42,7 +42,12 @@ export class PortfolioService {
 
     let sum = 0;
     for (const [currency, pct] of entries) {
-      if (typeof pct !== 'number' || !Number.isFinite(pct) || pct < 0 || pct > 1) {
+      if (
+        typeof pct !== 'number' ||
+        !Number.isFinite(pct) ||
+        pct < 0 ||
+        pct > 1
+      ) {
         throw new BadRequestException(
           `Invalid target allocation for ${currency}: must be a number between 0 and 1`,
         );
@@ -54,7 +59,9 @@ export class PortfolioService {
     }
 
     if (Math.abs(sum - 1) > 1e-6) {
-      throw new BadRequestException(`targetAllocations must sum to 1 (got ${sum})`);
+      throw new BadRequestException(
+        `targetAllocations must sum to 1 (got ${sum})`,
+      );
     }
   }
 
@@ -69,8 +76,9 @@ export class PortfolioService {
   ): Promise<RebalancingSuggestion[]> {
     this.validateTargetAllocations(params.targetAllocations);
 
-    const balances =
-      await this.walletsService.getBalancesForAccount(params.userId);
+    const balances = await this.walletsService.getBalancesForAccount(
+      params.userId,
+    );
 
     const holdings: Record<string, number> = {};
     for (const balance of balances) {
@@ -137,6 +145,27 @@ export class PortfolioService {
 
     // Read-only: rebalancing suggestions must not persist snapshots.
     return suggestions;
+  }
+
+  async getCurrentHoldings(
+    userId: string,
+  ): Promise<{ holdings: Record<string, number>; totalValueUsd: number }> {
+    const balances = await this.walletsService.getBalancesForAccount(userId);
+    const holdings: Record<string, number> = {};
+    for (const balance of balances) {
+      holdings[balance.currency] =
+        (holdings[balance.currency] ?? 0) + Number(balance.balance);
+    }
+
+    let totalValueUsd = 0;
+    for (const [currency, amount] of Object.entries(holdings)) {
+      const rate = await this.getUsdRate(currency);
+      totalValueUsd = Big(totalValueUsd)
+        .plus(Big(amount).times(rate))
+        .toNumber();
+    }
+
+    return { holdings, totalValueUsd };
   }
 
   async createSnapshot(params: {

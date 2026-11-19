@@ -6,6 +6,7 @@ export const DEFAULT_CLUSTER_CRON_TTL_MS = 5 * 60 * 1000;
 export interface ClusterCronOptions extends CronOptions {
   /** Lock lifetime. Must exceed the job's worst-case runtime; defaults to 5 minutes. */
   ttlMs?: number;
+  heartbeatMs?: number;
   /**
    * The job only touches this instance's own resources (e.g. local disk), so it
    * must run on every replica instead of once per tick. Skips the lock; use
@@ -25,7 +26,12 @@ export function ClusterCron(
   lockKey: string,
   options: ClusterCronOptions = {},
 ): MethodDecorator {
-  const { ttlMs = DEFAULT_CLUSTER_CRON_TTL_MS, perInstance = false, ...cronOptions } = options;
+  const {
+    ttlMs = DEFAULT_CLUSTER_CRON_TTL_MS,
+    heartbeatMs,
+    perInstance = false,
+    ...cronOptions
+  } = options;
 
   return (target, propertyKey, descriptor: PropertyDescriptor) => {
     const original = descriptor.value as (...args: unknown[]) => unknown;
@@ -35,7 +41,10 @@ export function ClusterCron(
       if (perInstance || !locks) {
         return original.apply(this, args);
       }
-      const outcome = await locks.runExclusive(lockKey, ttlMs, () => original.apply(this, args));
+      const body = () => original.apply(this, args);
+      const outcome = heartbeatMs
+        ? await locks.runExclusive(lockKey, ttlMs, body, { heartbeatMs })
+        : await locks.runExclusive(lockKey, ttlMs, body);
       return outcome.ran ? outcome.result : undefined;
     };
 

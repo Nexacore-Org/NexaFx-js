@@ -57,6 +57,7 @@ import { TermsModule } from './terms/terms.module';
 import { StatementsModule } from './statements/statements.module';
 import { TransactionQueueModule } from './transaction/transaction.module';
 import { RateAlertHistoryModule } from './rate-alerts/history/rate-alert-history.module';
+import { RateAlertsModule } from './rate-alerts/rate-alerts.module';
 import { ScheduledReportsModule } from './scheduled-reports/scheduled-reports.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { UsersModule as UpstreamUsersModule } from './users/users.module';
@@ -262,6 +263,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     AuthModule,
     CoreAuthModule,
     RateAlertHistoryModule,
+    RateAlertsModule,
     ScheduledReportsModule,
     PortfolioModule,
     FeesModule,

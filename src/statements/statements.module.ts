@@ -36,5 +36,6 @@ import { AuthModule } from '../auth/auth.module';
   ],
   controllers: [StatementsController],
   providers: [StatementsService, StatementsProcessor],
+  exports: [StatementsService],
 })
 export class StatementsModule {}

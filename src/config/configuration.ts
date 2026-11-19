@@ -250,7 +250,9 @@ export default () => {
       rewardAmount: parseFloat(process.env.REFERRAL_REWARD_AMOUNT || '10'),
       maxReferrals: parseInt(process.env.REFERRAL_MAX_REFERRALS || '100', 10),
       programActive: (process.env.REFERRAL_PROGRAM_ACTIVE || 'true') === 'true',
-      rewardCurrency: (process.env.REFERRAL_REWARD_CURRENCY || 'USD').toUpperCase(),
+      rewardCurrency: (
+        process.env.REFERRAL_REWARD_CURRENCY || 'USD'
+      ).toUpperCase(),
       refereeRewardAmount: parseFloat(
         process.env.REFERRAL_REFEREE_REWARD_AMOUNT || '0',
       ),
@@ -308,9 +310,7 @@ export default () => {
 
     // Swap / FX slippage — validated via Zod; never read process.env directly
     swap: {
-      slippagePercent: parseFloat(
-        process.env.SWAP_SLIPPAGE_PERCENT || '0.005',
-      ),
+      slippagePercent: parseFloat(process.env.SWAP_SLIPPAGE_PERCENT || '0.005'),
       previewCacheTtlSeconds: parseInt(
         process.env.SWAP_PREVIEW_CACHE_TTL_SECONDS || '30',
         10,
@@ -321,6 +321,37 @@ export default () => {
     scheduledJobs: {
       pendingTxTimeoutMinutes: parseInt(
         process.env.PENDING_TX_TIMEOUT_MINUTES || '30',
+        10,
+      ),
+      lockTtlMs: parseInt(
+        process.env.SCHEDULED_JOBS_LOCK_TTL_MS || '300000',
+        10,
+      ),
+      lockHeartbeatMs: parseInt(
+        process.env.SCHEDULED_JOBS_LOCK_HEARTBEAT_MS || '60000',
+        10,
+      ),
+      reconcileBatchSize: parseInt(
+        process.env.RECONCILE_BATCH_SIZE || '100',
+        10,
+      ),
+      reconcileTimeBudgetMs: parseInt(
+        process.env.RECONCILE_TIME_BUDGET_MS || String(4 * 60 * 1000),
+        10,
+      ),
+    },
+
+    rateAlerts: {
+      maxPerUser: parseInt(process.env.RATE_ALERTS_MAX_PER_USER || '20', 10),
+    },
+
+    scheduledReports: {
+      maxActivePerUser: parseInt(
+        process.env.SCHEDULED_REPORTS_MAX_ACTIVE_PER_USER || '10',
+        10,
+      ),
+      backoffMs: parseInt(
+        process.env.SCHEDULED_REPORTS_BACKOFF_MS || String(5 * 60 * 1000),
         10,
       ),
     },

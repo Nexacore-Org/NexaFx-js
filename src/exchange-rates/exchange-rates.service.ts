@@ -1,6 +1,12 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, LessThanOrEqual, Between } from 'typeorm';
+import { Repository, MoreThan, LessThanOrEqual } from 'typeorm';
 import { CronExpression } from '@nestjs/schedule';
 import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { ExchangeRateCacheEntity } from './entities/exchange-rate-cache.entity';
@@ -8,9 +14,10 @@ import { ExchangeRateHistoryEntity } from './entities/exchange-rate-history.enti
 import { QueryExchangeRateHistoryDto } from './dto/query-exchange-rate-history.dto';
 import { RatesGateway } from '../rates/rates.gateway';
 import { ExchangeRateService } from '../fx/exchange-rate.service';
+import { SUPPORTED_EXCHANGE_RATE_PAIRS } from './exchange-rate.constants';
+import { RateAlertsService } from '../rate-alerts/rate-alerts.service';
 
 const DEFAULT_CACHE_TTL_SECONDS = 60;
-const SUPPORTED_PAIRS = ['USD/NGN', 'USD/EUR', 'USD/GBP', 'EUR/NGN', 'GBP/NGN'];
 
 @Injectable()
 export class ExchangeRatesService implements OnModuleInit {
@@ -24,6 +31,7 @@ export class ExchangeRatesService implements OnModuleInit {
     private readonly historyRepo: Repository<ExchangeRateHistoryEntity>,
     private readonly ratesGateway: RatesGateway,
     private readonly fxRateService: ExchangeRateService,
+    private readonly rateAlerts: RateAlertsService,
   ) {
     this.cacheTtlSeconds = parseInt(
       process.env.EXCHANGE_RATE_CACHE_TTL || String(DEFAULT_CACHE_TTL_SECONDS),
@@ -58,7 +66,7 @@ export class ExchangeRatesService implements OnModuleInit {
 
   async getRateByPair(pair: string): Promise<ExchangeRateCacheEntity | null> {
     const normalized = pair.toUpperCase();
-    if (!SUPPORTED_PAIRS.includes(normalized)) {
+    if (!SUPPORTED_EXCHANGE_RATE_PAIRS.includes(normalized)) {
       throw new NotFoundException(`Unsupported currency pair ${pair}`);
     }
 
@@ -79,7 +87,7 @@ export class ExchangeRatesService implements OnModuleInit {
     const limit = dto.limit ?? 20;
     const offset = (page - 1) * limit;
 
-    if (dto.pair && !SUPPORTED_PAIRS.includes(dto.pair)) {
+    if (dto.pair && !SUPPORTED_EXCHANGE_RATE_PAIRS.includes(dto.pair)) {
       throw new BadRequestException(`Unsupported currency pair ${dto.pair}`);
     }
     if (dto.from && dto.to && new Date(dto.from) > new Date(dto.to)) {
@@ -122,15 +130,18 @@ export class ExchangeRatesService implements OnModuleInit {
     const expiresAt = new Date(now.getTime() + this.cacheTtlSeconds * 1000);
 
     const rates: ExchangeRateCacheEntity[] = [];
+    const refreshedRates: Record<string, number> = {};
 
-    for (const pair of SUPPORTED_PAIRS) {
+    for (const pair of SUPPORTED_EXCHANGE_RATE_PAIRS) {
       let rate: number;
       let provider: string;
       try {
         ({ rate, provider } = await this.fetchRateFromSource(pair));
       } catch (error) {
         // Isolate per-pair failures: keep the previous row and continue.
-        this.logger.warn(`Failed to refresh ${pair}: ${(error as Error).message}`);
+        this.logger.warn(
+          `Failed to refresh ${pair}: ${(error as Error).message}`,
+        );
         const previous = await this.cacheRepo.findOne({ where: { pair } });
         if (previous) rates.push(previous);
         continue;
@@ -154,6 +165,7 @@ export class ExchangeRatesService implements OnModuleInit {
       }
       await this.cacheRepo.save(cached);
       rates.push(cached);
+      refreshedRates[pair] = rate;
 
       // Store in history
       const historyEntry = this.historyRepo.create({
@@ -166,6 +178,10 @@ export class ExchangeRatesService implements OnModuleInit {
 
       // Push the new rate to clients subscribed to the /rates namespace.
       this.ratesGateway.broadcastRateUpdate(pair, rate);
+    }
+
+    if (Object.keys(refreshedRates).length > 0) {
+      await this.rateAlerts.checkThresholds(refreshedRates);
     }
 
     return rates;
@@ -193,7 +209,13 @@ export class ExchangeRatesService implements OnModuleInit {
       }
     }
     const convertedAmount = Number((amount * rate).toFixed(8));
-    return { from: from.toUpperCase(), to: to.toUpperCase(), amount, convertedAmount, rate };
+    return {
+      from: from.toUpperCase(),
+      to: to.toUpperCase(),
+      amount,
+      convertedAmount,
+      rate,
+    };
   }
 
   @ClusterCron(CronExpression.EVERY_MINUTE, 'exchange-rates:refresh-expired')

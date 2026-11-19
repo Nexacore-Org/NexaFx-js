@@ -92,7 +92,10 @@ export const envSchema = z.object({
   // ============================================
   PROVIDER_WEBHOOK_SECRET: z
     .string()
-    .min(32, 'PROVIDER_WEBHOOK_SECRET must be at least 32 characters for security'),
+    .min(
+      32,
+      'PROVIDER_WEBHOOK_SECRET must be at least 32 characters for security',
+    ),
 
   // ============================================
   // JWT Configuration
@@ -321,8 +324,14 @@ export const envSchema = z.object({
   // ============================================
   // Admin Alert Configuration
   // ============================================
-  ADMIN_ALERT_EMAIL: z.string().email('ADMIN_ALERT_EMAIL must be a valid email').optional(),
-  ADMIN_ALERT_SLACK_WEBHOOK_URL: z.string().url('ADMIN_ALERT_SLACK_WEBHOOK_URL must be a valid URL').optional(),
+  ADMIN_ALERT_EMAIL: z
+    .string()
+    .email('ADMIN_ALERT_EMAIL must be a valid email')
+    .optional(),
+  ADMIN_ALERT_SLACK_WEBHOOK_URL: z
+    .string()
+    .url('ADMIN_ALERT_SLACK_WEBHOOK_URL must be a valid URL')
+    .optional(),
   ADMIN_ALERT_RATE_LIMIT_MINUTES: z
     .string()
     .transform(Number)
@@ -442,7 +451,9 @@ export const envSchema = z.object({
   // ============================================
   // Stellar Hot Wallet (required — fail-fast on startup)
   // ============================================
-  STELLAR_HOT_WALLET_SECRET: z.string().min(1, 'STELLAR_HOT_WALLET_SECRET is required'),
+  STELLAR_HOT_WALLET_SECRET: z
+    .string()
+    .min(1, 'STELLAR_HOT_WALLET_SECRET is required'),
 
   // ============================================
   // CORS / Public URLs
@@ -452,7 +463,10 @@ export const envSchema = z.object({
   KYC_DOCUMENT_HASH_KEY: z
     .string()
     .optional()
-    .refine((v) => !v || v.length >= 32, 'KYC_DOCUMENT_HASH_KEY must be at least 32 characters when set'),
+    .refine(
+      (v) => !v || v.length >= 32,
+      'KYC_DOCUMENT_HASH_KEY must be at least 32 characters when set',
+    ),
   // Comma separated list of exact origins. Required when NODE_ENV=production
   // (issue #1540, enforced in validateEnv); `*` is rejected.
   ALLOWED_ORIGINS: z.string().optional().default(''),
@@ -613,7 +627,10 @@ export type EnvConfig = z.infer<typeof envSchema>;
  */
 function assertSecretHygiene(parsed: EnvConfig): void {
   const { errors, productionErrors } = checkSecretHygiene(parsed);
-  const fatal = parsed.NODE_ENV === 'production' ? [...errors, ...productionErrors] : errors;
+  const fatal =
+    parsed.NODE_ENV === 'production'
+      ? [...errors, ...productionErrors]
+      : errors;
 
   if (fatal.length > 0) {
     throw new Error(`Environment validation failed:\n${fatal.join('\n')}`);
@@ -622,11 +639,18 @@ function assertSecretHygiene(parsed: EnvConfig): void {
     for (const message of productionErrors) {
       console.warn(`[env] ${message} (rejected when NODE_ENV=production)`);
     }
+  }
+}
+
+/**
  * Cross-field production checks that do not fit a single-key Zod rule.
  * - ALLOWED_ORIGINS must be set and valid in production (issue #1540).
  * - DB_SSL_REJECT_UNAUTHORIZED=false is refused in production (issue #1541).
  */
-function assertProductionOrigins(nodeEnv: string, allowedOrigins: string): void {
+function assertProductionOrigins(
+  nodeEnv: string,
+  allowedOrigins: string,
+): void {
   const origins = parseAllowedOrigins(allowedOrigins); // also rejects "*" / invalid entries
   if (nodeEnv === 'production' && origins.length === 0) {
     throw new Error(
@@ -652,7 +676,11 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
     const parsed = envSchema.parse(config);
     assertSecretHygiene(parsed);
     assertProductionOrigins(parsed.NODE_ENV, parsed.ALLOWED_ORIGINS);
-    assertProductionDbSsl(parsed.NODE_ENV, parsed.DB_SSL, parsed.DB_SSL_REJECT_UNAUTHORIZED);
+    assertProductionDbSsl(
+      parsed.NODE_ENV,
+      parsed.DB_SSL,
+      parsed.DB_SSL_REJECT_UNAUTHORIZED,
+    );
     return parsed;
   } catch (error) {
     if (error instanceof z.ZodError) {

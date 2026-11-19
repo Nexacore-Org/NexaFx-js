@@ -1,8 +1,16 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity('rate_alerts')
 @Index(['userId'])
 @Index(['currencyPair'])
+@Index(['userId', 'isActive'])
+@Index(['currencyPair', 'triggered', 'isActive'])
 export class RateAlertEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -21,6 +29,15 @@ export class RateAlertEntity {
 
   @Column({ default: false })
   triggered: boolean;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  triggeredAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deactivatedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;
