@@ -27,19 +27,29 @@ export class WalletsService {
   async adjustBalance(
     accountId: string,
     currency: string,
-    delta: number,
+    delta: number | string | Big,
     manager?: EntityManager,
     transactionId?: string,
   ): Promise<WalletBalance> {
     const normalizedCurrency = this.validateCurrency(currency);
 
-    if (delta === 0) {
+    if (new Big(delta).eq(0)) {
       return this.getBalance(accountId, normalizedCurrency);
     }
 
     // #1060: run inside the caller's transaction when one is supplied,
     // instead of always opening an independent one that commits early.
     const run = async (manager: EntityManager) => {
+      // #1572: make sure the row exists (insert-ignore) so the lock below is real
+      // and concurrent first credits cannot hit the unique index.
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into(WalletBalanceEntity)
+        .values({ accountId, currency: normalizedCurrency, balance: 0 } as any)
+        .orIgnore()
+        .execute();
+
       let wallet = await manager.findOne(WalletBalanceEntity, {
         where: { accountId, currency: normalizedCurrency },
         lock: { mode: 'pessimistic_write' as const },
@@ -69,10 +79,10 @@ export class WalletsService {
         {
           userId: accountId,
           transactionId,
-          type: delta > 0 ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT,
-          amount: Math.abs(delta),
+          type: new Big(delta).gt(0) ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT,
+          amount: new Big(delta).abs().toFixed(8) as any,
           currency: normalizedCurrency,
-          balanceAfter: Number(newBalance.toFixed(8)),
+          balanceAfter: newBalance.toFixed(8) as any,
         },
         manager,
       );
