@@ -8,10 +8,27 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { configureApp } from './bootstrap/configure-app';
 import { Configuration } from './config/configuration';
+import { RedisIoAdapter } from './gateways/redis-adapter';
+import { buildCorsOptions, parseAllowedOrigins } from './config/cors';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+
+  // Multi-replica WebSocket fan-out through Redis, only when configured (issue #1548).
+  if (process.env.REDIS_URL) {
+    const redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis(process.env.REDIS_URL);
+    app.useWebSocketAdapter(redisIoAdapter);
+  }
+
+  // Behind a proxy or load balancer, trust an explicit hop count or CIDR list so req.ip is the
+  // client (issue #1407). TRUST_PROXY=false (default) | <hops> | <comma-separated CIDRs/names>.
+  const trustProxy = process.env.TRUST_PROXY ?? 'false';
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .set('trust proxy', trustProxy === 'false' ? false : /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 
   const configService = app.get(ConfigService<Configuration>);
   const port = configService.get<number>('app.port');
@@ -20,6 +37,75 @@ async function bootstrap() {
   }
 
   configureApp(app, configService);
+  const jsonLimit = configService.get<number>('limits.json') ?? 10 * 1024 * 1024;
+  const urlencodedLimit =
+    configService.get<number>('limits.urlencoded') ?? 10 * 1024 * 1024;
+  const allowedOrigins = parseAllowedOrigins(configService.get<string>('ALLOWED_ORIGINS'));
+
+  app.use(express.json({ limit: jsonLimit }));
+  app.use(express.urlencoded({ limit: urlencodedLimit, extended: true }));
+
+  // Compress responses >1 KB; honours Accept-Encoding (gzip / deflate / br).
+  // Streaming responses (no Content-Length) are skipped automatically.
+  app.use(
+    compression({
+      threshold: 1024,
+      filter: (req, res) => {
+        // Skip server-sent event / chunked export streams
+        if (res.getHeader('Content-Type') === 'text/event-stream') {
+          return false;
+        }
+        return compression.filter(req, res);
+      },
+    }),
+  );
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
+      },
+    }),
+  );
+
+  // Deny by default in production; never reflect arbitrary origins (issue #1540).
+  app.enableCors(buildCorsOptions(allowedOrigins, process.env.NODE_ENV));
+
+  // Every controller relies on this single global prefix; no @Controller() may
+  // repeat it (enforced by `npm run check:controller-prefixes`).
+  app.setGlobalPrefix(GLOBAL_PREFIX);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+  app.useGlobalFilters(new GlobalExceptionFilter());
+  app.enableShutdownHooks();
+
+  const nodeEnv = configService.get<string>('app.nodeEnv');
+  const swaggerEnabled = configService.get<boolean>('app.swaggerEnabled');
+  if (nodeEnv !== 'production' || swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('NexaFx API')
+      .setDescription('NexaFx financial platform REST API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      // Documented paths are relative to the global prefix.
+      .addServer(`/${GLOBAL_PREFIX}`)
+      .build();
+
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
 
   await app.listen(port);
 }

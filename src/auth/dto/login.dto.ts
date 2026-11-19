@@ -1,20 +1,20 @@
 import { NormalizeEmail } from '../../common/decorators/normalize-email.decorator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
 export class LoginDto {
-  @ApiProperty({ example: 'user@example.com' })
+  @ApiProperty({ example: 'user@example.com', maxLength: 254 })
   @NormalizeEmail()
   @IsEmail()
+  @MaxLength(254)
   email!: string;
 
-  @ApiProperty({ minLength: 8, example: 'correcthorsebatterystaple' })
+  // No minimum: the password policy applies when a password is *set*. Accounts created under an
+  // older, weaker policy must get a 401 for a wrong password, not a 400 that reveals the rule, and
+  // must still be able to log in (issue #1528). The upper bound keeps hashing cost bounded.
+  @ApiProperty({ maxLength: 128, example: 'correcthorsebatterystaple' })
   @IsString()
-  @MinLength(8)
+  @IsNotEmpty()
+  @MaxLength(128)
   password!: string;
-
-  @ApiPropertyOptional({ description: 'TOTP 2FA code (required for admin accounts with 2FA enforcement)' })
-  @IsOptional()
-  @IsString()
-  totpCode?: string;
 }

@@ -8,7 +8,8 @@ const SECRET = 'guard-test-secret-at-least-32-characters';
 const jwt = new JwtService({ secret: SECRET });
 const config = { get: jest.fn(() => SECRET) } as unknown as ConfigService;
 const reflector = { getAllAndOverride: jest.fn(() => false) } as unknown as Reflector;
-const guard = new JwtAuthGuard(jwt, config, reflector);
+const accountStatus = { isAllowedToAuthenticate: jest.fn().mockResolvedValue(true) };
+const guard = new JwtAuthGuard(jwt, config, reflector, accountStatus as any);
 
 const run = (token: string) => {
   const request: { headers: Record<string, string>; user?: any } = {
@@ -35,6 +36,37 @@ describe('JwtAuthGuard', () => {
       email: 'a@b.com',
       role: 'admin',
     });
+  });
+
+  it('maps the token version and session id onto request.user', async () => {
+    const { request, result } = run(
+      jwt.sign({ sub: 'user-1', email: 'a@b.com', role: 'admin', typ: 'access', tv: 3, sid: 'sess-9' }),
+    );
+    await expect(result()).resolves.toBe(true);
+    expect(request.user).toMatchObject({ tokenVersion: 3, sid: 'sess-9', authMethod: 'jwt' });
+  });
+
+  it('maps impersonation claims onto request.user', async () => {
+    const { request, result } = run(
+      jwt.sign({
+        sub: 'user-1',
+        email: 'a@b.com',
+        role: 'admin',
+        typ: 'access',
+        impersonation: true,
+        act: { sub: 'admin-1' },
+      }),
+    );
+    await expect(result()).resolves.toBe(true);
+    expect(request.user).toMatchObject({ impersonation: true, actorId: 'admin-1' });
+  });
+
+  it('rejects a valid token for a suspended or deactivated account', async () => {
+    accountStatus.isAllowedToAuthenticate.mockResolvedValueOnce(false);
+    const { result } = run(
+      jwt.sign({ sub: 'user-1', email: 'a@b.com', role: 'user', typ: 'access' }),
+    );
+    await expect(result()).rejects.toThrow('Account is not active');
   });
 
   it.each(['refresh', 'sep10', 'export-download'])(

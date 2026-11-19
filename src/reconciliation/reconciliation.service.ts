@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
-import { Cron } from '@nestjs/schedule';
+import { DataSource, MoreThan, Repository } from 'typeorm';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import Big from 'big.js';
 import { Transaction, TransactionStatus } from '../transactions/transaction.entity';
 import { WalletBalanceEntity } from '../wallet/wallet-balance.entity';
 
 const TOLERANCE = new Big('0.01');
+const RECONCILE_PAGE_SIZE = 500;
 
 @Injectable()
 export class ReconciliationService {
@@ -21,11 +22,21 @@ export class ReconciliationService {
     private readonly dataSource: DataSource,
   ) {}
 
-  @Cron('0 2 * * *')
+  @ClusterCron('0 2 * * *', 'reconciliation:reconcile-all', { ttlMs: 60 * 60 * 1000 })
   async reconcileAll(): Promise<void> {
-    const wallets = await this.walletRepo.find();
-    for (const wallet of wallets) {
-      await this.reconcileAccount(wallet.accountId, wallet.currency);
+    // Keyset pagination: never load the whole wallet table into memory (issue #1550).
+    let lastId: string | undefined;
+    for (;;) {
+      const page = await this.walletRepo.find({
+        where: lastId ? { id: MoreThan(lastId) } : {},
+        order: { id: 'ASC' },
+        take: RECONCILE_PAGE_SIZE,
+      });
+      for (const wallet of page) {
+        await this.reconcileAccount(wallet.accountId, wallet.currency);
+      }
+      if (page.length < RECONCILE_PAGE_SIZE) break;
+      lastId = page[page.length - 1].id;
     }
   }
 
@@ -56,12 +67,17 @@ export class ReconciliationService {
       const fee = new Big(String(tx.fee ?? 0));
       const type = (tx.metadata as { type?: string } | null)?.type;
 
-      if (tx.receiverId === accountId && type === 'withdrawal') {
+      if (type === 'auto_sweep' && tx.senderId === accountId) {
+        // self-referencing sweep row: the wallet was debited by the swept amount
+        ledgerBalance = ledgerBalance.minus(amount);
+      } else if (tx.receiverId === accountId && type === 'withdrawal') {
         // self-referencing withdrawal row: money leaves the account
         ledgerBalance = ledgerBalance.minus(amount).minus(fee);
       } else if (tx.receiverId === accountId) {
-        // deposit or incoming transfer: money enters the account
-        ledgerBalance = ledgerBalance.plus(amount);
+        // confirmDeposit credits amount - fee; incoming transfers credit amount
+        ledgerBalance = type === 'deposit'
+          ? ledgerBalance.plus(amount).minus(fee)
+          : ledgerBalance.plus(amount);
       } else if (tx.senderId === accountId) {
         // outgoing transfer: sender-side debit, previously never subtracted
         ledgerBalance = ledgerBalance.minus(amount).minus(fee);

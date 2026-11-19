@@ -52,24 +52,22 @@ export class FeeReportsService {
       .groupBy('f.currency')
       .getRawMany();
 
-    const feeBreakdown: Record<string, number> = {};
-    let totalFees = new Big(0);
-
+    // Per-currency totals kept as exact 8dp strings; never sum across currencies.
+    const feeBreakdown: Record<string, string> = {};
     for (const r of results) {
-      const currency = r.currency;
-      const total = new Big(r.total || 0).toString();
-      const totalNum = Number(total);
-      feeBreakdown[currency] = totalNum;
-      totalFees = totalFees.plus(total);
+      feeBreakdown[r.currency] = new Big(r.total || 0).toFixed(8);
     }
+    const currencies = Object.keys(feeBreakdown);
+    // A scalar total is only meaningful when there is a single currency.
+    const totalFees = currencies.length === 1 ? Number(feeBreakdown[currencies[0]]) : 0;
 
     const report = this.feeReportRepo.create({
       userId,
       period: dto.period,
       startDate,
       endDate,
-      totalFees: Number(totalFees.toString()),
-      feeBreakdown,
+      totalFees,
+      feeBreakdown: feeBreakdown as unknown as Record<string, number>,
       generatedAt: new Date(),
     });
 

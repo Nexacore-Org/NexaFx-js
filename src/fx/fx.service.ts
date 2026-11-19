@@ -9,9 +9,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import Big from 'big.js';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { FxTrade } from './fx-trade.entity';
+import { CurrencyPair } from './currency-pair.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { WalletsService } from '../wallet/wallets.service';
 import { AccountFreezeService } from '../modules/account-freeze/services/account-freeze.service';
@@ -35,7 +37,9 @@ export class FxService {
     private readonly config: ConfigService,
     private readonly rateService: ExchangeRateService,
     private readonly wallets: WalletsService,
+    private readonly accountFreezeService: AccountFreezeService,
     @Optional() @Inject(CACHE_MANAGER) cacheManager?: Cache,
+    @Optional() @InjectRepository(CurrencyPair) private readonly pairRepo?: Repository<CurrencyPair>,
   ) {
     // Share locked quotes across replicas when the cache store is Redis
     // (SET PX to store, GETDEL to redeem); otherwise keep the in-memory store.
@@ -53,7 +57,7 @@ export class FxService {
       throw new BadRequestException('fromCurrency and toCurrency must differ');
     }
     // A frozen account cannot swap.
-    await this.accountFreezeService?.assertNotFrozen(dto.userId);
+    await this.accountFreezeService.assertNotFrozen(dto.userId);
 
     let rate: number;
     if (dto.quoteId) {
@@ -71,7 +75,7 @@ export class FxService {
         dto.fromCurrency,
         dto.toCurrency,
       );
-      rate = rateResult.rate;
+      rate = await this.applySpread(rateResult.rate, dto.fromCurrency, dto.toCurrency);
     }
     const toAmount = parseFloat((dto.fromAmount * rate).toFixed(8));
 
@@ -93,26 +97,48 @@ export class FxService {
     });
   }
 
+  /**
+   * Customers get the market rate minus the configured spread for the pair
+   * (`currency_pairs.spreadPercent`, set through `PATCH /admin/spreads`, issue #1520).
+   * A pair without a row is priced at the market rate.
+   */
+  private async applySpread(marketRate: number, from: string, to: string): Promise<number> {
+    if (!this.pairRepo) return marketRate;
+    const pair = await this.pairRepo.findOne({
+      where: { fromCurrency: from.toUpperCase(), toCurrency: to.toUpperCase() },
+    });
+    const spread = pair ? Number(pair.spreadPercent) : 0;
+    if (!Number.isFinite(spread) || spread <= 0) return marketRate;
+    return Number((marketRate * (1 - spread)).toFixed(8));
+  }
+
   async reverseTrade(id: string, userId: string): Promise<FxTrade> {
-    const trade = await this.tradeRepo.findOne({ where: { id, userId } });
-    if (!trade) throw new NotFoundException(`FX trade ${id} not found`);
-    if (trade.reversedAt) {
-      throw new UnprocessableEntityException('Trade has already been reversed');
-    }
-
-    const windowMinutes = this.config.get<number>('fx.reversalWindowMinutes', 5);
-    const elapsed =
-      (Date.now() - new Date(trade.executedAt).getTime()) / 60_000;
-
-    if (elapsed > windowMinutes) {
-      throw new UnprocessableEntityException(
-        `Reversal window of ${windowMinutes} minutes has expired`,
-      );
-    }
-
     return this.dataSource.transaction(async (manager) => {
-      await this.wallets.adjustBalance(trade.userId, trade.fromCurrency, trade.fromAmount, manager);
-      await this.wallets.adjustBalance(trade.userId, trade.toCurrency, -trade.toAmount, manager);
+      // Lock the row so parallel reversals serialize and re-check reversedAt.
+      const trade = await manager.findOne(FxTrade, {
+        where: { id, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!trade) throw new NotFoundException(`FX trade ${id} not found`);
+      if (trade.reversedAt) {
+        throw new UnprocessableEntityException('Trade has already been reversed');
+      }
+
+      const windowMinutes = this.config.get<number>('fx.reversalWindowMinutes', 5);
+      const elapsed =
+        (Date.now() - new Date(trade.executedAt).getTime()) / 60_000;
+
+      if (elapsed > windowMinutes) {
+        throw new UnprocessableEntityException(
+          `Reversal window of ${windowMinutes} minutes has expired`,
+        );
+      }
+
+      // decimal columns come back from pg as strings
+      const refund = new Big(String(trade.fromAmount)).toNumber();
+      const debit = new Big(String(trade.toAmount)).times(-1).toNumber();
+      await this.wallets.adjustBalance(trade.userId, trade.fromCurrency, refund, manager);
+      await this.wallets.adjustBalance(trade.userId, trade.toCurrency, debit, manager);
 
       trade.reversedAt = new Date();
       return manager.save(FxTrade, trade);

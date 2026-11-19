@@ -8,11 +8,19 @@ function build(opts: { user?: any; verify?: boolean; balances?: Array<{ balance:
   const user = opts.user === undefined
     ? { id: 'u1', email: 'a@b.c', firstName: 'Ada', lastName: 'L', isActive: true, passwordHash: BCRYPT }
     : opts.user;
-  const repo = {
-    findOne: jest.fn().mockResolvedValue(user),
+  // Closure now writes through one transaction manager (issue #1530).
+  const tx = {
     update: jest.fn().mockResolvedValue({ affected: 1 }),
     softDelete: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+  const repo = {
+    findOne: jest.fn().mockResolvedValue(user),
     find: jest.fn(),
+    manager: {
+      transaction: jest.fn(async (cb: (m: typeof tx) => unknown) => cb(tx)),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    tx,
   };
   const passwords = { verify: jest.fn().mockResolvedValue(opts.verify ?? true) };
   const wallets = { getBalancesForAccount: jest.fn().mockResolvedValue(opts.balances ?? [{ balance: 0 }]) };
@@ -32,8 +40,8 @@ describe('AccountClosureService (users table)', () => {
 
     expect(result.closed).toBe(true);
     expect(result.piiPurgeAt.getFullYear()).toBe(result.deletedAt.getFullYear() + PII_RETENTION_YEARS);
-    expect(repo.update).toHaveBeenCalledWith('u1', expect.objectContaining({ isActive: false }));
-    expect(repo.softDelete).toHaveBeenCalledWith('u1');
+    expect(repo.tx.update).toHaveBeenCalledWith(expect.anything(), 'u1', expect.objectContaining({ isActive: false }));
+    expect(repo.tx.softDelete).toHaveBeenCalledWith(expect.anything(), 'u1');
     expect(tokens.revokeUserTokens).toHaveBeenCalledWith('u1');
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'account.closed' }));
     expect(mailer.sendFinalConfirmation).toHaveBeenCalled();
@@ -42,7 +50,7 @@ describe('AccountClosureService (users table)', () => {
   it('rejects a wrong password without changing anything', async () => {
     const { service, repo } = build({ verify: false });
     await expect(service.closeAccount('u1', 'nope')).rejects.toBeInstanceOf(UnauthorizedException);
-    expect(repo.softDelete).not.toHaveBeenCalled();
+    expect(repo.tx.softDelete).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown or already inactive account', async () => {
@@ -53,7 +61,7 @@ describe('AccountClosureService (users table)', () => {
   it('refuses closure while a balance remains', async () => {
     const { service, repo } = build({ balances: [{ balance: 0 }, { balance: 12.5 }] });
     await expect(service.closeAccount('u1', 'pw')).rejects.toBeInstanceOf(UnprocessableEntityException);
-    expect(repo.softDelete).not.toHaveBeenCalled();
+    expect(repo.tx.softDelete).not.toHaveBeenCalled();
   });
 
   it('stays closed when the confirmation email fails', async () => {

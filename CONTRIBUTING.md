@@ -50,6 +50,16 @@ the surrounding block later rolls back.
   `@Controller('api/v1/wallets')`, which resolves to `/api/v1/api/v1/wallets`.
 - `npm run check:controller-prefixes` enforces this and runs in CI.
 
+## Scheduled jobs
+
+Every scheduled job must use `@ClusterCron(expression, lockKey, options?)` from
+`src/common/locks/cluster-cron.decorator.ts`, never a bare `@Cron(`. The API runs as several
+replicas, and a bare `@Cron` fires on all of them each tick. `@ClusterCron` takes a Redis lock
+(`SET NX PX` + compare-and-delete release, with a Postgres advisory-lock fallback), so one replica
+runs each tick. Pick a unique `lockKey` per job and a `ttlMs` longer than the job's worst-case
+runtime. Jobs that only touch an instance's own resources (e.g. local disk) may pass
+`{ perInstance: true }`; say why in a comment. `npm run check:cron` (run in CI) fails on a bare `@Cron(`.
+
 ## Code style
 
 - ESLint and Prettier are already configured in the repository.
@@ -75,6 +85,23 @@ the surrounding block later rolls back.
   8% branches — see #1291 for the plan to raise branch coverage). There are no per-module or
   per-glob thresholds for specific high-risk areas (auth, money movement); everything is judged
   against the same global numbers.
+
+### Test database (destructive)
+
+Specs that boot `AppModule` (`NODE_ENV=test`, which Jest sets automatically) and
+`TestDatabaseModule` run with `synchronize: true, dropSchema: true`, i.e. they **drop every table** in
+the target database. Configure it with:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `TEST_DB_DATABASE` | none (required) | Must end in `_test` or `-test`, e.g. `nexafx_test` |
+| `TEST_DB_HOST` / `TEST_DB_PORT` | `localhost` / `5432` | |
+| `TEST_DB_USERNAME` / `TEST_DB_PASSWORD` | `postgres` / `postgres` | |
+| `TEST_DB_ALLOW_DROP` | unset | `true` bypasses the name check; only for a throwaway database |
+
+`docker compose up db` creates `nexafx_test` on first start (`scripts/db/init-test-db.sql`). For an
+existing volume run `docker compose exec db createdb -U postgres nexafx_test`. e2e specs get
+`TEST_DB_DATABASE=nexafx_test` from `test/test-env.ts`.
 
 ## Pull request checklist
 

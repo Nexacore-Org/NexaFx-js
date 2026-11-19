@@ -78,12 +78,24 @@ export class PortfolioService {
         (holdings[balance.currency] ?? 0) + Number(balance.balance);
     }
 
+    // Fetch each currency rate once, in parallel.
+    const rateCurrencies = [
+      ...new Set([
+        ...Object.keys(holdings),
+        ...Object.keys(params.targetAllocations),
+      ]),
+    ];
+    const rates: Record<string, number> = {};
+    await Promise.all(
+      rateCurrencies.map(async (c) => {
+        rates[c] = await this.getUsdRate(c);
+      }),
+    );
+
     const holdingsUsd: Record<string, number> = {};
     let totalValueUsd = 0;
     for (const [currency, amount] of Object.entries(holdings)) {
-      const usdAmount = Big(amount)
-        .times(await this.getUsdRate(currency))
-        .toNumber();
+      const usdAmount = Big(amount).times(rates[currency]).toNumber();
       holdingsUsd[currency] = usdAmount;
       totalValueUsd = Big(totalValueUsd).plus(usdAmount).toNumber();
     }
@@ -103,7 +115,7 @@ export class PortfolioService {
         .minus(currentAmountUsd)
         .toNumber();
 
-      const rate = await this.getUsdRate(currency);
+      const rate = rates[currency];
       const targetAmount = Big(targetAmountUsd).div(rate).toNumber();
       const difference = Big(targetAmount).minus(currentAmount).toNumber();
 
@@ -123,12 +135,7 @@ export class PortfolioService {
       });
     }
 
-    await this.createSnapshot({
-      userId: params.userId,
-      holdings,
-      totalValueUsd,
-    });
-
+    // Read-only: rebalancing suggestions must not persist snapshots.
     return suggestions;
   }
 
@@ -148,6 +155,7 @@ export class PortfolioService {
     return this.snapshotRepo.find({
       where: { userId },
       order: { snapshotDate: 'DESC' },
+      take: 100,
     });
   }
 }

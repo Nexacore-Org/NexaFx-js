@@ -1,3 +1,4 @@
+import { ApiKeyAllowed, ApiKeyScope } from '../modules/api-keys/api-key-scopes';
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -23,6 +24,7 @@ export class WalletsController {
   // #1425: 'me' is declared before any param route and always resolves to the
   // caller's own account — never a client-supplied accountId.
   @Get('me')
+  @ApiKeyAllowed(ApiKeyScope.READ_BALANCES)
   @ApiOperation({ summary: 'Get balances for the authenticated user' })
   @ApiOkResponse({ description: 'Account balances returned successfully' })
   getBalances(@CurrentUser('sub') userId: string) {

@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   DeleteDateColumn,
@@ -15,9 +16,9 @@ export enum ReferralStatus {
 
 @Entity('referrals')
 @Index(['referrerId'])
-@Index(['referredId'], { unique: true })
-@Index(['referralCode'], { unique: true })
+@Index(['referralCode'])
 @Index(['referrerId', 'status'])
+@Check(`"referrerId" <> "referredId"`)
 export class Referral {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -25,15 +26,18 @@ export class Referral {
   @Column({ type: 'uuid' })
   referrerId!: string;
 
-  @Index({ unique: true })
   @Column({ type: 'uuid', unique: true })
   referredId!: string;
 
-  @Index({ unique: true })
-  @Column({ unique: true })
+  /** The code that was used, kept for reporting. Many referrals share one code. */
+  @Column()
   referralCode!: string;
 
-  @Column({ type: 'simple-enum', enum: ReferralStatus, default: ReferralStatus.PENDING })
+  @Column({
+    type: 'simple-enum',
+    enum: ReferralStatus,
+    default: ReferralStatus.PENDING,
+  })
   status!: ReferralStatus;
 
   @CreateDateColumn()

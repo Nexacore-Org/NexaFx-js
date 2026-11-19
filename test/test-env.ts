@@ -10,6 +10,8 @@
  */
 export function setRequiredTestEnv(): void {
   process.env.NODE_ENV = 'test';
+  // The schema-dropping test connection needs an explicit *_test database (issue #1545).
+  process.env.TEST_DB_DATABASE ??= 'nexafx_test';
   process.env.DISABLE_BULL = 'true';
   process.env.DB_HOST = 'localhost';
   process.env.DB_PORT = '5432';

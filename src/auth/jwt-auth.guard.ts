@@ -2,7 +2,6 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -12,6 +11,8 @@ import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { AuthenticatedUser } from './authenticated-user.interface';
 import { TokenType } from './token-types';
 import { AccountStatusService } from './account-status.service';
+import { JwtPayload, buildPrincipal } from './jwt-payload';
+import { RefreshTokensService } from '../tokens/refresh-tokens.service';
 
 interface JwtPayload {
   sub?: string;
@@ -20,8 +21,14 @@ interface JwtPayload {
   email?: string;
   role?: string;
   roles?: string[];
+  /** Token version, bumped when a role/status change must invalidate old tokens. */
+  tv?: number;
+  /** Refresh-token session id. */
+  sid?: string;
   impersonation?: boolean;
   act?: { sub?: string };
+  /** Refresh-token session this access token belongs to. */
+  sid?: string;
 }
 
 interface AuthenticatedRequest {
@@ -38,6 +45,8 @@ export class JwtAuthGuard implements CanActivate {
     private readonly config: ConfigService,
     private readonly reflector: Reflector,
     @Optional() private readonly accountStatus?: AccountStatusService,
+    @Optional() private readonly refreshTokens?: RefreshTokensService,
+    private readonly accountStatus: AccountStatusService,
   ) {}
 
   private getRequest(context: ExecutionContext): AuthenticatedRequest {
@@ -89,32 +98,35 @@ export class JwtAuthGuard implements CanActivate {
     let payload: JwtPayload;
     try {
       const secret = String(this.config.get('jwt.secret') ?? '');
-      const payload = this.jwtService.verify<JwtPayload>(token, { secret });
-      if (payload.typ !== TokenType.ACCESS || !payload.sub) {
-        throw new UnauthorizedException('Invalid authentication token');
-      }
-      request.user = {
-        id: payload.sub,
-        sub: payload.sub,
-        email: payload.email ?? '',
-        role: payload.role ?? '',
-        isEmailVerified: payload.isEmailVerified,
-        ...(payload.impersonation
-          ? { impersonation: true, actorId: payload.act?.sub }
-          : {}),
-      };
-      return true;
+      payload = this.jwtService.verify<JwtPayload>(token, { secret });
     } catch {
+      // Only invalid/expired signatures are re-labelled here; deliberate
+      // UnauthorizedExceptions below are thrown outside this block.
       throw new UnauthorizedException('Invalid authentication token');
     }
+
     if (payload.typ !== TokenType.ACCESS || !payload.sub) {
       throw new UnauthorizedException('Invalid authentication token');
     }
 
+    // A signed token is not enough: suspended, deactivated and deleted users lose access
+    // immediately, and a token issued before a password change is refused (same shared check
+    // the passport strategy uses).
+    if (this.accountStatus) {
+      await this.accountStatus.assertTokenAccepted(payload);
+    }
+
+    request.user = buildPrincipal(payload);
     // A signed token is not enough: suspended, deactivated and deleted users
     // lose access immediately even though their token has not expired.
-    if (this.accountStatus && !(await this.accountStatus.isAllowedToAuthenticate(payload.sub))) {
+    if (!(await this.accountStatus.isAllowedToAuthenticate(payload.sub))) {
       throw new UnauthorizedException('Account is not active');
+    }
+
+    // "Log out" and "revoke this device" must end the session now, not when the (up to one hour)
+    // access token expires: the token names its session (`sid`), which must still be active.
+    if (payload.sid && this.refreshTokens && !(await this.refreshTokens.isSessionActive(payload.sub, payload.sid))) {
+      throw new UnauthorizedException('Session has been revoked');
     }
 
     request.user = {
@@ -123,6 +135,13 @@ export class JwtAuthGuard implements CanActivate {
       email: payload.email ?? '',
       role: payload.role ?? '',
       isEmailVerified: payload.isEmailVerified,
+      ...(payload.sid ? { sid: payload.sid } : {}),
+      tokenVersion: payload.tv,
+      sid: payload.sid,
+      authMethod: 'jwt',
+      ...(payload.impersonation
+        ? { impersonation: true, actorId: payload.act?.sub }
+        : {}),
     };
     return true;
   }

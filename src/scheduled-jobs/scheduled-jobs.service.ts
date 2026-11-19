@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRedis } from '@nestjs-modules/ioredis';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import Redis from 'ioredis';
@@ -11,6 +12,7 @@ import { Otp } from '../otp/otp.entity';
 import { PasswordResetToken } from '../auth/password-reset.entity';
 import { WalletsService } from '../wallet/wallets.service';
 import { AuditService } from '../audit/audit.service';
+import { RefreshTokensService } from '../tokens/refresh-tokens.service';
 import { TransactionTimedOutEvent } from '../common/events/transaction-timed-out.event';
 
 /** A balance movement that must be undone before a transaction is auto-failed. */
@@ -39,13 +41,14 @@ export class ScheduledJobsService {
     private readonly walletsService: WalletsService,
     private readonly auditService: AuditService,
     private readonly events: EventEmitter2,
+    @Optional() private readonly refreshTokens?: RefreshTokensService,
   ) {
     this.lockTtlMs = (this.config.get<number>('scheduledJobs.lockTtlMs') ?? 300_000);
     this.pendingTimeoutMinutes =
       this.config.get<number>('scheduledJobs.pendingTxTimeoutMinutes') ?? 30;
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @ClusterCron(CronExpression.EVERY_MINUTE, 'scheduled-jobs:reconcile-pending-txs')
   async reconcilePendingTransactions(): Promise<void> {
     const acquiredJobLock = await this.acquireJobLock('reconcile-pending-txs');
     if (!acquiredJobLock) return;
@@ -210,7 +213,7 @@ export class ScheduledJobsService {
     return null;
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @ClusterCron(CronExpression.EVERY_DAY_AT_MIDNIGHT, 'scheduled-jobs:purge-auth-artifacts')
   async purgeSensitiveAuthArtifacts(): Promise<void> {
     const now = new Date();
     const otpCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -223,6 +226,8 @@ export class ScheduledJobsService {
       used: true,
       createdAt: LessThan(expiredTokenCutoff),
     });
+    // Expired and long-revoked refresh tokens can never be used again (issue #1529).
+    await this.refreshTokens?.purgeStaleTokens();
   }
 
   private async acquireJobLock(jobName: string): Promise<boolean> {

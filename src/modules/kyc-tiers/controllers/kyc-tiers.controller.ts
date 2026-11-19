@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Request,
   UseGuards,
   ValidationPipe,
@@ -19,6 +20,7 @@ import {
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { KycTiersService } from '../services/kyc-tiers.service';
 import { RequestKycTierUpgradeDto } from '../dto/request-kyc-tier-upgrade.dto';
+import { ListOwnKycTierUpgradesDto } from '../dto/list-own-kyc-tier-upgrades.dto';
 
 @ApiTags('KYC Tier Upgrade')
 @ApiBearerAuth('access-token')
@@ -37,6 +39,13 @@ export class KycTiersController {
   ) {
     const userId = req.user?.id;
     return this.kycTiersService.requestUpgrade(userId, dto);
+  }
+
+  @Get('upgrade/history')
+  @ApiOperation({ summary: 'Your own tier upgrade requests, newest first' })
+  @ApiOkResponse({ description: 'Paginated history' })
+  async getHistory(@Request() req: any, @Query() query: ListOwnKycTierUpgradesDto) {
+    return this.kycTiersService.listOwnUpgrades(req.user?.id, query.page, query.limit);
   }
 
   @Get('upgrade/status')

@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -115,7 +116,7 @@ export class AdminAlertService {
   }
 
   /** Sends one summary per type for suppressed alerts that no new alert has flushed. */
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  @ClusterCron(CronExpression.EVERY_5_MINUTES, 'admin-alerts:flush-digests')
   async flushSuppressedDigests(): Promise<void> {
     const windowMs = this.rateLimitMinutes * 60_000;
     for (const [type, entry] of [...this.suppressed.entries()]) {

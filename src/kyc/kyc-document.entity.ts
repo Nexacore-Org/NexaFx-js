@@ -33,8 +33,17 @@ export class KycDocument {
   @Column()
   documentType!: string;
 
+  /**
+   * AES-256-GCM sealed value `enc:<keyVersion>:<ciphertext>` (issue #1535). Rows written before
+   * that change may still hold plaintext until the backfill runs; readers handle both.
+   */
   @Column()
   documentNumber!: string;
+
+  /** Keyed hash of the normalised document number, for duplicate detection. */
+  @Index('IDX_kyc_documents_documentNumberHash')
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  documentNumberHash?: string | null;
 
   @Column()
   documentUrl!: string;
