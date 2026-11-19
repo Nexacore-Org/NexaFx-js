@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Global, Module, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -26,7 +26,10 @@ import { PasswordResetToken } from './password-reset.entity';
 import { PasswordResetService } from './password-reset.service';
 import { PasswordResetFlowService } from './password-reset-flow.service';
 import { PasswordResetRateLimiter } from './password-reset-rate-limiter';
+import { AccountStatusService } from './account-status.service';
+import { TokensModule } from '../tokens/tokens.module';
 
+@Global()
 @Module({
   imports: [
     UsersModule,
@@ -35,6 +38,7 @@ import { PasswordResetRateLimiter } from './password-reset-rate-limiter';
     forwardRef(() => TermsModule),
     AuditModule,
     MailModule,
+    TokensModule,
     EventEmitterModule,
     PassportModule,
     SharedJwtModule,
@@ -58,5 +62,7 @@ import { PasswordResetRateLimiter } from './password-reset-rate-limiter';
   controllers: [AuthController],
   providers: [AuthService, PasswordResetService, PasswordResetFlowService, PasswordResetRateLimiter, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
   exports: [TokensModule, AuthService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
+  providers: [AuthService, AccountStatusService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
+  exports: [AuthService, AccountStatusService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
 })
 export class AuthModule {}

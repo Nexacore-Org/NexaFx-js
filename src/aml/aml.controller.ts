@@ -13,11 +13,11 @@ import {
 } from '@nestjs/common';
 import {
   AmlScreeningService,
-  ScreenUserInput,
-  ScreenTransactionInput,
   ScreeningFilters,
 } from './aml-screening.service';
 import { AmlRiskLevel } from './aml-screening.entity';
+import { ScreenTransactionDto, ScreenUserDto } from './dto/screen.dto';
+import { ReviewScreeningDto } from './dto/review-screening.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
@@ -36,7 +36,7 @@ export class AmlController {
   @UseGuards(JwtAuthGuard)
   @Post('aml/screen/user')
   @HttpCode(HttpStatus.CREATED)
-  screenUser(@Body() input: ScreenUserInput) {
+  screenUser(@Body() input: ScreenUserDto) {
     return this.screeningService.screenUser(input);
   }
 
@@ -44,7 +44,7 @@ export class AmlController {
   @UseGuards(JwtAuthGuard)
   @Post('aml/screen/transaction')
   @HttpCode(HttpStatus.CREATED)
-  screenTransaction(@Body() input: ScreenTransactionInput) {
+  screenTransaction(@Body() input: ScreenTransactionDto) {
     return this.screeningService.screenTransaction(input);
   }
 
@@ -79,10 +79,15 @@ export class AmlController {
   @HttpCode(HttpStatus.OK)
   review(
     @Param('id') id: string,
-    @Body() body: { notes: string },
+    @Body() body: ReviewScreeningDto,
     @Req() req: AuthenticatedRequest,
   ) {
     const reviewedBy = req.user?.sub ?? '';
-    return this.screeningService.review(id, reviewedBy, body.notes);
+    return this.screeningService.review(
+      id,
+      reviewedBy,
+      body.notes ?? '',
+      body.disposition,
+    );
   }
 }

@@ -6,6 +6,9 @@ import {
   ApiBody,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
@@ -15,8 +18,10 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { PasswordPolicyService } from './password-policy.service';
 import { PasswordResetFlowService } from './password-reset-flow.service';
 import { PasswordPolicyService } from './password-policy.service';
+import { PasswordPolicy, PasswordPolicyService } from './password-policy.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from './decorators/public.decorator';
@@ -40,7 +45,7 @@ export class AuthController {
   @Public()
   @Get('password-policy')
   @ApiOperation({ summary: 'Current password policy' })
-  getPasswordPolicy() {
+  getPasswordPolicy(): PasswordPolicy {
     return this.passwordPolicy.getPolicy();
   }
 
@@ -51,6 +56,7 @@ export class AuthController {
   @ApiBody({ type: RegisterDto })
   @ApiCreatedResponse({ type: AuthTokenResponseDto })
   @ApiForbiddenResponse({ description: 'Registration not permitted' })
+  @ApiTooManyRequestsResponse({ description: 'Too many registration attempts' })
   register(
     @Body() dto: RegisterDto,
     @Ip() ip?: string,
@@ -68,6 +74,7 @@ export class AuthController {
   @ApiOkResponse({ type: AuthTokenResponseDto })
   @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
   @ApiForbiddenResponse({ description: 'Account locked' })
+  @ApiTooManyRequestsResponse({ description: 'Too many login attempts' })
   login(
     @Body() dto: LoginDto,
     @Ip() ip?: string,

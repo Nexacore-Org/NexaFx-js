@@ -8,6 +8,7 @@ import { AdminCacheInvalidationService } from './admin-cache-invalidation.servic
 import { AdminAlertService } from './admin-alert.service';
 import { KeyRotationService } from './key-rotation.service';
 import { AdminExportsController } from './exports/admin-exports.controller';
+import { AuditExportController } from './audit-export.controller';
 import { AdminExportsProcessor } from './exports/admin-exports.processor';
 import { ExportStorageService } from './exports/export-storage.service';
 import { SystemAdminController } from '../modules/admin/controllers/system-admin.controller';
@@ -24,6 +25,9 @@ import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 import { SharedJwtModule } from '../common/jwt/jwt.module';
 import { TransactionApprovalModule } from '../multi-signature-approval/multi-signature-approval.module';
+import { CurrencyPair } from '../fx/currency-pair.entity';
+import { SpreadService } from '../fx/spread.service';
+import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 
 @Module({
   imports: [
@@ -35,6 +39,7 @@ import { TransactionApprovalModule } from '../multi-signature-approval/multi-sig
       WebhookEndpoint,
       AmlAlert,
       WalletBalanceEntity,
+      CurrencyPair,
     ]),
     BullModule.registerQueue({ name: 'admin-exports' }),
     SecurityModule,
@@ -44,10 +49,12 @@ import { TransactionApprovalModule } from '../multi-signature-approval/multi-sig
     MailModule,
     SharedJwtModule,
     TransactionApprovalModule,
+    ExchangeRatesModule,
   ],
-  controllers: [AdminController, SystemAdminController, AdminExportsController],
+  controllers: [AdminController, SystemAdminController, AdminExportsController, AuditExportController],
   providers: [
     AdminService,
+    SpreadService,
     AdminCacheInvalidationService,
     AdminAlertService,
     KeyRotationService,

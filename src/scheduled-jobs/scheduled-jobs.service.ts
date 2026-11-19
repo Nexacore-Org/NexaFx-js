@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRedis } from '@nestjs-modules/ioredis';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import Redis from 'ioredis';
@@ -47,7 +48,7 @@ export class ScheduledJobsService {
       this.config.get<number>('scheduledJobs.pendingTxTimeoutMinutes') ?? 30;
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @ClusterCron(CronExpression.EVERY_MINUTE, 'scheduled-jobs:reconcile-pending-txs')
   async reconcilePendingTransactions(): Promise<void> {
     const acquiredJobLock = await this.acquireJobLock('reconcile-pending-txs');
     if (!acquiredJobLock) return;
@@ -212,7 +213,7 @@ export class ScheduledJobsService {
     return null;
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @ClusterCron(CronExpression.EVERY_DAY_AT_MIDNIGHT, 'scheduled-jobs:purge-auth-artifacts')
   async purgeSensitiveAuthArtifacts(): Promise<void> {
     const now = new Date();
     const otpCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);

@@ -380,3 +380,77 @@ describe('validateWalletEncryptionKey', () => {
     expect(validateWalletEncryptionKey(' '.repeat(64))).toBe(false);
   });
 });
+
+describe('validateEnv secret hygiene (issue #1543)', () => {
+  const RANDOM = {
+    JWT_SECRET: 'q8Zr3vKx1LmN7pTd5WcY2bHj9sFg4uAe',
+    REFRESH_TOKEN_SECRET: 'Hn6Vb2Xc8Zq4Mw1Ke7Rt3Yu9Pi5Lo0As',
+    OTP_SECRET: 'Tg4Jk8Df2Sa6Qw1Er7Ty3Ui9Op5Zx0Cv',
+    PROVIDER_WEBHOOK_SECRET: 'Bn5Mk9Lj3Hg7Fd1Sa4Pq8Wo2Ei6Ru0Yt',
+    WALLET_ENCRYPTION_KEY: '9f3b7c1d5e8a2406b1d7c93e4f5a608c2d1e7b9a3c5f4e6d8b0a1c2d3e4f5a6b',
+  };
+  const PROD = { ...VALID_ENV, ...RANDOM, NODE_ENV: 'production' };
+
+  it('accepts valid random secrets in production', () => {
+    expect(() => validateEnv(PROD)).not.toThrow();
+  });
+
+  it('rejects a .env.example placeholder in production', () => {
+    expect(() =>
+      validateEnv({ ...PROD, JWT_SECRET: 'change-me-to-a-long-random-string' }),
+    ).toThrow(/JWT_SECRET: is a placeholder/);
+  });
+
+  it('rejects the sequential example wallet key in production', () => {
+    expect(() =>
+      validateEnv({ ...PROD, WALLET_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4) }),
+    ).toThrow(/WALLET_ENCRYPTION_KEY/);
+  });
+
+  it('rejects the same value for two secrets in every environment', () => {
+    expect(() => validateEnv({ ...VALID_ENV, OTP_SECRET: VALID_ENV.JWT_SECRET })).toThrow(
+      /OTP_SECRET: must differ from JWT_SECRET/,
+    );
+  });
+
+  it('only warns about placeholders outside production', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(() => validateEnv({ ...VALID_ENV, JWT_SECRET: 'change-me-to-a-long-random-string' })).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('JWT_SECRET'));
+    warn.mockRestore();
+describe('validateEnv production network safety (issues #1540, #1541)', () => {
+  const PROD = { ...VALID_ENV, NODE_ENV: 'production' };
+
+  it('fails fast in production when ALLOWED_ORIGINS is empty', () => {
+    expect(() => validateEnv({ ...PROD, ALLOWED_ORIGINS: '' })).toThrow(/ALLOWED_ORIGINS/);
+  });
+
+  it('accepts production with an explicit origin list', () => {
+    expect(() => validateEnv({ ...PROD, ALLOWED_ORIGINS: 'https://app.nexafx.io' })).not.toThrow();
+  });
+
+  it('rejects a wildcard origin in any environment', () => {
+    expect(() => validateEnv({ ...VALID_ENV, ALLOWED_ORIGINS: '*' })).toThrow();
+  });
+
+  it('allows an empty ALLOWED_ORIGINS outside production', () => {
+    expect(() => validateEnv({ ...VALID_ENV, ALLOWED_ORIGINS: '' })).not.toThrow();
+  });
+
+  it('refuses DB_SSL_REJECT_UNAUTHORIZED=false in production', () => {
+    expect(() =>
+      validateEnv({
+        ...PROD,
+        ALLOWED_ORIGINS: 'https://app.nexafx.io',
+        DB_SSL: 'true',
+        DB_SSL_REJECT_UNAUTHORIZED: 'false',
+      }),
+    ).toThrow(/DB_SSL_REJECT_UNAUTHORIZED/);
+  });
+
+  it('allows DB_SSL_REJECT_UNAUTHORIZED=false outside production', () => {
+    expect(() =>
+      validateEnv({ ...VALID_ENV, DB_SSL: 'true', DB_SSL_REJECT_UNAUTHORIZED: 'false' }),
+    ).not.toThrow();
+  });
+});
