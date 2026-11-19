@@ -8,6 +8,12 @@ export interface AuthenticatedUser {
   email?: string;
   role?: string;
   isEmailVerified?: boolean;
+  /** Token version claim (`tv`); `TokenVersionGuard` compares it with the user's current version. */
+  tokenVersion?: number;
+  /** How the principal authenticated. */
+  authMethod?: 'jwt' | 'api_key';
+  /** Id of the refresh-token session the access token belongs to (JWT `sid`). */
+  sid?: string;
   /** Id of the refresh-token session the access token belongs to (JWT `sid`). */
   sid?: string;
   /** How the principal authenticated; API-key principals are always capped to role `user`. */

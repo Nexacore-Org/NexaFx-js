@@ -11,6 +11,7 @@ import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { AuthenticatedUser } from './authenticated-user.interface';
 import { TokenType } from './token-types';
 import { AccountStatusService } from './account-status.service';
+import { JwtPayload, buildPrincipal } from './jwt-payload';
 import { RefreshTokensService } from '../tokens/refresh-tokens.service';
 
 interface JwtPayload {
@@ -108,6 +109,14 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid authentication token');
     }
 
+    // A signed token is not enough: suspended, deactivated and deleted users lose access
+    // immediately, and a token issued before a password change is refused (same shared check
+    // the passport strategy uses).
+    if (this.accountStatus) {
+      await this.accountStatus.assertTokenAccepted(payload);
+    }
+
+    request.user = buildPrincipal(payload);
     // A signed token is not enough: suspended, deactivated and deleted users
     // lose access immediately even though their token has not expired.
     if (!(await this.accountStatus.isAllowedToAuthenticate(payload.sub))) {

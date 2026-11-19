@@ -72,6 +72,8 @@ import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 // in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { TokenVersionGuard } from './auth/token-version.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AccountClosureModule } from './users/account-closure.module';
 import { correlationPinoOptions } from './common/logging/correlation-pino';
@@ -307,6 +309,12 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    // Order matters: authenticate, then token version, then the read-only impersonation rule, then
+    // role checks (issue #1537). RolesGuard and TokenVersionGuard had dropped out of this list.
+    {
+      provide: APP_GUARD,
+      useClass: TokenVersionGuard,
     },
     {
       provide: APP_GUARD,

@@ -68,6 +68,21 @@ export class EncryptionService {
     return decipher.update(ciphertext) + decipher.final('utf8');
   }
 
+  /**
+   * Deterministic keyed hash for equality lookups on encrypted fields (e.g. "is this ID number
+   * already registered?") without storing the value (issue #1535). HMAC-SHA256 over the
+   * normalised value. The key is `KYC_DOCUMENT_HASH_KEY` when set (recommended: it can be rotated
+   * independently); otherwise it is derived from the primary wallet key, in which case rotating
+   * that key requires re-hashing.
+   */
+  blindIndex(value: string): string {
+    const configured = process.env.KYC_DOCUMENT_HASH_KEY;
+    const key = configured
+      ? Buffer.from(configured, 'utf8')
+      : crypto.createHmac('sha256', this.keys.get(this.currentVersion)!).update('blind-index-v1').digest();
+    return crypto.createHmac('sha256', key).update(value).digest('hex');
+  }
+
   getCurrentVersion(): number {
     return this.currentVersion;
   }

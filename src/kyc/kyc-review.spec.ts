@@ -168,3 +168,38 @@ describe('KYC request DTO validation (#1358)', () => {
     expect(await errorsFor(AppealKycRequestDto, { reason: 'The document was clearly legible.' })).toHaveLength(0);
   });
 });
+
+describe('kyc.reviewed event payload (issue #1535)', () => {
+  it('carries ids and the decision only, never the document number or URL', async () => {
+    const events = { emit: jest.fn() };
+    const doc = {
+      id: 'd1',
+      userId: 'u1',
+      status: KycDocumentStatus.PENDING,
+      documentNumber: 'enc:1:SEALED',
+      documentUrl: 'https://storage.example.com/doc.pdf',
+    };
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({ ...doc }),
+      save: jest.fn(async (_e: unknown, v: any) => v),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+      getRepository: jest.fn().mockReturnValue({ find: jest.fn().mockResolvedValue([]) }),
+    };
+    const queryRunner = {
+      connect: jest.fn(), startTransaction: jest.fn(), commitTransaction: jest.fn(), rollbackTransaction: jest.fn(),
+      release: jest.fn(), isTransactionActive: true, manager,
+    };
+    const service = new KycService(
+      {} as any,
+      events as any,
+      { get: jest.fn() } as any,
+      { createQueryRunner: jest.fn().mockReturnValue(queryRunner) } as any,
+    );
+
+    await service.review('d1', { reviewerId: 'admin-1', status: KycDocumentStatus.APPROVED });
+
+    const payload = events.emit.mock.calls.find((c) => c[0] === 'kyc.reviewed')?.[1];
+    expect(payload).toEqual(expect.objectContaining({ id: 'd1', userId: 'u1', status: KycDocumentStatus.APPROVED, reviewedBy: 'admin-1' }));
+    expect(JSON.stringify(payload)).not.toMatch(/SEALED|storage\.example\.com|documentNumber|documentUrl/);
+  });
+});

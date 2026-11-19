@@ -19,6 +19,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       context.getClass(),
     ]);
     if (isPublic) return true;
+    // The global guard has already authenticated this request and built the principal; running the
+    // passport strategy again would replace it with a different one (issue #1536). Authentication
+    // only runs here when nothing upstream has set `request.user` (e.g. a non-HTTP context).
+    const request = context.switchToHttp().getRequest<{ user?: { id?: string } }>();
+    if (request?.user?.id) return true;
     return super.canActivate(context);
   }
 

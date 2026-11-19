@@ -11,6 +11,7 @@ export const REDACTED = '[REDACTED]';
  * key with separators stripped, so `api_key`, `apiKey` and `API-KEY` all match.
  */
 const SENSITIVE_KEY_PATTERNS = [
+  'documentnumber',
   'password',
   'passwd',
   'passphrase',
