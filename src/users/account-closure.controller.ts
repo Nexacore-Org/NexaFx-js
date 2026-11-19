@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
 import { AccountClosureService } from './account-closure.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -11,6 +12,8 @@ import { CloseAccountDto } from './dto/close-account.dto';
 export class AccountClosureController {
   constructor(private readonly accountClosureService: AccountClosureService) {}
 
+  // Irreversible and password-gated: 3 attempts per 15 minutes per client (issue #1530).
+  @Throttle({ default: { limit: 3, ttl: 900_000 } })
   @Post('close-account')
   async closeAccount(
     @CurrentUser('id') userId: string,

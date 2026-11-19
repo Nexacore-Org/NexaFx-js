@@ -72,6 +72,7 @@ import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 // in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { AccountClosureModule } from './users/account-closure.module';
 import { correlationPinoOptions } from './common/logging/correlation-pino';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { TimeoutMiddleware } from './common/middleware/timeout.middleware';
@@ -135,6 +136,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
   imports: [
     ObservabilityModule,
     ConfigModule,
+    AccountClosureModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.LOG_LEVEL || 'info',

@@ -9,9 +9,10 @@ import { AccountClosureMailer } from './account-closure.mailer';
 import { AccountClosurePurgeJob } from './account-closure.purge.job';
 import { AccountClosureService } from './account-closure.service';
 import { User } from './user.entity';
+import { UsersModule } from './users.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User]), WalletsModule, TokensModule, AuditModule],
+  imports: [TypeOrmModule.forFeature([User]), WalletsModule, TokensModule, AuditModule, UsersModule],
   controllers: [AccountClosureController],
   providers: [AccountClosureService, AccountClosureMailer, AccountClosurePurgeJob, PasswordService],
   exports: [AccountClosureService],

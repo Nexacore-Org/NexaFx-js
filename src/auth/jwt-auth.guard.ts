@@ -11,6 +11,7 @@ import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { AuthenticatedUser } from './authenticated-user.interface';
 import { TokenType } from './token-types';
 import { AccountStatusService } from './account-status.service';
+import { RefreshTokensService } from '../tokens/refresh-tokens.service';
 
 interface JwtPayload {
   sub?: string;
@@ -25,6 +26,8 @@ interface JwtPayload {
   sid?: string;
   impersonation?: boolean;
   act?: { sub?: string };
+  /** Refresh-token session this access token belongs to. */
+  sid?: string;
 }
 
 interface AuthenticatedRequest {
@@ -40,6 +43,8 @@ export class JwtAuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly reflector: Reflector,
+    @Optional() private readonly accountStatus?: AccountStatusService,
+    @Optional() private readonly refreshTokens?: RefreshTokensService,
     private readonly accountStatus: AccountStatusService,
   ) {}
 
@@ -109,12 +114,19 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Account is not active');
     }
 
+    // "Log out" and "revoke this device" must end the session now, not when the (up to one hour)
+    // access token expires: the token names its session (`sid`), which must still be active.
+    if (payload.sid && this.refreshTokens && !(await this.refreshTokens.isSessionActive(payload.sub, payload.sid))) {
+      throw new UnauthorizedException('Session has been revoked');
+    }
+
     request.user = {
       id: payload.sub,
       sub: payload.sub,
       email: payload.email ?? '',
       role: payload.role ?? '',
       isEmailVerified: payload.isEmailVerified,
+      ...(payload.sid ? { sid: payload.sid } : {}),
       tokenVersion: payload.tv,
       sid: payload.sid,
       authMethod: 'jwt',

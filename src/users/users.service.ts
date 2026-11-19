@@ -79,7 +79,9 @@ export class UsersService {
     // must not be able to create a mixed-case duplicate either.
     const email = normalizeEmail(dto.email) as string;
 
-    const existing = await repo.findOne({ where: { email } });
+    // withDeleted: a closed (soft-deleted) account still owns the unique email, so re-registering
+    // must be a clear 409 rather than a raw unique-index 500 (issue #1530).
+    const existing = await repo.findOne({ where: { email }, withDeleted: true });
     if (existing) throw new ConflictException('Email already in use');
 
     const user = repo.create({ ...dto, email, role: dto.role ?? UserRole.USER });

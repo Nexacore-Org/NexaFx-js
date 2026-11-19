@@ -8,6 +8,8 @@ export interface AuthenticatedUser {
   email?: string;
   role?: string;
   isEmailVerified?: boolean;
+  /** Id of the refresh-token session the access token belongs to (JWT `sid`). */
+  sid?: string;
   /** How the principal authenticated; API-key principals are always capped to role `user`. */
   authMethod?: 'jwt' | 'api_key';
   /** Scopes granted to the API key (API-key principals only). */
