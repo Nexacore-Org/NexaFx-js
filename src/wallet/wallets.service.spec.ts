@@ -13,6 +13,7 @@ describe('WalletsService', () => {
     findOne: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
+    createQueryBuilder: jest.Mock;
   };
   let mockRepository: {
     findOne: jest.Mock;
@@ -35,10 +36,18 @@ describe('WalletsService', () => {
   };
 
   beforeEach(async () => {
+    const insertBuilder = {
+      insert: jest.fn().mockReturnThis(),
+      into: jest.fn().mockReturnThis(),
+      values: jest.fn().mockReturnThis(),
+      orIgnore: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue(undefined),
+    };
     mockManager = {
       findOne: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(insertBuilder),
     };
 
     mockRepository = {
@@ -499,9 +508,9 @@ describe('WalletsService', () => {
         expect.objectContaining({
           userId: 'acct-1',
           type: LedgerEntryType.CREDIT,
-          amount: 50,
+          amount: '50.00000000',
           currency: 'USD',
-          balanceAfter: 150,
+          balanceAfter: '150.00000000',
         }),
         mockManager,
       );
@@ -515,8 +524,8 @@ describe('WalletsService', () => {
       expect(mockLedgerService.recordEntry).toHaveBeenCalledWith(
         expect.objectContaining({
           type: LedgerEntryType.DEBIT,
-          amount: 75,
-          balanceAfter: 125,
+          amount: '75.00000000',
+          balanceAfter: '125.00000000',
         }),
         mockManager,
       );
