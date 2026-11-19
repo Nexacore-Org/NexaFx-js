@@ -817,25 +817,20 @@ export class TransactionsService implements OnModuleInit {
     }
 
     const tx = await this.findById(id);
-    if (tx.type === 'withdrawal') {
-      const total = Number(tx.amount) + Number(tx.fee || 0);
-      if (tx.metadata && (tx.metadata as any).debitedAt) {
-        await this.walletsService.adjustBalance(tx.senderId, tx.currency, +total);
-        tx.metadata = { ...(tx.metadata as Record<string, unknown>), debitedAt: undefined };
-        await this.txRepo.save(tx);
-      }
-    } else if (tx.type === 'swap') {
-      const total = Number(tx.amount) + Number(tx.fee || 0);
-      if (tx.metadata && (tx.metadata as any).debitedAt) {
-        await this.walletsService.adjustBalance(tx.senderId, tx.currency, +total);
-        tx.metadata = { ...(tx.metadata as Record<string, unknown>), debitedAt: undefined };
-        await this.txRepo.save(tx);
-      }
-    } else if (tx.type === 'transfer') {
-      if (tx.metadata && (tx.metadata as any).debitedAt) {
-        await this.walletsService.adjustBalance(tx.senderId, tx.currency, +Number(tx.amount));
-        tx.metadata = { ...(tx.metadata as Record<string, unknown>), debitedAt: undefined };
-        await this.txRepo.save(tx);
+    // Transaction has no `type` column; the kind lives in metadata.type.
+    const kind =
+      typeof tx.metadata?.type === 'string' ? (tx.metadata.type as string) : 'transfer';
+    if (tx.metadata && (tx.metadata as any).debitedAt) {
+      const total =
+        kind === 'withdrawal' || kind === 'swap'
+          ? Number(tx.amount) + Number(tx.fee || 0)
+          : Number(tx.amount);
+      if (kind === 'withdrawal' || kind === 'swap' || kind === 'transfer') {
+        await this.dataSource.transaction(async (manager) => {
+          await this.walletsService.adjustBalance(tx.senderId, tx.currency, +total, manager, tx.id);
+          tx.metadata = { ...(tx.metadata as Record<string, unknown>), debitedAt: undefined };
+          await manager.save(tx);
+        });
       }
     }
 
