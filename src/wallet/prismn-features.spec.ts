@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+import { Keypair } from 'stellar-sdk';
 import { WalletsService } from './wallets.service';
 import { StellarService } from '../stellar/stellar.service';
 import { TransactionsService } from '../transactions/transactions.service';
@@ -45,21 +47,29 @@ describe('prismn Features (Issues #976, #934, #921, #920)', () => {
     const dataSource = {
       createQueryRunner: jest.fn().mockReturnValue(queryRunner),
     };
-    const service = new WalletsService(mockRepo as any, dataSource as any);
-
-    service.setAutoSweepConfig(
-      'user-1',
-      1000,
-      'GAWDHZBVOL55CM2PJIG6NUVDKFT35REQRPNWLNTA244LAGO3HLEJUTJ4',
+    const ledgerService = { recordEntry: jest.fn() };
+    const service = new WalletsService(
+      mockRepo as any,
+      dataSource as any,
+      ledgerService as any,
     );
-    const config = service.getAutoSweepConfig('user-1');
-    expect(config?.threshold).toBe(1000);
+    const coldStorageAddress = Keypair.random().publicKey();
+
+    expect(
+      service.setAutoSweepConfig('user-1', 1000, coldStorageAddress),
+    ).toEqual({ threshold: 1000, coldStorageAddress });
+    expect(() =>
+      service.setAutoSweepConfig('user-1', 1000, 'G-COLD-STORAGE'),
+    ).toThrow(BadRequestException);
+    expect(service.getAutoSweepConfig('user-1')).toEqual({
+      threshold: 1000,
+      coldStorageAddress,
+    });
 
     jest.spyOn(service, 'adjustBalance').mockResolvedValue({} as any);
 
     const result = await service.processAutoSweep('user-1', 'USD');
-    expect(result.swept).toBe(true);
-    expect(result.sweepAmount).toBe('500.00000000');
+    expect(result).toMatchObject({ swept: true, coldStorageAddress });
   });
 
   it('StellarService validates payment memo text and ID constraints', () => {
