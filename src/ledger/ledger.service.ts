@@ -44,12 +44,19 @@ export class LedgerService {
     return this.ledgerRepo.save(entry);
   }
 
-  async findByUser(userId: string): Promise<LedgerEntry[]> {
-    await this.usersService.findById(userId);
-    return this.ledgerRepo.find({
+  async findByUser(
+    userId: string,
+    opts: { page?: number; limit?: number } = {},
+  ): Promise<{ data: LedgerEntry[]; meta: { page: number; limit: number; total: number } }> {
+    const page = Math.max(1, Number(opts.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(opts.limit) || 20));
+    const [data, total] = await this.ledgerRepo.findAndCount({
       where: { userId },
       order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
+    return { data, meta: { page, limit, total } };
   }
 
   async findById(id: string): Promise<LedgerEntry> {
