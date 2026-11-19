@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { StatementQueryDto } from '../documents/dto/statement-query.dto';
+import { StatementQueryDto } from './dto/statement-query.dto';
 import { StatementsService } from './statements.service';
 
 type RequestWithUser = {

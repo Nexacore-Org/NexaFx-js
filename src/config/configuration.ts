@@ -235,7 +235,10 @@ export default () => {
 
     // Push notification configuration
     push: {
+      // The legacy server key is no longer used to deliver FCM messages.
       fcmServerKey: process.env.FCM_SERVER_KEY || '',
+      fcmProjectId: process.env.FCM_PROJECT_ID || '',
+      fcmServiceAccountJson: process.env.FCM_SERVICE_ACCOUNT_JSON || '',
       apnsKeyId: process.env.APNS_KEY_ID || '',
       apnsTeamId: process.env.APNS_TEAM_ID || '',
       apnsBundleId: process.env.APNS_BUNDLE_ID || '',

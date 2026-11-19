@@ -17,6 +17,18 @@ NexaFx-js is a high-performance NestJS enterprise platform supporting FX rates, 
 - **PostgreSQL 14+**
 - **Redis 7+**
 
+## Feature Flags
+
+Each flag is controlled by its `FEATURE_*` environment variable (`true` enables it; unset or anything else disables it). The effective values are logged at startup and exposed by `GET /feature-flags`. Disabled routes return `404`.
+
+| Flag | Gates |
+| --- | --- |
+| `FEATURE_FX_TRADING` | FX trade execution/reversal and locked FX quote previews |
+| `FEATURE_REFERRALS` | Referral codes, stats and reward endpoints |
+| `FEATURE_BLOCKCHAIN` | Stellar write endpoints (federation address create/delete) |
+| `FEATURE_TWO_FA` | Two-factor OTP setup/verification flow |
+| `FEATURE_PUSH_NOTIFICATIONS` | Device registration/deregistration and all push delivery (sends are skipped with a warning when off) |
+
 ## Quick Start
 
 ### 1. Installation

@@ -1,10 +1,8 @@
 import { getCorrelationId } from '../common/middleware/correlation-id.storage';
-import { Injectable, Optional } from '@nestjs/common';
-import {
-  BadRequestException,
-  Injectable,
-  Optional,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { dateDiffInDays } from './date-diff';
+
+export { dateDiffInDays } from './date-diff';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, IsNull, Raw, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
@@ -51,8 +49,10 @@ export class StatementsService {
 
     if (rangeDays > ASYNC_RANGE_DAYS) {
       const job = this.statementsQueue
-        ? await this.statementsQueue.add('generate', { ...request, correlationId: getCorrelationId() })
-        ? await this.statementsQueue.add('generate', normalized)
+        ? await this.statementsQueue.add('generate', {
+            ...normalized,
+            correlationId: getCorrelationId(),
+          })
         : { id: 'statement-queued' };
       return {
         status: 'queued',
@@ -362,9 +362,7 @@ export class StatementsService {
       throw new BadRequestException('to must be on or after from');
     }
 
-    const rangeDays = Math.ceil(
-      (toDate.getTime() - fromDate.getTime()) / 86_400_000,
-    );
+    const rangeDays = dateDiffInDays(fromDate, toDate);
     if (rangeDays > MAX_RANGE_DAYS) {
       throw new BadRequestException(
         `Statement range must not exceed ${MAX_RANGE_DAYS} days`,

@@ -2,6 +2,8 @@ import { Controller, Get, Query, Req, UseGuards, BadRequestException } from '@ne
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { FxQuoteCache } from '../../fx/fx-quote-cache';
 import { ExchangeRateService } from '../../fx/exchange-rate.service';
+import { RequireFeature } from '../feature-flags/require-feature.decorator';
+import { FeatureFlag } from '../feature-flags/feature-flags.catalog';
 
 export interface FxPreviewResponse {
   fromCurrency: string;
@@ -24,6 +26,7 @@ export class FxPreviewController {
   constructor(private readonly exchangeRates: ExchangeRateService) {}
 
   @Get('preview')
+  @RequireFeature(FeatureFlag.FX_TRADING)
   async getPreview(
     @Req() req: { user?: { id?: string; sub?: string } },
     @Query('from') from: string,

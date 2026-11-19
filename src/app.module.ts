@@ -63,6 +63,8 @@ import { UsersModule as UpstreamUsersModule } from './users/users.module';
 import { EscrowModule } from './modules/escrow/escrow.module';
 import { TransactionApprovalModule } from './multi-signature-approval/multi-signature-approval.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
+import { FeatureFlagGuard } from './modules/feature-flags/feature-flag.guard';
+import { ObservabilityModule } from './observability/observability.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
@@ -72,8 +74,6 @@ import { ScheduledJobsModule } from './scheduled-jobs/scheduled-jobs.module';
 // in an earlier merge (tracked as issue #1302) has been removed.
 import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
-import { TokenVersionGuard } from './auth/token-version.guard';
-import { RolesGuard } from './auth/guards/roles.guard';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AccountClosureModule } from './users/account-closure.module';
 import { correlationPinoOptions } from './common/logging/correlation-pino';
@@ -324,15 +324,17 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     {
       provide: APP_GUARD,
       useClass: ImpersonationGuard,
-      useClass: TokenVersionGuard,
     },
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
     },
+    // After authentication and role checks so @RequireFeature is only evaluated
+    // for an identified caller. FeatureFlagsModule is global, so no controller
+    // needs to list FeatureFlagGuard in @UseGuards.
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: FeatureFlagGuard,
     },
   ],
 })

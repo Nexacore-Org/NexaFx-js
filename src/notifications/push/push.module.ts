@@ -7,6 +7,8 @@ import { DevicesController } from '../devices.controller';
 import { NotificationBatchingService } from '../notification-batching.service';
 import { NotificationListener } from '../notification.listener';
 import { NotificationPreference } from '../../notification-preferences/notification-preference.entity';
+import { FcmV1Provider } from './fcm-v1.provider';
+import { ApnsProvider } from './apns.provider';
 
 @Module({
   imports: [
@@ -16,9 +18,16 @@ import { NotificationPreference } from '../../notification-preferences/notificat
   controllers: [DevicesController],
   providers: [
     PushNotificationService,
+    FcmV1Provider,
+    ApnsProvider,
     NotificationBatchingService,
     NotificationListener,
   ],
-  exports: [PushNotificationService, NotificationBatchingService],
+  exports: [
+    PushNotificationService,
+    FcmV1Provider,
+    ApnsProvider,
+    NotificationBatchingService,
+  ],
 })
 export class PushModule {}
