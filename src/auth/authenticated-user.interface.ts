@@ -5,9 +5,19 @@
 export interface AuthenticatedUser {
   id: string;
   sub: string;
-  email: string;
-  role: string;
+  email?: string;
+  role?: string;
   isEmailVerified?: boolean;
+  /** The token version (`tv` claim) the access token was issued with. */
+  tokenVersion?: number;
+  /** The refresh-token session id (`sid` claim), used to revoke the session on logout. */
+  sid?: string;
+  /** How the request authenticated. */
+  authMethod?: 'jwt' | 'api_key';
+  /** Scopes granted to an API-key principal. */
+  scopes?: string[];
+  /** Id of the API key that authenticated the request. */
+  apiKeyId?: string;
   /** True for a short-lived admin impersonation session (read-only). */
   impersonation?: boolean;
   /** The real admin behind an impersonation session (RFC 8693 `act.sub`). */
