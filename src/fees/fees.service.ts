@@ -37,15 +37,8 @@ export class FeesService {
   }
 
   calculateFee(amount: number, transactionType = 'default', currency = 'USD'): FeeResult {
+    // Pure calculation: no audit side effects (previews/simulations call this too).
     const feeAmount = Number((amount * this.getFeeRate(transactionType)).toFixed(8));
-
-    this.feeAuditService.recordFeeCalculation({
-      feeAmount,
-      currency,
-      feeType: 'percentage',
-      calculatedAmount: amount,
-      appliedTier: 'flat',
-    }).catch((err) => this.logger.warn(`Failed to record fee audit: ${err.message}`));
 
     return { feeAmount, reason: null };
   }
@@ -74,6 +67,25 @@ export class FeesService {
       currency: dto.currency,
       reason: dto.feeAmount === 0 ? (dto.reason ?? 'no_fee_config') : (dto.reason ?? null),
     });
-    return this.feeRepo.save(record);
+    const saved = await this.feeRepo.save(record);
+
+    // Audit only fees that are actually charged, with the real currency, user and transaction.
+    this.feeAuditService
+      .recordFeeCalculation({
+        transactionId: dto.transactionId,
+        userId: dto.userId,
+        feeAmount: dto.feeAmount,
+        feeCurrency: dto.currency,
+        feeType: 'percentage',
+        calculatedAmount: dto.amount,
+        appliedTier: 'flat',
+      })
+      .catch((err) =>
+        this.logger.error(
+          `Failed to record fee audit for transaction ${dto.transactionId}: ${err.message}`,
+        ),
+      );
+
+    return saved;
   }
 }
