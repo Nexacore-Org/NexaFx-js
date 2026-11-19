@@ -292,6 +292,11 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
   controllers: [AppController],
   providers: [
     AppService,
+    // Throttler must run first so failed-auth floods are rate limited (issue #1558).
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: ApiKeyAuthGuard,
@@ -303,10 +308,6 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     {
       provide: APP_GUARD,
       useClass: ImpersonationGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
     },
   ],
 })
