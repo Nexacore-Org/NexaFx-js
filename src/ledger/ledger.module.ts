@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersModule } from '../users/users.module';
 import { LedgerEntry } from './ledger-entry.entity';
+import { LedgerController } from './ledger.controller';
 import { LedgerService } from './ledger.service';
 
 @Module({
@@ -9,6 +10,7 @@ import { LedgerService } from './ledger.service';
     TypeOrmModule.forFeature([LedgerEntry]),
     UsersModule,
   ],
+  controllers: [LedgerController],
   providers: [LedgerService],
   exports: [LedgerService],
 })
