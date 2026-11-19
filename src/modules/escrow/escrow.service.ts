@@ -9,6 +9,8 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { withTransaction } from '../../common/helpers/with-transaction.helper';
 import { WalletsService } from '../../wallet/wallets.service';
+import { UsersService } from '../../users/users.service';
+import { AccountFreezeService } from '../account-freeze/services/account-freeze.service';
 import { EscrowHold, EscrowStatus } from './entities/escrow-hold.entity';
 import { CreateEscrowDto } from './dto/create-escrow.dto';
 
@@ -30,6 +32,8 @@ export class EscrowService {
     private readonly holds: Repository<EscrowHold>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly wallets: WalletsService,
+    private readonly usersService: UsersService,
+    private readonly accountFreezeService: AccountFreezeService,
   ) {}
 
   /** Debit the payer and record a HELD hold, atomically. */
@@ -38,6 +42,10 @@ export class EscrowService {
       throw new BadRequestException('You cannot hold funds for yourself');
     }
     const currency = dto.currency.toUpperCase();
+
+    // #1574: a frozen payer cannot move funds; the payee must exist (404 otherwise).
+    await this.accountFreezeService.assertNotFrozen(payerId);
+    await this.usersService.findById(dto.payeeId);
 
     return withTransaction(this.dataSource, async (manager) => {
       // Throws "Insufficient balance" (400) if the payer cannot cover it.
