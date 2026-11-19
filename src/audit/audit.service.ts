@@ -7,6 +7,8 @@ import { maskBody } from '../common/utils/redact';
 import { getRequestActorId } from '../common/context/request-actor.storage';
 
 const AUDIT_MASK_DEPTH = 10;
+/** Audit snapshots keep `email` readable (admin actions name the user); all other PII is masked. */
+const AUDIT_MASK_OPTIONS = { keepFields: ['email'] };
 
 export interface AuditEvent {
   userId?: string;
@@ -55,8 +57,10 @@ export class AuditService {
     const entry = this.auditRepo.create({
       ...event,
       ...(event.before !== undefined && {
-        before: maskBody(event.before, 0, AUDIT_MASK_DEPTH) as Record<string, unknown>,
+        before: maskBody(event.before, 0, AUDIT_MASK_DEPTH, AUDIT_MASK_OPTIONS) as Record<string, unknown>,
       }),
+      ...(event.after !== undefined && {
+        after: maskBody(event.after, 0, AUDIT_MASK_DEPTH, AUDIT_MASK_OPTIONS) as Record<string, unknown>,
       ...(after !== undefined && {
         after: maskBody(after, 0, AUDIT_MASK_DEPTH) as Record<string, unknown>,
       }),

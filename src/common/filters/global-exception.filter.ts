@@ -1,6 +1,7 @@
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Logger } from '@nestjs/common';
+import { REDACTED, isSensitiveField, maskBody, redactUrl } from '../utils/redact';
 import { REDACTED, isSensitiveField, maskBody } from '../utils/redact';
 import { getCorrelationId } from '../middleware/correlation-id.storage';
 
@@ -36,7 +37,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const logPayload = {
       method: request.method,
-      path: request.url,
+      path: redactUrl(request.url),
+      query: maskBody(request.query),
       body: maskBody(request.body),
       error: typeof message === 'string' ? message : (message as Record<string, unknown>).message ?? 'Error',
       correlationId: (request.headers['x-correlation-id'] as string) ?? getCorrelationId(),
@@ -54,7 +56,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode: status,
       message: this.messageOf(message),
       timestamp: new Date().toISOString(),
-      path: request.url,
+      // Never echo query-string credentials (export download tokens, reset tokens) back to the client.
+      path: redactUrl(request.url),
     };
 
     // Client errors may carry Nest's `error` label and an allow-listed set of

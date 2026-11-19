@@ -1,3 +1,5 @@
+import { AuditAction } from '../modules/admin-audit/audit-actions';
+import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import {
   BadRequestException,
   ConflictException,
@@ -76,6 +78,15 @@ export class AdminService implements OnModuleInit {
     );
   }
 
+  /** Who viewed which customer's identity document, and which file (issue #1533). */
+  async recordKycFileView(adminUserId: string, ownerUserId: string, version: string, filename: string) {
+    await this.auditService.log({
+      userId: adminUserId,
+      action: AuditAction.ADMIN_KYC_FILE_VIEWED,
+      entityType: 'kyc_document',
+      entityId: ownerUserId,
+      after: { ownerUserId, version, filename },
+    });
   /** Four-eyes control for high-risk changes. Off unless ADMIN_DUAL_CONTROL=true. */
   isDualControlEnabled(): boolean {
     return process.env.ADMIN_DUAL_CONTROL === 'true';

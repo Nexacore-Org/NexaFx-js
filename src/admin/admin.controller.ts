@@ -167,15 +167,19 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Get('kyc/:userId/:version/:filename')
-  serveKycFile(
+  async serveKycFile(
     @Param('userId') userId: string,
     @Param('version') version: string,
     @Param('filename') filename: string,
+    @CurrentUser('id') adminId: string,
     @Res() res: Response,
   ) {
     assertSafePathSegment(userId, 'userId');
     assertSafePathSegment(version, 'version');
     assertSafePathSegment(filename, 'filename');
+
+    // Record the access before the document is sent: no record means no access.
+    await this.adminService.recordKycFileView(adminId, userId, version, filename);
 
     const filePath = join(KYC_UPLOAD_BASE, userId, version, filename);
     const normalizedPath = normalize(filePath);

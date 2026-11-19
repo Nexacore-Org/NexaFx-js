@@ -7,9 +7,10 @@ import { ApiKeyGuard } from './guards/api-key.guard';
 import { ApiKeyAuthGuard } from './guards/api-key-auth.guard';
 import { ApiKeyAuthService } from './services/api-key-auth.service';
 import { User } from '../../users/user.entity';
+import { AuditModule } from '../../audit/audit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ApiKeyEntity, User])],
+  imports: [TypeOrmModule.forFeature([ApiKeyEntity, User]), AuditModule],
   controllers: [ApiKeysController],
   providers: [ApiKeysService, ApiKeyGuard, ApiKeyAuthService, ApiKeyAuthGuard],
   exports: [ApiKeysService, ApiKeyGuard, ApiKeyAuthService, ApiKeyAuthGuard],

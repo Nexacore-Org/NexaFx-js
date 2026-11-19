@@ -1,7 +1,10 @@
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
 import { AccountClosureService } from './account-closure.service';
+import { UserDataExportService } from './user-data-export.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CloseAccountDto } from './dto/close-account.dto';
@@ -10,7 +13,10 @@ import { CloseAccountDto } from './dto/close-account.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('users/me')
 export class AccountClosureController {
-  constructor(private readonly accountClosureService: AccountClosureService) {}
+  constructor(
+    private readonly accountClosureService: AccountClosureService,
+    private readonly dataExport: UserDataExportService,
+  ) {}
 
   // Irreversible and password-gated: 3 attempts per 15 minutes per client (issue #1530).
   @Throttle({ default: { limit: 3, ttl: 900_000 } })
@@ -23,14 +29,24 @@ export class AccountClosureController {
     return this.accountClosureService.closeAccount(userId, dto.currentPassword);
   }
 
-  @Get('export-data')
-  exportData(@Req() req: { user: { sub: string } }) {
-    const userId = req.user.sub;
-    return {
-      exportId: `exp_${Date.now()}_${userId?.slice(0, 6) ?? 'usr'}`,
-      requestedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 48 * 3600_000).toISOString(),
-      sections: ['profile', 'wallets', 'transactions', 'notification_preferences', 'audit_logs'],
-    };
+  /**
+   * Request a copy of your own data (issue #1531). POST because it creates a file and sends mail;
+   * limited to one request per hour. The response never carries the data itself, only a random
+   * export id and a short-lived download link bound to this user.
+   */
+  @Throttle({ default: { limit: 1, ttl: 3_600_000 } })
+  @Post('export-data')
+  requestExport(@CurrentUser('id') userId: string) {
+    return this.dataExport.request(userId);
+  }
+
+  @Get('export-data/:exportId/download')
+  download(
+    @CurrentUser('id') userId: string,
+    @Param('exportId', new ParseUUIDPipe()) exportId: string,
+    @Query('token') token: string,
+    @Res() res: Response,
+  ) {
+    res.download(this.dataExport.resolve(userId, exportId, token), `nexafx-data-export-${exportId}.json`);
   }
 }

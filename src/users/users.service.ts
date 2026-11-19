@@ -123,15 +123,20 @@ export class UsersService {
     id: string,
     maxAttempts: number,
     lockoutMinutes: number,
-  ): Promise<{ failedLoginAttempts: number; lockedUntil: Date | null }> {
+  ): Promise<{ failedLoginAttempts: number; lockedUntil: Date | null; newlyLocked: boolean }> {
     const lockUntil = new Date(Date.now() + lockoutMinutes * 60_000);
+    // A lock that has already expired starts a fresh count (issue #1534). Without this the counter
+    // stayed at 5 forever, so after the first lockout a single later typo (count 6) re-locked the
+    // user for another 30 minutes. Both columns derive from the same pre-update row values.
+    const lockExpired = '("lockedUntil" IS NOT NULL AND "lockedUntil" <= now())';
+    const nextCount = `(CASE WHEN ${lockExpired} THEN 1 ELSE "failedLoginAttempts" + 1 END)`;
     const result = await this.usersRepository
       .createQueryBuilder()
       .update(User)
       .set({
-        failedLoginAttempts: () => '"failedLoginAttempts" + 1',
+        failedLoginAttempts: () => nextCount,
         lockedUntil: () =>
-          'CASE WHEN "failedLoginAttempts" + 1 >= :maxAttempts THEN :lockUntil ELSE "lockedUntil" END',
+          `CASE WHEN ${nextCount} >= :maxAttempts THEN :lockUntil WHEN ${lockExpired} THEN NULL ELSE "lockedUntil" END`,
       })
       .where('id = :id', { id })
       .setParameters({ maxAttempts, lockUntil })
@@ -139,9 +144,12 @@ export class UsersService {
       .execute();
 
     const row = (result.raw as Array<{ failedLoginAttempts: number; lockedUntil: Date | null }>)?.[0];
+    const lockedUntil = row?.lockedUntil ? new Date(row.lockedUntil) : null;
     return {
       failedLoginAttempts: Number(row?.failedLoginAttempts ?? 0),
-      lockedUntil: row?.lockedUntil ? new Date(row.lockedUntil) : null,
+      lockedUntil,
+      // True only for the call that actually set the lock (its lockUntil is the stored value).
+      newlyLocked: lockedUntil !== null && lockedUntil.getTime() === lockUntil.getTime(),
     };
   }
 
@@ -193,18 +201,5 @@ export class UsersService {
     user.isActive = false;
     await this.usersRepository.save(user);
     await this.usersRepository.softDelete(id);
-  }
-
-  async exportUserData(userId: string) {
-    const user = await this.findById(userId);
-    return {
-      exportId: `exp_${Date.now()}_${userId.slice(0, 6)}`,
-      requestedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 48 * 3600_000).toISOString(),
-      userData: {
-        profile: this.sanitize(user),
-        exportedSections: ['profile', 'wallets', 'transactions', 'notification_preferences', 'audit_logs'],
-      },
-    };
   }
 }
