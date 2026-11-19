@@ -28,12 +28,28 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build: .
+    command: ['node', 'dist/scripts/run-migrations.js']
+    env_file: .env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=nexafx_dev
+    depends_on:
+      db:
+        condition: service_healthy
+
   app:
     build: .
     env_file: .env
     ports:
       - '3000:3000'
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
