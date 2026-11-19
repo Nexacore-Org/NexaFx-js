@@ -5,7 +5,7 @@ export interface StatementLine {
   description: string;
   amount: number;
   reference: string;
-  source: 'transaction' | 'fx';
+  source: 'transaction' | 'fx' | 'fee';
 }
 
 export interface StatementView {

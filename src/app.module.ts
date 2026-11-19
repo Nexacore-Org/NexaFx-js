@@ -42,6 +42,9 @@ import { SpendingModule } from './spending/spending.module';
 import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
 import { AuditModule } from './audit/audit.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
+import { TokenVersionGuard } from './auth/token-version.guard';
+import { AuthModule as CoreAuthModule } from './auth/auth.module';
 import { ConfigModule } from './config/config.module';
 import { Configuration } from './config/configuration';
 import { CurrenciesModule } from './currencies/currencies.module';
@@ -126,6 +129,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
 
 @Module({
   imports: [
+    ObservabilityModule,
     ConfigModule,
     LocksModule,
     LoggerModule.forRoot({ pinoHttp: buildPinoHttpOptions() }),
@@ -247,6 +251,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     TermsModule,
     StatementsModule,
     AuthModule,
+    CoreAuthModule,
     RateAlertHistoryModule,
     ScheduledReportsModule,
     PortfolioModule,
@@ -298,6 +303,14 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     {
       provide: APP_GUARD,
       useClass: ImpersonationGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TokenVersionGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
     {
       provide: APP_GUARD,

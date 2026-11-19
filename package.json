@@ -11,6 +11,7 @@
   "scripts": {
     "prebuild": "npm run check:no-wildcard-deps && npm run check:controller-prefixes && npm run check:env-example && npm run check:app-module-imports",
     "build": "nest build",
+    "postbuild": "node scripts/check-mail-templates.js",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

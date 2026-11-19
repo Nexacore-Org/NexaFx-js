@@ -13,6 +13,12 @@ export enum AmlRiskLevel {
   CRITICAL = 'critical',
 }
 
+export enum AmlDisposition {
+  CLEARED = 'cleared',
+  ESCALATED = 'escalated',
+  SAR_FILED = 'sar_filed',
+}
+
 @Entity('aml_screenings')
 @Index(['userId'])
 @Index(['transactionId'])
@@ -48,4 +54,11 @@ export class AmlScreening {
 
   @Column({ type: 'text', nullable: true })
   notes!: string | null;
+
+  @Column({
+    type: 'simple-enum',
+    enum: AmlDisposition,
+    nullable: true,
+  })
+  disposition!: AmlDisposition | null;
 }

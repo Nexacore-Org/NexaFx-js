@@ -1,6 +1,6 @@
-import { IsOptional, IsEnum, IsString, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsEnum, IsIn, IsString, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
-import { TicketStatus } from '../entities/support-ticket.entity';
+import { TicketPriority, TicketStatus } from '../entities/support-ticket.entity';
 
 export class ListSupportTicketsDto {
   @IsOptional()
@@ -10,6 +10,10 @@ export class ListSupportTicketsDto {
   @IsOptional()
   @IsString()
   assignedTo?: string;
+
+  @IsOptional()
+  @IsIn(['low', 'medium', 'high', 'urgent'])
+  priority?: TicketPriority;
 
   @IsOptional()
   @Type(() => Number)

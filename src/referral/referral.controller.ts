@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ReferralService } from './referral.service';
+import { ApplyReferralDto } from './dto/apply-referral.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { FeatureFlagGuard } from '../modules/feature-flags/feature-flag.guard';
@@ -53,10 +54,10 @@ export class ReferralController {
   @HttpCode(HttpStatus.CREATED)
   applyCode(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { code?: string },
+    @Body() body: ApplyReferralDto,
   ) {
     const userId = req.user?.sub ?? '';
-    return this.referralService.applyCode(body.code ?? '', userId);
+    return this.referralService.applyCode(body.code, userId);
   }
 
   // Qualifying and rewarding credit a real wallet balance, so they are

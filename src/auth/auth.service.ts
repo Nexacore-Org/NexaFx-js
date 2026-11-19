@@ -88,7 +88,9 @@ export class AuthService {
       },
     );
 
-    return this.issueToken(user.id, user.email, user.role, user.tokenVersion);
+    return this.issueToken(user.id, user.email, user.role, {
+      tokenVersion: user.tokenVersion,
+    });
   }
 
   /**
@@ -220,7 +222,9 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.issueToken(user.id, user.email, user.role, user.tokenVersion);
+    return this.issueToken(user.id, user.email, user.role, {
+      tokenVersion: user.tokenVersion,
+    });
   }
 
   /**
@@ -228,7 +232,7 @@ export class AuthService {
    * with device metadata, so the session shows up in `GET /auth/sessions`.
    */
   private async issueSession(
-    user: { id: string; email: string; role: string },
+    user: { id: string; email: string; role: string; tokenVersion?: number },
     context: { ip?: string; userAgent?: string } = {},
   ): Promise<{ accessToken: string; refreshToken?: string; refreshTokenExpiresAt?: Date }> {
     if (!this.refreshTokens) {
@@ -236,7 +240,10 @@ export class AuthService {
     }
     const session = await this.refreshTokens.createToken(user.id, parseDeviceInfo(context));
     return {
-      ...this.issueToken(user.id, user.email, user.role, session.id),
+      ...this.issueToken(user.id, user.email, user.role, {
+        tokenVersion: user.tokenVersion,
+        sid: session.id,
+      }),
       refreshToken: session.token,
       refreshTokenExpiresAt: session.expiresAt,
     };
@@ -257,22 +264,32 @@ export class AuthService {
       throw new UnauthorizedException('Refresh tokens are not available');
     }
 
-      // Take identity and role from the database, not the presented token, so
-      // demotions and deactivations take effect on the next refresh.
-      const user = await this.usersService.findById(payload.sub);
-      const newAccessToken = this.issueToken(user.id, user.email, user.role, user.tokenVersion).accessToken;
-      const newRefreshToken = this.jwtService.sign(
-        { sub: user.id, typ: TokenType.REFRESH },
-        { secret: refreshSecret, expiresIn: '7d' },
+    let rotated: { id: string; userId: string; token: string; expiresAt: Date };
+    try {
+      rotated = await this.refreshTokens.rotateToken(
+        refreshToken,
+        parseDeviceInfo(context),
       );
-      return { accessToken: newAccessToken, refreshToken: newRefreshToken };
     } catch (err) {
-      if (err instanceof ForbiddenException) throw err;
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
+    // Take identity and role from the database, not the presented token, so
+    // demotions and deactivations take effect on the next refresh.
+    const user = await this.usersService.findByIdOrNull(rotated.userId);
+    if (!user || user.isActive === false) {
+      throw new UnauthorizedException('Account is not active');
+    }
+    if (await this.deactivationService?.isUserDeactivated(user.id)) {
+      throw new UnauthorizedException('Account is not active');
+    }
+
     return {
-      ...this.issueToken(user.id, user.email, user.role, rotated.id),
+      ...this.issueToken(user.id, user.email, user.role, {
+        tokenVersion: user.tokenVersion,
+        sid: rotated.id,
+      }),
       refreshToken: rotated.token,
       refreshTokenExpiresAt: rotated.expiresAt,
     };
@@ -288,9 +305,21 @@ export class AuthService {
     }
   }
 
-  private issueToken(userId: string, email: string, role: string, tokenVersion = 0) {
+  private issueToken(
+    userId: string,
+    email: string,
+    role: string,
+    options: { tokenVersion?: number; sid?: string } = {},
+  ) {
     return {
-      accessToken: this.jwtService.sign({ sub: userId, email, role, typ: TokenType.ACCESS, tv: tokenVersion ?? 0 }),
+      accessToken: this.jwtService.sign({
+        sub: userId,
+        email,
+        role,
+        typ: TokenType.ACCESS,
+        tv: options.tokenVersion ?? 0,
+        ...(options.sid ? { sid: options.sid } : {}),
+      }),
     };
   }
 }
