@@ -247,6 +247,10 @@ export default () => {
       rewardAmount: parseFloat(process.env.REFERRAL_REWARD_AMOUNT || '10'),
       maxReferrals: parseInt(process.env.REFERRAL_MAX_REFERRALS || '100', 10),
       programActive: (process.env.REFERRAL_PROGRAM_ACTIVE || 'true') === 'true',
+      rewardCurrency: (process.env.REFERRAL_REWARD_CURRENCY || 'USD').toUpperCase(),
+      refereeRewardAmount: parseFloat(
+        process.env.REFERRAL_REFEREE_REWARD_AMOUNT || '0',
+      ),
     },
 
     // AML monitoring configuration
