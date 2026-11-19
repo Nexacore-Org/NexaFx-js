@@ -291,7 +291,10 @@ export const envSchema = z.object({
   // ============================================
   // Push Notification Configuration
   // ============================================
+  // Retired legacy key, kept only so existing .env files still validate.
   FCM_SERVER_KEY: z.string().optional(),
+  FCM_PROJECT_ID: z.string().optional(),
+  FCM_SERVICE_ACCOUNT_JSON: z.string().optional(),
   APNS_KEY_ID: z.string().optional(),
   APNS_TEAM_ID: z.string().optional(),
   APNS_BUNDLE_ID: z.string().optional(),

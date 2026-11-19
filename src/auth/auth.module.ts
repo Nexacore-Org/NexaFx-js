@@ -10,6 +10,8 @@ import { TermsModule } from '../terms/terms.module';
 import { UsersModule } from '../users/users.module';
 import { UserDeactivationModule } from '../modules/user-deactivation/user-deactivation.module';
 import { AuthController } from './auth.controller';
+import { TwoFactorController } from '../modules/auth/two-factor.controller';
+import { OtpModule } from '../otp/otp.module';
 import { AuthService } from './auth.service';
 import { PasswordService } from './password.service';
 import { PasswordPolicyService } from './password-policy.service';
@@ -27,7 +29,6 @@ import { PasswordResetService } from './password-reset.service';
 import { PasswordResetFlowService } from './password-reset-flow.service';
 import { PasswordResetRateLimiter } from './password-reset-rate-limiter';
 import { AccountStatusService } from './account-status.service';
-import { TokensModule } from '../tokens/tokens.module';
 
 @Global()
 @Module({
@@ -38,11 +39,11 @@ import { TokensModule } from '../tokens/tokens.module';
     forwardRef(() => TermsModule),
     AuditModule,
     MailModule,
-    TokensModule,
     EventEmitterModule,
     PassportModule,
     SharedJwtModule,
     forwardRef(() => UserDeactivationModule),
+    OtpModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
@@ -59,10 +60,34 @@ import { TokensModule } from '../tokens/tokens.module';
       },
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, PasswordResetService, PasswordResetFlowService, PasswordResetRateLimiter, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
-  exports: [TokensModule, AuthService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
-  providers: [AuthService, AccountStatusService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
-  exports: [AuthService, AccountStatusService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
+  controllers: [AuthController, TwoFactorController],
+  providers: [
+    AuthService,
+    AccountStatusService,
+    PasswordResetService,
+    PasswordResetFlowService,
+    PasswordResetRateLimiter,
+    TokenVersionService,
+    TokenVersionGuard,
+    PasswordService,
+    PasswordPolicyService,
+    BiometricGuard,
+    JwtAuthGuard,
+    PassportJwtAuthGuard,
+    JwtStrategy,
+  ],
+  exports: [
+    TokensModule,
+    AuthService,
+    AccountStatusService,
+    TokenVersionService,
+    TokenVersionGuard,
+    PasswordService,
+    PasswordPolicyService,
+    BiometricGuard,
+    JwtAuthGuard,
+    PassportJwtAuthGuard,
+    SharedJwtModule,
+  ],
 })
 export class AuthModule {}

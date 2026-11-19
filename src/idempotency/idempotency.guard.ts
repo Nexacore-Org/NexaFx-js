@@ -7,8 +7,11 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IdempotencyService } from './idempotency.service';
-import { IDEMPOTENCY_KEY } from './idempotency.decorator';
-import { MAX_KEY_LENGTH, MIN_KEY_LENGTH } from './constants';
+import {
+  IDEMPOTENCY_KEY,
+  MAX_KEY_LENGTH,
+  MIN_KEY_LENGTH,
+} from './constants';
 
 @Injectable()
 export class IdempotencyGuard implements CanActivate {

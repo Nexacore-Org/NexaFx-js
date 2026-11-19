@@ -4,6 +4,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/authenticated-user.interface';
 import { CreateEscrowDto } from './dto/create-escrow.dto';
 import { EscrowService } from './escrow.service';
+import { IdempotentRoute } from '../../idempotency/idempotency.decorator';
 
 /** The acting user always comes from the authenticated principal, never from the body. */
 @ApiTags('escrow')
@@ -15,6 +16,7 @@ export class EscrowController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Hold funds from the caller for a payee' })
+  @IdempotentRoute()
   hold(@CurrentUser('id') payerId: string, @Body() dto: CreateEscrowDto) {
     return this.escrow.hold(payerId, dto);
   }
@@ -28,6 +30,7 @@ export class EscrowController {
   @Post(':id/release')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Release held funds to the payee (payer only)' })
+  @IdempotentRoute()
   release(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.escrow.release(id, { id: user.id, role: user.role });
   }
@@ -35,6 +38,7 @@ export class EscrowController {
   @Post(':id/refund')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refund held funds to the payer (payee or admin)' })
+  @IdempotentRoute()
   refund(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.escrow.refund(id, { id: user.id, role: user.role });
   }

@@ -17,7 +17,7 @@ import { Readable } from 'stream';
 import { PdfService } from './pdf.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Transaction } from '../transactions/transaction.entity';
-import { StatementQueryDto } from './dto/statement-query.dto';
+import { StatementQueryDto } from '../statements/dto/statement-query.dto';
 import { StatementView } from '../statements/statements.types';
 
 interface AuthenticatedRequest {

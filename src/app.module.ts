@@ -63,6 +63,8 @@ import { UsersModule as UpstreamUsersModule } from './users/users.module';
 import { EscrowModule } from './modules/escrow/escrow.module';
 import { TransactionApprovalModule } from './multi-signature-approval/multi-signature-approval.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
+import { FeatureFlagGuard } from './modules/feature-flags/feature-flag.guard';
+import { ObservabilityModule } from './observability/observability.module';
 import { WalletsModule } from './wallet/wallets.module';
 import { ReconciliationModule as UpstreamReconciliationModule } from './reconciliation/reconciliation.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
@@ -325,6 +327,13 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    // After authentication and role checks so @RequireFeature is only evaluated
+    // for an identified caller. FeatureFlagsModule is global, so no controller
+    // needs to list FeatureFlagGuard in @UseGuards.
+    {
+      provide: APP_GUARD,
+      useClass: FeatureFlagGuard,
     },
   ],
 })

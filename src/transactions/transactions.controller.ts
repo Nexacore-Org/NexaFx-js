@@ -13,7 +13,6 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
-  UseInterceptors,
   Sse,
   Req,
   Res,
@@ -43,9 +42,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { IpAllowlistGuard } from '../common/guards/ip-allowlist.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { Idempotent } from '../idempotency/idempotency.decorator';
-import { IdempotencyGuard } from '../idempotency/idempotency.guard';
-import { IdempotencyInterceptor } from '../idempotency/idempotency.interceptor';
+import { IdempotentRoute } from '../idempotency/idempotency.decorator';
 import { TransactionEvent } from '../common/events/transaction-events';
 
 interface AuthenticatedRequest {
@@ -65,6 +62,12 @@ export class TransactionsController {
   @Post('transfer')
   @ApiKeyAllowed(ApiKeyScope.WRITE_TRANSFERS)
   @HttpCode(HttpStatus.CREATED)
+  // @IdempotentRoute() makes the Idempotency-Key header mandatory, which also covers
+  // API-key callers (an automated client that retries must not double-send).
+  @IdempotentRoute()
+  transfer(@Body() dto: any, @CurrentUser('sub') userId: string) {
+    const dtoWithSender = { ...(dto as any), senderId: userId };
+    return this.txService.transfer(dtoWithSender);
   // Idempotent() + IdempotencyGuard make the Idempotency-Key header mandatory, which also
   // covers API-key callers (an automated client that retries must not double-send).
   @Idempotent()
@@ -85,9 +88,7 @@ export class TransactionsController {
 
   @Post('deposit')
   @HttpCode(HttpStatus.CREATED)
-  @Idempotent()
-  @UseGuards(IdempotencyGuard)
-  @UseInterceptors(IdempotencyInterceptor)
+  @IdempotentRoute()
   deposit(
     @Body() dto: CreateDepositDto,
     @CurrentUser('sub') userId: string,
@@ -107,9 +108,7 @@ export class TransactionsController {
 
   @Post('deposit/:id/confirm')
   @HttpCode(HttpStatus.OK)
-  @Idempotent()
-  @UseGuards(IdempotencyGuard)
-  @UseInterceptors(IdempotencyInterceptor)
+  @IdempotentRoute()
   confirmDeposit(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: ConfirmDepositDto,
@@ -120,9 +119,7 @@ export class TransactionsController {
 
   @Post('withdrawal')
   @HttpCode(HttpStatus.CREATED)
-  @Idempotent()
-  @UseGuards(IdempotencyGuard)
-  @UseInterceptors(IdempotencyInterceptor)
+  @IdempotentRoute()
   withdrawal(
     @Body() dto: CreateWithdrawalDto,
     @CurrentUser('sub') userId: string,
@@ -139,9 +136,7 @@ export class TransactionsController {
 
   @Post('swap')
   @HttpCode(HttpStatus.CREATED)
-  @Idempotent()
-  @UseGuards(IdempotencyGuard)
-  @UseInterceptors(IdempotencyInterceptor)
+  @IdempotentRoute()
   swap(
     @Body() dto: CreateSwapDto,
     @CurrentUser('sub') userId: string,
@@ -224,9 +219,7 @@ export class TransactionsController {
   }
 
   @Post('internal-transfer')
-  @Idempotent()
-  @UseGuards(IdempotencyGuard)
-  @UseInterceptors(IdempotencyInterceptor)
+  @IdempotentRoute()
   createInternalTransfer(
     @Body() dto: CreateInternalTransferDto,
     @CurrentUser('sub') userId: string,
@@ -314,6 +307,7 @@ export class TransactionsController {
 
   @UseGuards(JwtAuthGuard, AdminRoleGuard, IpAllowlistGuard)
   @Post(':id/reverse')
+  @IdempotentRoute()
   reverse(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: ReverseTransactionDto,

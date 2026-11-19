@@ -15,6 +15,8 @@ import { StellarFederationService } from '../services/stellar-federation.service
 import { CreateFederationAddressDto } from '../dto/create-federation-address.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 import { Public } from '../../../auth/decorators/public.decorator';
+import { RequireFeature } from '../../feature-flags/require-feature.decorator';
+import { FeatureFlag } from '../../feature-flags/feature-flags.catalog';
 
 @ApiTags('Stellar Federation')
 @Controller('federation')
@@ -37,6 +39,7 @@ export class FederationController {
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Create a federation address' })
+  @RequireFeature(FeatureFlag.BLOCKCHAIN)
   async create(@Body() dto: CreateFederationAddressDto, @Request() req: any) {
     const userId = req.user?.id || req.user?.sub;
     const address = await this.federationService.createAddress(userId, {
@@ -63,6 +66,7 @@ export class FederationController {
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete a federation address' })
+  @RequireFeature(FeatureFlag.BLOCKCHAIN)
   async delete(@Param('id', new ParseUUIDPipe()) id: string, @Request() req: any) {
     const userId = req.user?.id || req.user?.sub;
     await this.federationService.deleteAddress(id, userId);

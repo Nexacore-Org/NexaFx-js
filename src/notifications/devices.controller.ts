@@ -10,13 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { PushNotificationService } from './push/push.service';
-import { DevicePlatform } from './device-token.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RegisterDeviceDto } from './dto/register-device.dto';
+import { RequireFeature } from '../modules/feature-flags/require-feature.decorator';
+import { FeatureFlag } from '../modules/feature-flags/feature-flags.catalog';
 
-export interface RegisterDeviceDto {
-  token: string;
-  platform: DevicePlatform;
-}
+export { RegisterDeviceDto };
 
 interface AuthenticatedRequest {
   user?: {
@@ -25,6 +24,7 @@ interface AuthenticatedRequest {
 }
 
 @UseGuards(JwtAuthGuard)
+@RequireFeature(FeatureFlag.PUSH_NOTIFICATIONS)
 @Controller('devices')
 export class DevicesController {
   constructor(private readonly pushService: PushNotificationService) {}

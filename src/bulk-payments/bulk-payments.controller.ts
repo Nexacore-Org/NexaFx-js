@@ -21,6 +21,7 @@ import {
 import { JwtAuthGuard } from '../modules/auth/guards/jwt.guard';
 import { BulkPaymentsService } from './bulk-payments.service';
 import { CreateBulkPaymentDto } from './dto/create-bulk-payment.dto';
+import { IdempotentRoute } from '../idempotency/idempotency.decorator';
 
 @ApiTags('Bulk Payments')
 @ApiBearerAuth('access-token')
@@ -33,6 +34,7 @@ export class BulkPaymentsController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a bulk payment' })
   @ApiCreatedResponse({ description: 'Bulk payment created and processing started' })
+  @IdempotentRoute()
   async create(@Request() req: any, @Body() dto: CreateBulkPaymentDto) {
     const userId = req.user?.id;
     return this.bulkPaymentsService.create(userId, dto);

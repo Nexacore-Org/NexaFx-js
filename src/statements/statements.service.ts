@@ -1,4 +1,8 @@
 import { getCorrelationId } from '../common/middleware/correlation-id.storage';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { dateDiffInDays } from './date-diff';
+
+export { dateDiffInDays } from './date-diff';
 import {
   BadRequestException,
   Injectable,
@@ -382,9 +386,7 @@ export class StatementsService {
       throw new BadRequestException('to must be on or after from');
     }
 
-    const rangeDays = Math.ceil(
-      (toDate.getTime() - fromDate.getTime()) / 86_400_000,
-    );
+    const rangeDays = dateDiffInDays(fromDate, toDate);
     if (rangeDays > MAX_RANGE_DAYS) {
       throw new BadRequestException(
         `Statement range must not exceed ${MAX_RANGE_DAYS} days`,

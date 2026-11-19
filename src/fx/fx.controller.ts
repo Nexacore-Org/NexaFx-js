@@ -13,6 +13,9 @@ import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { UseInterceptors } from '@nestjs/common';
 import { FxService, ExecuteTradeDto } from './fx.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { IdempotentRoute } from '../idempotency/idempotency.decorator';
+import { RequireFeature } from '../modules/feature-flags/require-feature.decorator';
+import { FeatureFlag } from '../modules/feature-flags/feature-flags.catalog';
 
 const exchangeRateCacheTtlSeconds = parseInt(
   process.env.EXCHANGE_RATES_CACHE_TTL_SECONDS ||
@@ -35,6 +38,8 @@ export class FxController {
 
   @Post('trades')
   @HttpCode(HttpStatus.CREATED)
+  @RequireFeature(FeatureFlag.FX_TRADING)
+  @IdempotentRoute()
   executeTrade(
     @Body() dto: ExecuteTradeDto,
     @CurrentUser('sub') userId: string,
@@ -43,6 +48,8 @@ export class FxController {
   }
 
   @Post('trades/:id/reverse')
+  @RequireFeature(FeatureFlag.FX_TRADING)
+  @IdempotentRoute()
   reverseTrade(@Param('id') id: string, @CurrentUser('sub') userId: string) {
     return this.fxService.reverseTrade(id, userId);
   }

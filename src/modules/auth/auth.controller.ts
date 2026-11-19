@@ -4,15 +4,11 @@ import {
   Post,
   Query,
   ValidationPipe,
-  UseGuards,
-  UseInterceptors,
   ConflictException,
 } from '@nestjs/common';
 import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
 import { AuthService } from './auth.service';
-import { Idempotent } from '../../idempotency/idempotency.decorator';
-import { IdempotencyGuard } from '../../idempotency/idempotency.guard';
-import { IdempotencyInterceptor } from '../../idempotency/idempotency.interceptor';
+import { IdempotentRoute } from '../../idempotency/idempotency.decorator';
 
 class SignupDto {
   @IsEmail()
@@ -61,9 +57,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
-  @Idempotent()
-  @UseGuards(IdempotencyGuard)
-  @UseInterceptors(IdempotencyInterceptor)
+  @IdempotentRoute()
   async signup(@Body(ValidationPipe) dto: SignupDto) {
     const existing = await this.authService.findUserByEmail(dto.email);
     if (existing && !existing.deletedAt) {

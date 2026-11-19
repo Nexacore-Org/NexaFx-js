@@ -1,6 +1,7 @@
 import {
   Injectable,
-  BadRequestException,
+  NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,6 +10,8 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { Otp, OtpPurpose } from './otp.entity';
 import { MailService } from '../mail/mail.service';
+import { FeatureFlagsService } from '../modules/feature-flags/feature-flags.service';
+import { FeatureFlag } from '../modules/feature-flags/feature-flags.catalog';
 
 const MAX_ATTEMPTS = 5;
 const MIN_SECRET_LENGTH = 32;
@@ -20,6 +23,9 @@ export class OtpService {
     private readonly otpRepo: Repository<Otp>,
     private readonly config: ConfigService,
     private readonly mailService: MailService,
+    // There are no dedicated 2FA setup routes yet; gating the TWO_FA OTP flow
+    // here keeps the FEATURE_TWO_FA kill switch effective until they exist.
+    @Optional() private readonly flags?: FeatureFlagsService,
   ) {
     // Fail fast: codes HMAC'd with an empty or short key can be recovered
     // offline by hashing all 1,000,000 candidates.
@@ -32,6 +38,16 @@ export class OtpService {
 
   private readonly secret: string;
 
+  private assertTwoFactorEnabled(purpose: OtpPurpose): void {
+    if (
+      purpose === OtpPurpose.TWO_FA &&
+      this.flags &&
+      !this.flags.isEnabled(FeatureFlag.TWO_FA)
+    ) {
+      throw new NotFoundException('Not found');
+    }
+  }
+
   async generate(
     userId: string,
     purpose: OtpPurpose,
@@ -39,6 +55,7 @@ export class OtpService {
     fullName: string = '',
     preferredLanguage: string = 'en',
   ): Promise<void> {
+    this.assertTwoFactorEnabled(purpose);
     const code = this.randomSixDigit();
     const codeHash = this.hmac(code, this.secret);
     const expiry = this.config.get<number>('otp.expiry') ?? 300;
@@ -53,6 +70,7 @@ export class OtpService {
   }
 
   async verify(userId: string, code: string, purpose: OtpPurpose): Promise<boolean> {
+    this.assertTwoFactorEnabled(purpose);
     const otp = await this.otpRepo.findOne({
       where: { userId, purpose },
       order: { createdAt: 'DESC' },
