@@ -67,12 +67,17 @@ export class ReconciliationService {
       const fee = new Big(String(tx.fee ?? 0));
       const type = (tx.metadata as { type?: string } | null)?.type;
 
-      if (tx.receiverId === accountId && type === 'withdrawal') {
+      if (type === 'auto_sweep' && tx.senderId === accountId) {
+        // self-referencing sweep row: the wallet was debited by the swept amount
+        ledgerBalance = ledgerBalance.minus(amount);
+      } else if (tx.receiverId === accountId && type === 'withdrawal') {
         // self-referencing withdrawal row: money leaves the account
         ledgerBalance = ledgerBalance.minus(amount).minus(fee);
       } else if (tx.receiverId === accountId) {
-        // deposit or incoming transfer: money enters the account
-        ledgerBalance = ledgerBalance.plus(amount);
+        // confirmDeposit credits amount - fee; incoming transfers credit amount
+        ledgerBalance = type === 'deposit'
+          ? ledgerBalance.plus(amount).minus(fee)
+          : ledgerBalance.plus(amount);
       } else if (tx.senderId === accountId) {
         // outgoing transfer: sender-side debit, previously never subtracted
         ledgerBalance = ledgerBalance.minus(amount).minus(fee);
