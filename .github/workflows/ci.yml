@@ -47,6 +47,11 @@ jobs:
 
       - name: Security guard tests
         run: npm run test:security
+      - name: Check for undeclared dependencies
+        run: npm run check:deps
+
+      - name: Check scheduled jobs use ClusterCron
+        run: npm run check:cron
 
       - name: Run Linter
         run: npm run lint || true

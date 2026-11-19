@@ -30,11 +30,32 @@ function build(opts: { user?: Partial<User> | null; upgrade?: any } = {}) {
     manager: { transaction: jest.fn(async (cb: any) => cb(manager)) },
   };
   const userRepo = { findOne: jest.fn(async () => userRow) };
-  const service = new KycTiersService(upgradeRepo as any, userRepo as any);
-  return { service, upgradeRepo, userRow, manager, getUpgrade: () => upgradeRow };
+  const audit = { log: jest.fn().mockResolvedValue(undefined) };
+  const events = { emit: jest.fn() };
+  const kyc = { isApproved: jest.fn().mockResolvedValue(true) };
+  // approve() now locks and re-reads the user inside the transaction.
+  manager.findOne = jest.fn(async (entity: unknown) => {
+    if (entity === KycTierUpgradeEntity) return upgradeRow ? { ...upgradeRow } : null;
+    return userRow;
+  });
+  const service = new KycTiersService(
+    upgradeRepo as any,
+    userRepo as any,
+    audit as any,
+    events as any,
+    kyc as any,
+  );
+  return { service, upgradeRepo, userRow, manager, audit, events, kyc, getUpgrade: () => upgradeRow };
 }
 
-const pending = { id: 'req-1', userId: 'u1', requestedTier: KycTier.BASIC, status: 'pending', documents: {} };
+const pending = {
+  id: 'req-1',
+  userId: 'u1',
+  currentTier: KycTier.NONE,
+  requestedTier: KycTier.BASIC,
+  status: 'pending',
+  documents: {},
+};
 
 describe('KycTiersService', () => {
   it('rejects a new request when one is already pending', async () => {
@@ -109,5 +130,85 @@ describe('KycTiersService', () => {
   it('getStatus returns the latest upgrade record for the user', async () => {
     const { service } = build({ upgrade: pending });
     await expect(service.getStatus('u1')).resolves.toMatchObject({ userId: 'u1' });
+  });
+});
+
+describe('KycTiersService — audit, staleness and identity checks (issue #1522)', () => {
+  it('rejects a stale request whose user tier changed after it was filed (409, no write)', async () => {
+    const { service, userRow, manager } = build({
+      user: { kycTier: KycTier.BASIC },
+      upgrade: { ...pending, currentTier: KycTier.NONE, requestedTier: KycTier.BASIC },
+    });
+
+    await expect(service.approve('req-1', 'admin-1')).rejects.toBeInstanceOf(ConflictException);
+
+    expect(userRow.kycTier).toBe(KycTier.BASIC);
+    expect(manager.update.mock.calls.filter((c: unknown[]) => c[0] === User)).toHaveLength(0);
+  });
+
+  it('refuses tiers above BASIC when the identity is not approved', async () => {
+    const { service, kyc, userRow } = build({
+      user: { kycTier: KycTier.BASIC },
+      upgrade: { ...pending, currentTier: KycTier.BASIC, requestedTier: KycTier.ADVANCED },
+    });
+    kyc.isApproved.mockResolvedValue(false);
+
+    await expect(service.approve('req-1', 'admin-1')).rejects.toBeInstanceOf(ConflictException);
+    expect(userRow.kycTier).toBe(KycTier.BASIC);
+  });
+
+  it('does not require an approved identity document for BASIC', async () => {
+    const { service, kyc } = build({ upgrade: pending });
+    kyc.isApproved.mockResolvedValue(false);
+
+    await expect(service.approve('req-1', 'admin-1')).resolves.toMatchObject({ status: 'approved' });
+  });
+
+  it('writes an audit entry and emits kyc.tier.changed on approve', async () => {
+    const { service, audit, events } = build({ upgrade: pending });
+
+    await service.approve('req-1', 'admin-1');
+
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'admin-1',
+        action: 'kyc.tier.approved',
+        before: expect.objectContaining({ tier: KycTier.NONE }),
+        after: expect.objectContaining({ tier: KycTier.BASIC }),
+      }),
+    );
+    expect(events.emit).toHaveBeenCalledWith('kyc.tier.changed', expect.objectContaining({ decision: 'approved' }));
+  });
+
+  it('writes an audit entry with the reason on reject', async () => {
+    const { service, audit } = build({ upgrade: pending });
+
+    await service.reject('req-1', 'admin-1', 'blurry photo');
+
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'kyc.tier.rejected', reason: 'blurry photo' }),
+    );
+  });
+
+  it('audits the request itself', async () => {
+    const { service, upgradeRepo, audit } = build({ user: { kycTier: KycTier.BASIC } });
+    upgradeRepo.findOne.mockResolvedValue(null);
+    upgradeRepo.save.mockResolvedValue({ id: 'new-1' });
+
+    await service.requestUpgrade('u1', { requestedTier: KycTier.ADVANCED });
+
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'kyc.tier.requested', entityId: 'new-1' }));
+  });
+
+  it('lists only the caller\'s own requests, paginated', async () => {
+    const { service, upgradeRepo } = build();
+    (upgradeRepo as any).findAndCount = jest.fn().mockResolvedValue([[{ id: 'r1' }], 1]);
+
+    const page = await service.listOwnUpgrades('u1', 2, 5);
+
+    expect((upgradeRepo as any).findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 'u1' }, skip: 5, take: 5 }),
+    );
+    expect(page).toEqual({ data: [{ id: 'r1' }], total: 1, page: 2, limit: 5 });
   });
 });

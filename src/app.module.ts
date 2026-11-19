@@ -42,6 +42,9 @@ import { SpendingModule } from './spending/spending.module';
 import { FeeTiersModule } from './fee-tiers/fee-tiers.module';
 import { AuditModule } from './audit/audit.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
+import { TokenVersionGuard } from './auth/token-version.guard';
+import { AuthModule as CoreAuthModule } from './auth/auth.module';
 import { ConfigModule } from './config/config.module';
 import { Configuration } from './config/configuration';
 import { CurrenciesModule } from './currencies/currencies.module';
@@ -71,6 +74,14 @@ import { DisputesModule } from './disputes/disputes.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { TokenVersionGuard } from './auth/token-version.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
+import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
+import { AccountClosureModule } from './users/account-closure.module';
+import { correlationPinoOptions } from './common/logging/correlation-pino';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { TimeoutMiddleware } from './common/middleware/timeout.middleware';
+import { buildTestDatabaseOptions } from './config/test-database-options';
+import { LocksModule } from './common/locks/locks.module';
+import { buildPinoHttpOptions } from './config/logger.config';
 import { RatesModule } from './rates/rates.module';
 import { StellarModule } from './stellar/stellar.module';
 import { EndpointRateLimitModule } from './modules/endpoint-rate-limit/endpoint-rate-limit.module';
@@ -126,16 +137,22 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
 
 @Module({
   imports: [
+    ObservabilityModule,
     ConfigModule,
+    AdminAuditModule,
+    AccountClosureModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.LOG_LEVEL || 'info',
+        ...correlationPinoOptions,
         transport:
           process.env.NODE_ENV !== 'production'
             ? { target: 'pino-pretty', options: { singleLine: true } }
             : undefined,
       },
     }),
+    LocksModule,
+    LoggerModule.forRoot({ pinoHttp: buildPinoHttpOptions() }),
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
@@ -150,18 +167,8 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
           configService.get<Configuration['database']>('database');
 
         if (process.env.NODE_ENV === 'test') {
-          return {
-            type: 'postgres' as const,
-            host: process.env.TEST_DB_HOST ?? 'localhost',
-            port: Number(process.env.TEST_DB_PORT ?? 5432),
-            username: process.env.TEST_DB_USERNAME ?? 'postgres',
-            password: process.env.TEST_DB_PASSWORD ?? 'postgres',
-            database: process.env.TEST_DB_DATABASE ?? 'postgres',
-            autoLoadEntities: true,
-            synchronize: true,
-            dropSchema: true,
-            retryAttempts: 0,
-          };
+          // Throws unless the target is an explicitly named *_test database (issue #1545).
+          return buildTestDatabaseOptions();
         }
 
         return {
@@ -254,6 +261,7 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     TermsModule,
     StatementsModule,
     AuthModule,
+    CoreAuthModule,
     RateAlertHistoryModule,
     ScheduledReportsModule,
     PortfolioModule,
@@ -314,6 +322,10 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
     },
     {
       provide: APP_GUARD,
+      useClass: TokenVersionGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: RolesGuard,
     },
     {
@@ -324,8 +336,11 @@ async function createCacheOptions(configService: ConfigService<Configuration>) {
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    // Reserved for future middleware wiring.
-    void consumer;
-    void RequestMethod.ALL;
+    // Correlation id first so everything after it (timeouts, guards, logs, filters) can read it
+    // (issue #1546). pino-http already writes the access log line, so RequestLoggingMiddleware
+    // is intentionally not applied.
+    consumer
+      .apply(CorrelationIdMiddleware, TimeoutMiddleware)
+      .forRoutes({ path: '{*splat}', method: RequestMethod.ALL });
   }
 }

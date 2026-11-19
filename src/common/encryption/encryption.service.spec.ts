@@ -23,16 +23,33 @@ describe('EncryptionService (versioned)', () => {
     expect(svc.decrypt(svc.encrypt('SABC-secret'))).toBe('SABC-secret');
   });
 
-  it('decrypts data written under an older key version after rotation', () => {
-    const v1 = service();
-    const old = v1.encrypt('stellar-secret');
+  it('follows the documented rotation: old primary moves to _V1, new key becomes primary v2', () => {
+    // Before rotation: KEY_1 is the primary at version 1.
+    const before = service(KEY_1);
+    const old = before.encrypt('stellar-secret');
     expect(old.keyVersion).toBe(1);
 
-    process.env.WALLET_ENCRYPTION_KEY_V2 = KEY_2;
-    const rotated = service();
+    // docs/security.md: new key is WALLET_ENCRYPTION_KEY, version 2; old key is _V1.
+    process.env.WALLET_ENCRYPTION_KEY_VERSION = '2';
+    process.env.WALLET_ENCRYPTION_KEY_V1 = KEY_1;
+    const rotated = service(KEY_2);
+
     expect(rotated.getCurrentVersion()).toBe(2);
     expect(rotated.decrypt(old)).toBe('stellar-secret');
     expect(rotated.reencrypt(old).keyVersion).toBe(2);
+    expect(rotated.decrypt(rotated.reencrypt(old))).toBe('stellar-secret');
+  });
+
+  it('always encrypts with the primary key, not the highest historic version', () => {
+    process.env.WALLET_ENCRYPTION_KEY_V2 = KEY_2;
+    const svc = service(KEY_1); // primary version 1
+    expect(svc.getCurrentVersion()).toBe(1);
+    expect(svc.encrypt('x').keyVersion).toBe(1);
+  });
+
+  it('reports versions that have no loaded key', () => {
+    const svc = service(KEY_1);
+    expect(svc.getMissingKeyVersions([1, 3, 2, 3])).toEqual([2, 3]);
   });
 
   it('fails at boot when no key is configured', () => {

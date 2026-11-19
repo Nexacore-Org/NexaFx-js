@@ -25,8 +25,12 @@ export class EncryptionService {
   constructor(private readonly config: ConfigService) {
     // Validate everything at boot: a bad key must stop the app here, not
     // surface as "Invalid key length" on the first wallet operation.
-    const envKeys = this.validateKeys(this.resolveKeys());
-    this.currentVersion = Math.max(...envKeys.map((k) => k.version));
+    const { keys: resolved, primaryVersion } = this.resolveKeys();
+    const envKeys = this.validateKeys(resolved);
+    // The primary key (WALLET_ENCRYPTION_KEY at WALLET_ENCRYPTION_KEY_VERSION)
+    // always encrypts; WALLET_ENCRYPTION_KEY_V<n> keys are decrypt-only history
+    // (issue #1549).
+    this.currentVersion = primaryVersion;
     for (const { version, hex } of envKeys) {
       this.keys.set(version, Buffer.from(hex, 'hex'));
     }
@@ -87,6 +91,11 @@ export class EncryptionService {
     return this.keys.has(version);
   }
 
+  /** Returns the versions in `versions` for which no key is loaded (versions only, never key material). */
+  getMissingKeyVersions(versions: number[]): number[] {
+    return [...new Set(versions)].filter((v) => !this.keys.has(v)).sort((a, b) => a - b);
+  }
+
   /** Re-encrypt a payload under the current key version. No-op if already current. */
   reencrypt(payload: EncryptedPayload): EncryptedPayload {
     if (payload.keyVersion === this.currentVersion) return payload;
@@ -122,7 +131,10 @@ export class EncryptionService {
     return keys as Array<{ version: number; hex: string }>;
   }
 
-  private resolveKeys(): Array<{ version: number; hex: string | undefined }> {
+  private resolveKeys(): {
+    keys: Array<{ version: number; hex: string | undefined }>;
+    primaryVersion: number;
+  } {
     // Primary key: WALLET_ENCRYPTION_KEY (version 1 unless overridden)
     const primaryHex =
       this.config.get<string>('wallet.encryptionKey') ??
@@ -135,11 +147,14 @@ export class EncryptionService {
       { version: primaryVersion, hex: primaryHex },
     ];
 
-    // Additional versioned keys: WALLET_ENCRYPTION_KEY_V2, _V3, …
-    for (let v = 2; v <= MAX_KEY_VERSION; v++) {
+    // Historic (decrypt-only) keys: WALLET_ENCRYPTION_KEY_V1 … _V10. Starting at 1
+    // matters: the documented rotation shifts the old primary to _V1 (issue #1549).
+    // A _V<n> equal to the primary version is kept so validateKeys() reports the
+    // collision instead of silently ignoring it.
+    for (let v = 1; v <= MAX_KEY_VERSION; v++) {
       const hex = process.env[`WALLET_ENCRYPTION_KEY_V${v}`];
       if (hex) result.push({ version: v, hex });
     }
-    return result;
+    return { keys: result, primaryVersion };
   }
 }

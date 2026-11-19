@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { checkSecretHygiene } from './secret-hygiene';
+import { parseAllowedOrigins } from './cors';
 
 /**
  * Environment validation schema using Zod
@@ -28,6 +30,11 @@ export const envSchema = z.object({
     .string()
     .transform((val) => val === 'true')
     .default(() => false),
+  // TLS verification for Postgres (issue #1541). Verification is ON unless
+  // DB_SSL_REJECT_UNAUTHORIZED=false, which is refused in production.
+  DB_SSL_REJECT_UNAUTHORIZED: z.enum(['true', 'false']).optional(),
+  // PEM contents or a path to a PEM file for a private/managed-DB CA.
+  DB_SSL_CA: z.string().optional(),
 
   // ============================================
   // Feature flags ("true" enables; default off). Catalog: src/modules/feature-flags/feature-flags.catalog.ts
@@ -443,7 +450,14 @@ export const envSchema = z.object({
     .string()
     .optional()
     .refine((v) => !v || v.length >= 32, 'KYC_DOCUMENT_HASH_KEY must be at least 32 characters when set'),
+  // Comma separated list of exact origins. Required when NODE_ENV=production
+  // (issue #1540, enforced in validateEnv); `*` is rejected.
   ALLOWED_ORIGINS: z.string().optional().default(''),
+  // Four-eyes control: when true, admin status overrides are queued for a second admin's approval.
+  ADMIN_DUAL_CONTROL: z
+    .string()
+    .transform((val) => val === 'true')
+    .default(() => false),
   APP_URL: z.string().optional(),
 
   // ============================================
@@ -588,9 +602,55 @@ export type EnvConfig = z.infer<typeof envSchema>;
  * Throws detailed error if validation fails
  * This ensures fail-fast behavior on startup
  */
+/**
+ * Rejects secrets that satisfy the Zod length/shape rules but are unsafe
+ * (issue #1543): duplicated across variables (any environment), and
+ * placeholders from .env.example or low-entropy values (production only;
+ * a warning elsewhere so local setup from .env.example still works).
+ */
+function assertSecretHygiene(parsed: EnvConfig): void {
+  const { errors, productionErrors } = checkSecretHygiene(parsed);
+  const fatal = parsed.NODE_ENV === 'production' ? [...errors, ...productionErrors] : errors;
+
+  if (fatal.length > 0) {
+    throw new Error(`Environment validation failed:\n${fatal.join('\n')}`);
+  }
+  if (parsed.NODE_ENV !== 'production') {
+    for (const message of productionErrors) {
+      console.warn(`[env] ${message} (rejected when NODE_ENV=production)`);
+    }
+ * Cross-field production checks that do not fit a single-key Zod rule.
+ * - ALLOWED_ORIGINS must be set and valid in production (issue #1540).
+ * - DB_SSL_REJECT_UNAUTHORIZED=false is refused in production (issue #1541).
+ */
+function assertProductionOrigins(nodeEnv: string, allowedOrigins: string): void {
+  const origins = parseAllowedOrigins(allowedOrigins); // also rejects "*" / invalid entries
+  if (nodeEnv === 'production' && origins.length === 0) {
+    throw new Error(
+      'Environment validation failed:\nALLOWED_ORIGINS: required when NODE_ENV=production (comma separated list of exact origins)',
+    );
+  }
+}
+
+function assertProductionDbSsl(
+  nodeEnv: string,
+  dbSsl: boolean,
+  rejectUnauthorized: string | undefined,
+): void {
+  if (nodeEnv === 'production' && dbSsl && rejectUnauthorized === 'false') {
+    throw new Error(
+      'Environment validation failed:\nDB_SSL_REJECT_UNAUTHORIZED: must not be "false" when NODE_ENV=production',
+    );
+  }
+}
+
 export function validateEnv(config: Record<string, unknown>): EnvConfig {
   try {
-    return envSchema.parse(config);
+    const parsed = envSchema.parse(config);
+    assertSecretHygiene(parsed);
+    assertProductionOrigins(parsed.NODE_ENV, parsed.ALLOWED_ORIGINS);
+    assertProductionDbSsl(parsed.NODE_ENV, parsed.DB_SSL, parsed.DB_SSL_REJECT_UNAUTHORIZED);
+    return parsed;
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessages = error.issues.map(

@@ -107,6 +107,36 @@ export class ApprovalService {
     }
   }
 
+  /** Pending requests first, newest first (issue #1519). */
+  async listAdminRequests(status: AdminApprovalStatus = AdminApprovalStatus.PENDING) {
+    return this.approvalsRepository.find({ where: { status }, order: { createdAt: 'DESC' }, take: 100 });
+  }
+
+  /**
+   * Reject a pending request. Anyone with admin access may reject, including the requester
+   * (who is effectively cancelling it); only approval requires a different admin. The
+   * pending -> rejected flip is conditional, so a request that was just approved cannot be
+   * rejected and a second rejection gets 409. There is no dedicated rejection column, so the
+   * rejector and reason are recorded in `lastError` ("Rejected by <id>: <reason>").
+   */
+  async rejectAdminRequest(approvalId: string, rejectedBy: string, reason?: string) {
+    if (!rejectedBy) {
+      throw new ForbiddenException('An authenticated admin is required to reject');
+    }
+    const approval = await this.approvalsRepository.findOne({ where: { id: approvalId } });
+    if (!approval) throw new NotFoundException(`Approval request ${approvalId} not found`);
+
+    const note = `Rejected by ${rejectedBy}${reason ? `: ${reason}` : ''}`.slice(0, 500);
+    const result = await this.approvalsRepository.update(
+      { id: approvalId, status: AdminApprovalStatus.PENDING },
+      { status: AdminApprovalStatus.REJECTED, lastError: note },
+    );
+    if (!result.affected) {
+      throw new ConflictException('Approval request is not pending');
+    }
+    return (await this.approvalsRepository.findOne({ where: { id: approvalId } })) as AdminApproval;
+  }
+
   /** Remember why the approved action failed, without ever changing the status. */
   private async recordFailure(approvalId: string, err: unknown): Promise<void> {
     try {

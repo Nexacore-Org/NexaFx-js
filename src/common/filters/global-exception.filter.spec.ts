@@ -135,7 +135,7 @@ describe('GlobalExceptionFilter', () => {
       body: Record<string, unknown>;
     };
     expect(logPayload.body).toEqual({
-      email: 'alice@example.com',
+      email: '[REDACTED]',
       passwordHash: '[REDACTED]',
       code: '[REDACTED]',
       secret: '[REDACTED]',
@@ -164,7 +164,7 @@ describe('GlobalExceptionFilter', () => {
       body: Record<string, unknown>;
     };
     expect(logPayload.body).toEqual({
-      user: { email: 'alice@example.com', password: '[REDACTED]' },
+      user: { email: '[REDACTED]', password: '[REDACTED]' },
       devices: [{ id: 'd1', token: '[REDACTED]' }],
     });
   });
@@ -307,5 +307,18 @@ describe('GlobalExceptionFilter', () => {
       expect(mockResponse.json).toHaveBeenCalledWith(expect.objectContaining({ correlationId: 'corr-1' }));
       expect(warn).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-9' }));
     });
+  });
+
+  it('masks query-string credentials in the log path and in the client response (issue #1532)', () => {
+    const warnSpy = jest.spyOn(filter['logger'], 'warn').mockImplementation(() => undefined);
+    mockRequest.url = '/api/v1/admin/exports/42/download?token=SECRET.JWT.VALUE&format=csv';
+    mockRequest.query = { token: 'SECRET.JWT.VALUE', format: 'csv' };
+
+    filter.catch(new HttpException('Gone', HttpStatus.GONE), mockHost);
+
+    const logPayload = warnSpy.mock.calls[0][0] as { path: string; query: Record<string, string> };
+    expect(logPayload.path).toBe('/api/v1/admin/exports/42/download?token=[REDACTED]&format=csv');
+    expect(logPayload.query).toEqual({ token: '[REDACTED]', format: 'csv' });
+    expect(JSON.stringify((mockResponse.json as jest.Mock).mock.calls[0][0])).not.toContain('SECRET.JWT.VALUE');
   });
 });

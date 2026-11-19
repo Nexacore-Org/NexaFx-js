@@ -8,10 +8,13 @@ import {
   UseGuards,
   Request,
   ParseUUIDPipe,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { AuditService } from '../../../audit/audit.service';
+import { AuditAction } from '../../admin-audit/audit-actions';
 import { ApiKeysService, toApiKeyView } from '../services/api-keys.service';
-import { ApiKeyAllowed } from '../api-key-scopes';
+import { ApiKeyAllowed, ApiKeyScope } from '../api-key-scopes';
 import { CreateApiKeyDto } from '../dto/create-api-key.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 
@@ -20,17 +23,32 @@ import { JwtAuthGuard } from '../../auth/guards/jwt.guard';
 @Controller('api-keys')
 @UseGuards(JwtAuthGuard)
 export class ApiKeysController {
-  constructor(private readonly apiKeysService: ApiKeysService) {}
+  constructor(
+    private readonly apiKeysService: ApiKeysService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new API key' })
   async create(@Body() dto: CreateApiKeyDto, @Request() req: any) {
     const userId = req.user?.id || req.user?.sub;
+    // Keys act as role `user` regardless, but privileged accounts should not mint money-moving keys at all.
+    const privileged = req.user?.role === 'admin' || req.user?.role === 'compliance';
+    if (privileged && dto.scopes?.includes(ApiKeyScope.WRITE_TRANSFERS)) {
+      throw new ForbiddenException('Admin and compliance accounts cannot create API keys with write scopes');
+    }
     const { apiKey, plainKey } = await this.apiKeysService.createApiKey(userId, {
       name: dto.name,
       scopes: dto.scopes,
       rateLimit: dto.rateLimit,
       expiresAt: dto.expiresAt,
+    });
+    await this.audit.log({
+      userId,
+      action: AuditAction.API_KEY_CREATED,
+      entityType: 'api_key',
+      entityId: apiKey.id,
+      after: { name: apiKey.name, scopes: apiKey.scopes, rateLimit: apiKey.rateLimit, expiresAt: apiKey.expiresAt },
     });
     return {
       success: true,
@@ -69,6 +87,12 @@ export class ApiKeysController {
   async revoke(@Param('id', new ParseUUIDPipe()) id: string, @Request() req: any) {
     const userId = req.user?.id || req.user?.sub;
     const key = await this.apiKeysService.revokeApiKey(id, userId);
+    await this.audit.log({
+      userId,
+      action: AuditAction.API_KEY_REVOKED,
+      entityType: 'api_key',
+      entityId: id,
+    });
     return { success: true, data: toApiKeyView(key) };
   }
 }

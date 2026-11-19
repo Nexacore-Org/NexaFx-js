@@ -1,3 +1,4 @@
+import { ApiKeyAllowed, ApiKeyScope } from '../modules/api-keys/api-key-scopes';
 import {
   Controller,
   Post,
@@ -55,7 +56,10 @@ export class TransactionsController {
   ) {}
 
   @Post('transfer')
+  @ApiKeyAllowed(ApiKeyScope.WRITE_TRANSFERS)
   @HttpCode(HttpStatus.CREATED)
+  // Idempotent() + IdempotencyGuard make the Idempotency-Key header mandatory, which also
+  // covers API-key callers (an automated client that retries must not double-send).
   @Idempotent()
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
@@ -142,6 +146,7 @@ export class TransactionsController {
   }
 
   @Get()
+  @ApiKeyAllowed(ApiKeyScope.READ_TRANSACTIONS)
   findAll(
     @CurrentUser('sub') userId: string,
     @Query('status') status?: TransactionStatus,

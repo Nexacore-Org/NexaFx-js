@@ -56,3 +56,11 @@ export class CreateApprovalDto {
   )
   actionData!: OverrideTransactionStatusData | UpdateUserStatusData;
 }
+
+/** Optional explanation recorded when a pending approval request is rejected (issue #1519). */
+export class RejectApprovalDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  reason?: string;
+}

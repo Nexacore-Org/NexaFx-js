@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { MailProcessor, SendEmailJobData } from './mail.processor';
+import { MailService } from './mail.service';
 
 function makeJob(
   data: Partial<SendEmailJobData>,
@@ -14,45 +15,97 @@ function makeJob(
     data: data as SendEmailJobData,
     opts: { attempts: opts.attempts ?? 3, ...opts },
     attemptsMade,
+    discard: jest.fn(),
   } as unknown as Job<SendEmailJobData>;
 }
 
 describe('MailProcessor', () => {
   let processor: MailProcessor;
+  let mailService: { send: jest.Mock };
 
   beforeEach(async () => {
+    mailService = { send: jest.fn().mockResolvedValue(undefined) };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [MailProcessor],
+      providers: [
+        MailProcessor,
+        { provide: MailService, useValue: mailService },
+      ],
     }).compile();
 
     processor = module.get<MailProcessor>(MailProcessor);
   });
 
   describe('handleSendEmail', () => {
-    it('logs and completes for a valid job', () => {
-      const logSpy = jest
-        .spyOn(Logger.prototype, 'log')
-        .mockImplementation(() => {});
+    beforeEach(() => {
+      jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('sends the queued HTML as-is and completes', async () => {
+      const job = makeJob({
+        to: 'user@example.com',
+        subject: 'Hello',
+        html: '<p>rendered</p>',
+        from: 'billing@nexafx.com',
+      });
+
+      await expect(processor.handleSendEmail(job)).resolves.toBeUndefined();
+      expect(mailService.send).toHaveBeenCalledWith({
+        to: 'user@example.com',
+        subject: 'Hello',
+        html: '<p>rendered</p>',
+        text: undefined,
+        from: 'billing@nexafx.com',
+      });
+      expect(job.discard).not.toHaveBeenCalled();
+    });
+
+    it('passes the text body through unchanged when there is no HTML', async () => {
+      const job = makeJob({
+        to: 'user@example.com',
+        subject: 'Hello',
+        text: 'plain body',
+      });
+
+      await processor.handleSendEmail(job);
+
+      expect(mailService.send).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'plain body', html: undefined }),
+      );
+    });
+
+    it('rejects the job on a transport error so Bull retries it', async () => {
+      mailService.send.mockRejectedValue(new Error('SMTP timeout'));
       const job = makeJob({ to: 'user@example.com', subject: 'Hello' });
 
-      expect(() => processor.handleSendEmail(job)).not.toThrow();
-      expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining('user@example.com'),
+      await expect(processor.handleSendEmail(job)).rejects.toThrow(
+        'SMTP timeout',
       );
+      expect(job.discard).not.toHaveBeenCalled();
     });
 
-    it('throws when "to" is missing', () => {
+    it('discards a permanent recipient failure so it is not retried', async () => {
+      mailService.send.mockRejectedValue(
+        Object.assign(new Error('Invalid recipient'), { responseCode: 550 }),
+      );
+      const job = makeJob({ to: 'user@example.com', subject: 'Hello' });
+
+      await expect(processor.handleSendEmail(job)).rejects.toThrow(
+        'Invalid recipient',
+      );
+      expect(job.discard).toHaveBeenCalled();
+    });
+
+    it('discards a job with missing fields', async () => {
       const job = makeJob({ subject: 'Hello' });
-      expect(() => processor.handleSendEmail(job)).toThrow(
-        'Missing required email fields',
-      );
-    });
 
-    it('throws when "subject" is missing', () => {
-      const job = makeJob({ to: 'user@example.com' });
-      expect(() => processor.handleSendEmail(job)).toThrow(
+      await expect(processor.handleSendEmail(job)).rejects.toThrow(
         'Missing required email fields',
       );
+      expect(job.discard).toHaveBeenCalled();
+      expect(mailService.send).not.toHaveBeenCalled();
     });
   });
 

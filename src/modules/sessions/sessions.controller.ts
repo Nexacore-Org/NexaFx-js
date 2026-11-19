@@ -10,6 +10,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '../admin-audit/audit-actions';
 import { RefreshTokensService } from '../../tokens/refresh-tokens.service';
 
 interface AuthenticatedRequest {
@@ -19,7 +21,10 @@ interface AuthenticatedRequest {
 @Controller('auth/sessions')
 @UseGuards(JwtAuthGuard)
 export class SessionsController {
-  constructor(private readonly refreshTokensService: RefreshTokensService) {}
+  constructor(
+    private readonly refreshTokensService: RefreshTokensService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Get()
   async listSessions(@Request() req: AuthenticatedRequest) {
@@ -47,12 +52,24 @@ export class SessionsController {
     if (!revoked) {
       throw new NotFoundException('Session not found or already revoked');
     }
+    await this.audit.log({
+      userId: req.user.sub,
+      action: AuditAction.SESSION_REVOKED,
+      entityType: 'session',
+      entityId: id,
+    });
   }
 
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
   async revokeAllSessions(@Request() req: AuthenticatedRequest) {
     // Keep the session this request is made with; revoke every other one.
-    await this.refreshTokensService.revokeAllExcept(req.user.sub, req.user.sid ?? '');
+    const revoked = await this.refreshTokensService.revokeAllExcept(req.user.sub, req.user.sid ?? '');
+    await this.audit.log({
+      userId: req.user.sub,
+      action: AuditAction.SESSIONS_REVOKED_ALL,
+      entityType: 'session',
+      after: { revokedCount: revoked, keptSessionId: req.user.sid ?? null },
+    });
   }
 }
