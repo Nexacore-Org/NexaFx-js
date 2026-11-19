@@ -4,7 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import { TokenType } from '../../auth/token-types';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../../common/locks/cluster-cron.decorator';
 import { join } from 'path';
 
 const EXPORTS_DIR =
@@ -110,7 +111,9 @@ export class ExportStorageService {
     return removed;
   }
 
-  @Cron(CronExpression.EVERY_10_MINUTES)
+  // Export files live on each replica's own disk, so every replica must purge its own
+  // copies: this job deliberately skips the cluster lock (issue #1550).
+  @ClusterCron(CronExpression.EVERY_10_MINUTES, 'exports:cleanup', { perInstance: true })
   cleanupExpiredExports(): void {
     const removed = this.purgeExpired();
     if (removed > 0) this.logger.log(`Deleted ${removed} expired export file(s)`);

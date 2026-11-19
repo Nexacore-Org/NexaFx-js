@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Global, Module, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -21,7 +21,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/user.entity';
 import { TokenVersionService } from './token-version.service';
 import { TokenVersionGuard } from './token-version.guard';
+import { AccountStatusService } from './account-status.service';
+import { TokensModule } from '../tokens/tokens.module';
 
+@Global()
 @Module({
   imports: [
     UsersModule,
@@ -29,6 +32,7 @@ import { TokenVersionGuard } from './token-version.guard';
     forwardRef(() => TermsModule),
     AuditModule,
     MailModule,
+    TokensModule,
     EventEmitterModule,
     PassportModule,
     SharedJwtModule,
@@ -50,7 +54,7 @@ import { TokenVersionGuard } from './token-version.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
-  exports: [AuthService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
+  providers: [AuthService, AccountStatusService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, JwtStrategy],
+  exports: [AuthService, AccountStatusService, TokenVersionService, TokenVersionGuard, PasswordService, PasswordPolicyService, BiometricGuard, JwtAuthGuard, PassportJwtAuthGuard, SharedJwtModule],
 })
 export class AuthModule {}

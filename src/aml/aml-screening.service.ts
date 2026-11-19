@@ -1,10 +1,18 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AmlScreening, AmlRiskLevel } from './aml-screening.entity';
+import { ConfigService } from '@nestjs/config';
+import {
+  AmlDisposition,
+  AmlScreening,
+  AmlRiskLevel,
+} from './aml-screening.entity';
+import { AmlScreeningReview } from './aml-screening-review.entity';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { AuditService } from '../audit/audit.service';
 
-const HIGH_VALUE_THRESHOLD = 10000;
-const CRITICAL_VALUE_THRESHOLD = 50000;
+const DEFAULT_HIGH_VALUE_THRESHOLD_USD = 10000;
+const DEFAULT_CRITICAL_VALUE_THRESHOLD_USD = 50000;
 
 const SANCTIONS_LIST: string[] = [
   'vladimir putin', 'sergei lavrov', 'dmitry peskov',
@@ -62,6 +70,11 @@ export class AmlScreeningService {
   constructor(
     @InjectRepository(AmlScreening)
     private readonly repo: Repository<AmlScreening>,
+    @InjectRepository(AmlScreeningReview)
+    private readonly reviewRepo: Repository<AmlScreeningReview>,
+    private readonly config: ConfigService,
+    private readonly rates: ExchangeRatesService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   async screenUser(input: ScreenUserInput): Promise<AmlScreening> {
@@ -97,10 +110,19 @@ export class AmlScreeningService {
     const flags: string[] = [];
     let riskScore = 0;
 
-    if (input.amount >= CRITICAL_VALUE_THRESHOLD) {
+    // Thresholds are configured in USD; compare like with like.
+    const amountUsd = await this.toUsd(input.amount, input.currency);
+    const highValueThreshold =
+      this.config.get<number>('aml.highValueThresholdUsd') ??
+      DEFAULT_HIGH_VALUE_THRESHOLD_USD;
+    const criticalValueThreshold =
+      this.config.get<number>('aml.criticalValueThresholdUsd') ??
+      DEFAULT_CRITICAL_VALUE_THRESHOLD_USD;
+
+    if (amountUsd >= criticalValueThreshold) {
       flags.push('high_value');
       riskScore += 60;
-    } else if (input.amount >= HIGH_VALUE_THRESHOLD) {
+    } else if (amountUsd >= highValueThreshold) {
       flags.push('high_value');
       riskScore += 30;
     }
@@ -156,12 +178,49 @@ export class AmlScreeningService {
     id: string,
     reviewedBy: string,
     notes: string,
+    disposition: AmlDisposition,
   ): Promise<AmlScreening> {
     const screening = await this.findById(id);
+    if (screening.disposition) {
+      throw new ConflictException('Screening has already been reviewed');
+    }
+
     screening.reviewedBy = reviewedBy;
     screening.reviewedAt = new Date();
     screening.notes = notes;
-    return this.repo.save(screening);
+    screening.disposition = disposition;
+    const saved = await this.repo.save(screening);
+
+    await this.reviewRepo.save(
+      this.reviewRepo.create({
+        screeningId: screening.id,
+        reviewedBy,
+        disposition,
+        notes,
+      }),
+    );
+
+    await this.audit?.log({
+      userId: reviewedBy,
+      action: 'aml.screening.reviewed',
+      entityType: 'aml_screening',
+      entityId: screening.id,
+      after: { disposition, notes },
+    });
+
+    return saved;
+  }
+
+  /** Convert to USD (the threshold currency); a missing rate is a hard error. */
+  private async toUsd(amount: number, currency: string): Promise<number> {
+    const code = (currency ?? 'USD').toUpperCase();
+    if (code === 'USD') return amount;
+    const { convertedAmount } = await this.rates.calculateConversion(
+      code,
+      'USD',
+      amount,
+    );
+    return convertedAmount;
   }
 
   private calculateRiskLevel(score: number): AmlRiskLevel {

@@ -45,6 +45,12 @@ jobs:
       - name: Check AppModule imports resolve
         run: npm run check:app-module-imports
 
+      - name: Check for undeclared dependencies
+        run: npm run check:deps
+
+      - name: Check scheduled jobs use ClusterCron
+        run: npm run check:cron
+
       - name: Run Linter
         run: npm run lint || true
 

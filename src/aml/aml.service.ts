@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, MoreThanOrEqual, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AmlAlert } from './aml-alert.entity';
@@ -51,7 +51,7 @@ export class AmlService {
         txCount: window.length,
         total,
         threshold,
-      });
+      }, windowHours);
     }
   }
 
@@ -84,7 +84,7 @@ export class AmlService {
         uniqueReceivers,
         avgAmount: avg,
         variancePct: maxDeviation * 100,
-      });
+      }, windowHours);
     }
   }
 
@@ -108,7 +108,7 @@ export class AmlService {
         txCount: count,
         windowHours,
         maxCount,
-      });
+      }, windowHours);
     }
   }
 
@@ -117,7 +117,21 @@ export class AmlService {
     ruleTriggered: string,
     riskScore: number,
     metadata: Record<string, unknown>,
+    windowHours = 24,
   ): Promise<AmlAlert> {
+    // One unreviewed alert per (user, rule) inside the rule's window: a burst
+    // of qualifying transactions must not create a duplicate alert each time.
+    const cutoff = new Date(Date.now() - windowHours * 3600_000);
+    const existing = await this.alertRepo.findOne({
+      where: {
+        userId,
+        ruleTriggered,
+        reviewedAt: IsNull(),
+        createdAt: MoreThanOrEqual(cutoff),
+      },
+    });
+    if (existing) return existing;
+
     const alert = this.alertRepo.create({
       userId,
       ruleTriggered,

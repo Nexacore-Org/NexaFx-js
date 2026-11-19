@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { compile, TemplateDelegate, Utils } from 'handlebars';
 import { existsSync, readFileSync } from 'fs';
@@ -7,6 +7,14 @@ import { plainToInstance } from 'class-transformer';
 import { Sanitize } from '../common/decorators/sanitize.decorator';
 
 const DEFAULT_LANGUAGE = 'en';
+const LOCALIZED_LANGUAGES = ['en', 'fr'] as const;
+
+const TEMPLATE_NAMES = [
+  'base',
+  'password-reset',
+  'transaction-confirmation',
+  'welcome',
+] as const;
 
 interface MailTemplateContext {
   title: string;
@@ -102,7 +110,7 @@ class WelcomeTemplateDto {
 }
 
 @Injectable()
-export class MailService {
+export class MailService implements OnModuleInit {
   private readonly logger = new Logger(MailService.name);
   private readonly transporter: nodemailer.Transporter;
   private readonly cache = new Map<string, TemplateDelegate>();
@@ -116,6 +124,43 @@ export class MailService {
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASSWORD,
       },
+    });
+  }
+
+  /**
+   * Load and compile every template at boot. A template missing from the
+   * build (e.g. `.hbs` assets not copied to `dist`) must fail startup rather
+   * than the first customer-facing send.
+   */
+  onModuleInit(): void {
+    for (const name of TEMPLATE_NAMES) {
+      this.getTemplate(name);
+    }
+    for (const language of LOCALIZED_LANGUAGES) {
+      this.getLocalizedTemplate('email-verification', language);
+    }
+  }
+
+  /**
+   * Transport-level send that rejects on failure, so Bull can retry the job.
+   * Callers that must not fail (e.g. admin alert fan-out) handle the error.
+   */
+  async send(payload: {
+    to: string;
+    subject: string;
+    html?: string;
+    text?: string;
+    from?: string;
+  }): Promise<void> {
+    if (!payload.to || !payload.subject) {
+      throw new Error('Missing required email fields: to, subject');
+    }
+    await this.transporter.sendMail({
+      from: payload.from ?? process.env.MAIL_FROM,
+      to: payload.to,
+      subject: payload.subject,
+      html: payload.html,
+      text: payload.text,
     });
   }
 
@@ -276,17 +321,11 @@ export class MailService {
   }
 
   async sendAdminAlert(payload: AdminAlertEmail): Promise<void> {
-    if (process.env.NODE_ENV === 'test') return;
-    try {
-      await this.transporter.sendMail({
-        from: process.env.MAIL_FROM,
-        to: payload.to,
-        subject: payload.subject,
-        html: this.renderAdminAlertHtml(payload),
-      });
-    } catch (err) {
-      this.logger.error(`Failed to send admin alert email: ${(err as Error).message}`);
-    }
+    await this.send({
+      to: payload.to,
+      subject: payload.subject,
+      html: this.renderAdminAlertHtml(payload),
+    });
   }
 
   sendSupportTicketCreatedEmail(payload: SupportTicketCreatedEmail): void {
@@ -353,6 +392,12 @@ export class MailService {
 
   private compileTemplate(name: TemplateName): TemplateDelegate {
     const path = join(__dirname, 'templates', `${name}.hbs`);
+    if (!existsSync(path)) {
+      throw new Error(
+        `Missing mail template "${name}" at ${path}. ` +
+          'Ensure nest-cli.json copies mail/templates/**/*.hbs into dist.',
+      );
+    }
     const source = readFileSync(path, 'utf8');
     this.logger.log(`Compiling mail template ${name}`);
     return compile(source);
@@ -372,9 +417,19 @@ export class MailService {
       'templates',
       `${name}.${language}.hbs`,
     );
-    const path = existsSync(localizedPath)
-      ? localizedPath
-      : join(__dirname, 'templates', `${name}.${DEFAULT_LANGUAGE}.hbs`);
+    const fallbackPath = join(
+      __dirname,
+      'templates',
+      `${name}.${DEFAULT_LANGUAGE}.hbs`,
+    );
+    const path = existsSync(localizedPath) ? localizedPath : fallbackPath;
+
+    if (!existsSync(path)) {
+      throw new Error(
+        `Missing mail template "${name}" for language "${language}" at ${path}. ` +
+          'Ensure nest-cli.json copies mail/templates/**/*.hbs into dist.',
+      );
+    }
 
     const template = compile(readFileSync(path, 'utf8'));
     this.cache.set(cacheKey, template);

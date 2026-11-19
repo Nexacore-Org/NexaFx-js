@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, LessThanOrEqual, Between } from 'typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
+import { ClusterCron } from '../common/locks/cluster-cron.decorator';
 import { ExchangeRateCacheEntity } from './entities/exchange-rate-cache.entity';
 import { ExchangeRateHistoryEntity } from './entities/exchange-rate-history.entity';
 import { QueryExchangeRateHistoryDto } from './dto/query-exchange-rate-history.dto';
@@ -178,7 +179,7 @@ export class ExchangeRatesService implements OnModuleInit {
     return { from: from.toUpperCase(), to: to.toUpperCase(), amount, convertedAmount, rate };
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @ClusterCron(CronExpression.EVERY_MINUTE, 'exchange-rates:refresh-expired')
   async refreshExpiredRates() {
     const expiredCount = await this.cacheRepo.count({
       where: { expiresAt: LessThanOrEqual(new Date()) },

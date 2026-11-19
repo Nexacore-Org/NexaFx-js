@@ -13,12 +13,21 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { Configuration } from './config/configuration';
+import { RedisIoAdapter } from './gateways/redis-adapter';
+import { buildCorsOptions, parseAllowedOrigins } from './config/cors';
 
 const GLOBAL_PREFIX = 'api/v1';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+
+  // Multi-replica WebSocket fan-out through Redis, only when configured (issue #1548).
+  if (process.env.REDIS_URL) {
+    const redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis(process.env.REDIS_URL);
+    app.useWebSocketAdapter(redisIoAdapter);
+  }
 
   // Behind a proxy or load balancer, trust an explicit hop count or CIDR list so req.ip is the
   // client (issue #1407). TRUST_PROXY=false (default) | <hops> | <comma-separated CIDRs/names>.
@@ -36,8 +45,7 @@ async function bootstrap() {
   const jsonLimit = configService.get<number>('limits.json') ?? 10 * 1024 * 1024;
   const urlencodedLimit =
     configService.get<number>('limits.urlencoded') ?? 10 * 1024 * 1024;
-  const allowedOrigins =
-    configService.get<string>('ALLOWED_ORIGINS')?.split(',').filter(Boolean) ?? [];
+  const allowedOrigins = parseAllowedOrigins(configService.get<string>('ALLOWED_ORIGINS'));
 
   app.use(express.json({ limit: jsonLimit }));
   app.use(express.urlencoded({ limit: urlencodedLimit, extended: true }));
@@ -70,10 +78,8 @@ async function bootstrap() {
     }),
   );
 
-  app.enableCors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
-    credentials: true,
-  });
+  // Deny by default in production; never reflect arbitrary origins (issue #1540).
+  app.enableCors(buildCorsOptions(allowedOrigins, process.env.NODE_ENV));
 
   // Every controller relies on this single global prefix; no @Controller() may
   // repeat it (enforced by `npm run check:controller-prefixes`).
