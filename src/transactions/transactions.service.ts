@@ -163,8 +163,10 @@ export class TransactionsService implements OnModuleInit {
     }
 
     // Transfer fee is explicitly zero (#1422) — only the principal is limited.
-    await this.limitService.check(dto.senderId, dto.amount, dto.currency);
-
+    const reservedUsd = await this.limitService.check(dto.senderId, dto.amount, dto.currency);
+    // Give the reserved limit headroom back unless the transfer completed (#1376).
+    let succeeded = false;
+    try {
     const senderBalance = await this.walletsService.getBalance(
       dto.senderId,
       dto.currency,
@@ -217,14 +219,30 @@ export class TransactionsService implements OnModuleInit {
         await manager.save(Transaction, tx);
       });
     } catch (err) {
-      // Phase 2 failure: DB write after balance adjustment failed.
-      // Leave record as PENDING so reconciliation can recover it.
+      // The whole block ran in one DB transaction, so the balance moves were rolled back.
+      // Mark the row FAILED and rethrow the original error instead of returning PENDING.
       this.logger.error(
-        `CRITICAL: DB confirmation write failed for transaction ${tx.id} (ref=${tx.reference}). ` +
-          `Record left as PENDING for reconciliation recovery.`,
+        `Transfer ${tx.id} (ref=${tx.reference}) failed and was rolled back`,
         err instanceof Error ? err.stack : String(err),
       );
-      return tx;
+      const { debitedAt: _debitedAt, ...restMetadata } = (tx.metadata ?? {}) as Record<string, unknown>;
+      tx.metadata = { ...restMetadata, failureReason: err instanceof Error ? err.message : String(err) };
+      tx.status = TransactionStatus.FAILED;
+      try {
+        await this.txRepo.save(tx);
+      } catch (saveErr) {
+        this.logger.error(`Failed to mark transfer ${tx.id} FAILED`, saveErr as Error);
+      }
+      this.events.emit('transactions.failed', {
+        transactionId: tx.id,
+        senderId: tx.senderId,
+        receiverId: tx.receiverId,
+        amount: tx.amount,
+        currency: tx.currency,
+        reference: tx.reference,
+        timestamp: new Date(),
+      });
+      throw err;
     }
 
     this.events.emit(TransactionEvent.COMPLETED, {
@@ -236,7 +254,11 @@ export class TransactionsService implements OnModuleInit {
       reference: tx.reference,
       timestamp: new Date(),
     });
+    succeeded = true;
     return tx;
+    } finally {
+      if (!succeeded) await this.releaseLimit(dto.senderId, reservedUsd);
+    }
   }
 
   private static readonly DEFAULT_LIMIT = 20;
@@ -481,26 +503,39 @@ export class TransactionsService implements OnModuleInit {
 
     // Horizon payment verification is the follow-up (#1423); for now the hash is
     // accepted, stored, and the wallet is credited.
-    tx.txHash = txHash.trim();
+    const cleanHash = txHash.trim();
     try {
-      // Credit only the principal — the fee was recorded at deposit creation (#1422).
-      const principal = new Big(String(tx.amount)).minus(String(tx.fee ?? 0));
-      const credit = principal.lt(0) ? new Big(0) : principal; // never below zero
-      await this.walletsService.adjustBalance(userId, tx.currency, Number(credit.toFixed(8)));
-      tx.status = TransactionStatus.COMPLETED;
-      tx.completedAt = new Date();
-      await this.txRepo.save(tx);
+      // Lock the row, re-check status and credit + complete atomically.
+      const done = await this.dataSource.transaction(async (manager) => {
+        const locked = await manager.findOne(Transaction, {
+          where: { id: transactionId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!locked || locked.status !== TransactionStatus.PENDING) {
+          throw new UnprocessableEntityException(
+            `Deposit ${transactionId} cannot be confirmed (current status: ${locked?.status})`,
+          );
+        }
+        locked.txHash = cleanHash;
+        // Credit only the principal — the fee was recorded at deposit creation (#1422).
+        const principal = new Big(String(locked.amount)).minus(String(locked.fee ?? 0));
+        const credit = principal.lt(0) ? new Big(0) : principal; // never below zero
+        await this.walletsService.adjustBalance(userId, locked.currency, Number(credit.toFixed(8)), manager);
+        locked.status = TransactionStatus.COMPLETED;
+        locked.completedAt = new Date();
+        return manager.save(Transaction, locked);
+      });
       await this.usersService.invalidateWalletBalanceCache(userId);
-      this.events.emit(TransactionEvent.DEPOSIT_COMPLETED, { transactionId: tx.id, userId });
-      return tx;
+      this.events.emit(TransactionEvent.DEPOSIT_COMPLETED, { transactionId: done.id, userId });
+      return done;
     } catch (err) {
-      // Credit failed before completion was written — keep PENDING so it can be retried.
+      // Credit and completion share one DB transaction, so nothing was credited — safe to retry.
       await this.auditService.log({
         userId,
         action: 'transaction.deposit.confirm_failed',
         entityType: 'transaction',
         entityId: tx.id,
-        after: { txHash: tx.txHash, error: (err as Error).message },
+        after: { txHash: cleanHash, error: (err as Error).message },
       });
       throw err;
     }
@@ -634,7 +669,8 @@ export class TransactionsService implements OnModuleInit {
       // from the same rate source used for previews, so a swap can't be used
       // to mint an arbitrary destination-currency amount.
       // #1421: price from ExchangeRateService instead of a random placeholder.
-      const feeAdjustedAmount = new Big(String(dto.fromAmount)).minus(String(fee.feeAmount));
+      // Fee is charged on top of the principal (debited below); the full principal is converted.
+      const feeAdjustedAmount = new Big(String(dto.fromAmount));
       let rate: number;
       try {
         const quote = await this.exchangeRateService.getRate(dto.fromCurrency, dto.toCurrency);
@@ -733,7 +769,7 @@ export class TransactionsService implements OnModuleInit {
     }
 
     const fee = this.feesService.calculateFee(dto.fromAmount);
-    const feeAdjustedAmount = dto.fromAmount - fee.feeAmount;
+    const feeAdjustedAmount = dto.fromAmount; // fee is charged on top, not deducted from proceeds
 
     // #1421: indicative rate from the same provider-backed service used for pricing.
     let rate: number;
@@ -794,15 +830,16 @@ export class TransactionsService implements OnModuleInit {
   }
 
   async createInternalTransfer(dto: { senderId: string; recipientEmail: string; amount: number; currency: string }): Promise<Transaction> {
-    const recipient = await this.usersService.findByEmail(dto.recipientEmail);
-    if (!recipient) throw new NotFoundException(`Recipient with email ${dto.recipientEmail} not found`);
+    const recipientEmail = String(dto.recipientEmail ?? '').trim().toLowerCase();
+    const recipient = await this.usersService.findByEmail(recipientEmail);
+    if (!recipient) throw new NotFoundException('Recipient not found');
     return this.transfer({
       senderId: dto.senderId,
       receiverId: recipient.id,
       amount: dto.amount,
       currency: dto.currency,
-      reference: `int_${Date.now()}`,
-      metadata: { isInternalTransfer: true, recipientEmail: dto.recipientEmail },
+      reference: `int_${randomUUID()}`,
+      metadata: { isInternalTransfer: true, recipientEmail },
     });
   }
 
