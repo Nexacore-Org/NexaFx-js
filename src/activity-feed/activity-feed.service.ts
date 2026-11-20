@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindManyOptions, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import {
+  Repository,
+  FindManyOptions,
+  Between,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+} from 'typeorm';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ActivityFeedItem, ActivityType } from './activity-feed-item.entity';
 
@@ -53,8 +59,14 @@ export class ActivityFeedService {
     userId: string,
     filters: ActivityFeedFilters = {},
   ): Promise<ActivityFeedPage> {
-    const page = Math.max(1, filters.page ?? 1);
-    const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
+    const requestedPage = Number(filters.page);
+    const page = Number.isFinite(requestedPage)
+      ? Math.max(1, Math.trunc(requestedPage))
+      : 1;
+    const requestedLimit = Number(filters.limit);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(1, Math.trunc(requestedLimit)), MAX_PAGE_SIZE)
+      : DEFAULT_PAGE_SIZE;
 
     const where: Record<string, unknown> = { userId };
 
@@ -62,10 +74,14 @@ export class ActivityFeedService {
       where.type = filters.type;
     }
 
-    if (filters.startDate || filters.endDate) {
-      const start = filters.startDate ? new Date(filters.startDate) : new Date(0);
-      const end = filters.endDate ? new Date(filters.endDate) : new Date();
+    const start = this.parseDate(filters.startDate);
+    const end = this.parseDate(filters.endDate);
+    if (start && end) {
       where.createdAt = Between(start, end);
+    } else if (start) {
+      where.createdAt = MoreThanOrEqual(start);
+    } else if (end) {
+      where.createdAt = LessThanOrEqual(end);
     }
 
     const options: FindManyOptions<ActivityFeedItem> = {
@@ -86,6 +102,12 @@ export class ActivityFeedService {
     };
   }
 
+  private parseDate(value?: string): Date | undefined {
+    if (!value) return undefined;
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? new Date(timestamp) : undefined;
+  }
+
   async markAsRead(userId: string, id: string): Promise<ActivityFeedItem> {
     const item = await this.repo.findOne({ where: { id, userId } });
     if (!item) {
@@ -96,10 +118,7 @@ export class ActivityFeedService {
   }
 
   async markAllAsRead(userId: string): Promise<void> {
-    await this.repo.update(
-      { userId, isRead: false },
-      { isRead: true },
-    );
+    await this.repo.update({ userId, isRead: false }, { isRead: true });
   }
 
   @OnEvent('transactions.completed')
@@ -155,7 +174,10 @@ export class ActivityFeedService {
   }
 
   @OnEvent('kyc.submitted')
-  async handleKycSubmitted(payload: { userId: string; documentType?: string }): Promise<void> {
+  async handleKycSubmitted(payload: {
+    userId: string;
+    documentType?: string;
+  }): Promise<void> {
     await this.recordActivity({
       userId: payload.userId,
       type: ActivityType.KYC,
@@ -166,7 +188,10 @@ export class ActivityFeedService {
   }
 
   @OnEvent('auth.login')
-  async handleLogin(payload: { userId: string; ipAddress?: string }): Promise<void> {
+  async handleLogin(payload: {
+    userId: string;
+    ipAddress?: string;
+  }): Promise<void> {
     await this.recordActivity({
       userId: payload.userId,
       type: ActivityType.LOGIN,
@@ -177,7 +202,10 @@ export class ActivityFeedService {
   }
 
   @OnEvent('user.profile_updated')
-  async handleProfileUpdated(payload: { userId: string; fields?: string[] }): Promise<void> {
+  async handleProfileUpdated(payload: {
+    userId: string;
+    fields?: string[];
+  }): Promise<void> {
     await this.recordActivity({
       userId: payload.userId,
       type: ActivityType.PROFILE_UPDATE,

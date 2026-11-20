@@ -1,10 +1,21 @@
-import { IsOptional, IsEnum, IsIn, IsString, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  IsIn,
+  IsString,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
-import { TicketPriority, TicketStatus } from '../entities/support-ticket.entity';
+import {
+  TicketPriority,
+  TicketStatus,
+} from '../entities/support-ticket.entity';
 
 export class ListSupportTicketsDto {
   @IsOptional()
-  @IsEnum(['open', 'in_progress', 'waiting_customer', 'resolved', 'closed'])
+  @IsEnum(TicketStatus)
   status?: TicketStatus;
 
   @IsOptional()
