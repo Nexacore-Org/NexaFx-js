@@ -15,10 +15,13 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
 
+  const configService = app.get(ConfigService<Configuration>);
+
   // Multi-replica WebSocket fan-out through Redis, only when configured (issue #1548).
-  if (process.env.REDIS_URL) {
+  const redisUrl = configService.get<string>('REDIS_URL');
+  if (redisUrl) {
     const redisIoAdapter = new RedisIoAdapter(app);
-    await redisIoAdapter.connectToRedis(process.env.REDIS_URL);
+    await redisIoAdapter.connectToRedis(redisUrl);
     app.useWebSocketAdapter(redisIoAdapter);
   }
 
@@ -30,7 +33,6 @@ async function bootstrap() {
     .getInstance()
     .set('trust proxy', trustProxy === 'false' ? false : /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 
-  const configService = app.get(ConfigService<Configuration>);
   const port = configService.get<number>('app.port');
   if (!port || isNaN(port)) {
     throw new Error(`Invalid PORT: ${port}`);

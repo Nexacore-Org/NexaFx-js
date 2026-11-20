@@ -20,8 +20,8 @@ export class WebhookRetryJob {
     }
   }
 
-  /** Backs the manual "retry delivery" endpoint. */
-  async manualRetry(deliveryId: string) {
-    return this.webhooksService.retryDelivery(deliveryId);
+  /** Backs the manual "retry delivery" endpoint (#1588). */
+  async manualRetry(deliveryId: string, ownerId: string) {
+    return this.webhooksService.retryDeliveryForOwner(deliveryId, ownerId);
   }
 }
