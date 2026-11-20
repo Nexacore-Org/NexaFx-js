@@ -120,7 +120,13 @@ export class WebhooksController {
 
   @UseGuards(JwtAuthGuard)
   @Post('deliveries/:id/retry')
-  async retryDelivery(@Param('id') deliveryId: string) {
-    return this.webhookRetryJob.manualRetry(deliveryId);
+  async retryDelivery(
+    @Param('id') deliveryId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.webhookRetryJob.manualRetry(
+      deliveryId,
+      request.user?.sub ?? '',
+    );
   }
 }

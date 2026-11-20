@@ -59,7 +59,7 @@ export class BulkPaymentsService {
     const savedItems = await this.bulkPaymentItemRepo.save(items);
 
     // Process asynchronously
-    setImmediate(() => {
+    this.schedule(() => {
       this.processBulkPayment(saved.id).catch((err) => {
         this.logger.error(`Bulk payment processing failed: ${err.message}`);
       });
@@ -72,6 +72,11 @@ export class BulkPaymentsService {
         items: savedItems,
       },
     };
+  }
+
+  /** Seam so tests can run the batch synchronously (#1585). */
+  protected schedule(fn: () => void): void {
+    setImmediate(fn);
   }
 
   async findAllByUser(userId: string, page = 1, limit = 20) {

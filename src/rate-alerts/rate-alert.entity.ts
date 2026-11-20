@@ -11,6 +11,8 @@ import {
 @Index(['currencyPair'])
 @Index(['userId', 'isActive'])
 @Index(['currencyPair', 'triggered', 'isActive'])
+@Index('IDX_rate_alerts_user', ['userId'])
+@Index('IDX_rate_alerts_currency_pair', ['currencyPair'])
 export class RateAlertEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

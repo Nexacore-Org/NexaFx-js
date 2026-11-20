@@ -5,26 +5,53 @@ describe('StellarFederationService', () => {
   const findOneMock = jest.fn();
   const findMock = jest.fn();
   const saveMock = jest.fn();
-  const repository = { findOne: findOneMock, find: findMock, save: saveMock, create: jest.fn((x) => x) } as never;
+  const repository = {
+    findOne: findOneMock,
+    find: findMock,
+    save: saveMock,
+    create: jest.fn((value: object) => value),
+  } as never;
   const service = new StellarFederationService(repository);
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    findOneMock.mockResolvedValue(null);
+  });
 
-  it('resolves a well-formed user*domain.com address', async () => {
-    const address = { id: 'addr-1', stellarAddress: 'alice', domain: 'example.com' };
+  it('looks up a mixed-case user*domain.com address by lowercased name and domain', async () => {
+    const address = {
+      id: 'addr-1',
+      name: 'alice',
+      domain: 'example.com',
+      stellarAddress: 'G-STELLAR-ADDRESS',
+    };
     findOneMock.mockResolvedValue(address);
 
-    await expect(service.resolveAddress('alice*example.com')).resolves.toBe(address);
-    expect(findOneMock).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { domain: 'example.com', stellarAddress: 'alice', isActive: true } }),
+    await expect(service.resolveAddress('ALICE*example.com')).resolves.toBe(
+      address,
     );
+    expect(findOneMock).toHaveBeenCalledWith({
+      where: { name: 'alice', domain: 'example.com', isActive: true },
+    });
   });
 
   it('rejects an address with no "*"', async () => {
-    await expect(service.resolveAddress('alice-example.com')).rejects.toThrow(NotFoundException);
+    await expect(service.resolveAddress('alice-example.com')).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(findOneMock).not.toHaveBeenCalled();
   });
 
-  it('only returns the requesting user\'s addresses', async () => {
+  it('throws NotFoundException for an unknown user and domain', async () => {
+    await expect(service.resolveAddress('nobody*example.com')).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(findOneMock).toHaveBeenCalledWith({
+      where: { name: 'nobody', domain: 'example.com', isActive: true },
+    });
+  });
+
+  it("only returns the requesting user's addresses", async () => {
     findMock.mockResolvedValue([{ id: 'a1', userId: 'user-1' }]);
 
     await service.getAddressesByUser('user-1');
@@ -35,9 +62,9 @@ describe('StellarFederationService', () => {
   });
 
   it('throws NotFoundException instead of deleting when userId does not match', async () => {
-    findOneMock.mockResolvedValue(null);
-
-    await expect(service.deleteAddress('addr-1', 'someone-else')).rejects.toThrow(NotFoundException);
+    await expect(
+      service.deleteAddress('addr-1', 'someone-else'),
+    ).rejects.toThrow(NotFoundException);
     expect(saveMock).not.toHaveBeenCalled();
   });
 });

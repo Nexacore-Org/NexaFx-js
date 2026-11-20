@@ -15,7 +15,7 @@ import { Repository } from 'typeorm';
 import { Response } from 'express';
 import { Readable } from 'stream';
 import { PdfService } from './pdf.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Transaction } from '../transactions/transaction.entity';
 import { StatementQueryDto } from '../statements/dto/statement-query.dto';
 import { StatementView } from '../statements/statements.types';
@@ -71,7 +71,7 @@ export class DocumentsController {
       'Content-Disposition',
       `attachment; filename="statement-${userId}.pdf"`,
     );
-    Readable.from(pdf).pipe(res);
+    Readable.from(Buffer.from(pdf)).pipe(res);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -83,7 +83,23 @@ export class DocumentsController {
   ) {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      select: { id: true, senderId: true, receiverId: true },
+      relations: { sender: true, receiver: true },
+      select: {
+        id: true,
+        senderId: true,
+        receiverId: true,
+        amount: true,
+        currency: true,
+        fee: true,
+        status: true,
+        reference: true,
+        receiptNumber: true,
+        createdAt: true,
+        completedAt: true,
+        metadata: true,
+        sender: { firstName: true, lastName: true, email: true },
+        receiver: { firstName: true, lastName: true, email: true },
+      },
     });
     if (!transaction) {
       throw new NotFoundException(`Transaction ${id} not found`);
@@ -96,12 +112,12 @@ export class DocumentsController {
       throw new ForbiddenException('You can only download your own receipts');
     }
 
-    const pdf = await this.pdfService.generateReceiptPdf(id);
+    const pdf = await this.pdfService.generateReceiptPdf(transaction);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="receipt-${id}.pdf"`,
     );
-    Readable.from(pdf).pipe(res);
+    Readable.from(Buffer.from(pdf)).pipe(res);
   }
 }

@@ -19,6 +19,14 @@ export enum AmlDisposition {
   SAR_FILED = 'sar_filed',
 }
 
+export interface AmlMatchDetail {
+  list: 'sanctions' | 'pep';
+  matchedName: string;
+  candidateName: string;
+  score: number;
+  dateOfBirthConfirmed?: boolean;
+}
+
 @Entity('aml_screenings')
 @Index(['userId'])
 @Index(['transactionId'])
@@ -37,11 +45,18 @@ export class AmlScreening {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   riskScore!: number;
 
-  @Column({ type: 'simple-enum', enum: AmlRiskLevel, default: AmlRiskLevel.LOW })
+  @Column({
+    type: 'simple-enum',
+    enum: AmlRiskLevel,
+    default: AmlRiskLevel.LOW,
+  })
   riskLevel!: AmlRiskLevel;
 
   @Column({ type: 'jsonb', default: () => "'[]'" })
   flags!: string[];
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  matchDetails!: AmlMatchDetail[];
 
   @CreateDateColumn()
   screenedAt!: Date;

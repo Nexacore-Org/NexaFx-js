@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { Writable } from 'stream';
+import type { Response } from 'express';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtAuthGuard as PassportJwtAuthGuard } from './guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 import { KycController } from '../kyc/kyc.controller';
 import { ReferralController } from '../referral/referral.controller';
@@ -9,15 +11,28 @@ import { DocumentsController } from '../documents/documents.controller';
 import { NotificationPreferencesController } from '../notification-preferences/notification-preferences.controller';
 import { ActivityFeedController } from '../activity-feed/activity-feed.controller';
 
+jest.mock('./jwt-auth.guard', () => ({ JwtAuthGuard: class JwtAuthGuard {} }));
+
 const GUARDS_METADATA = '__guards__';
 
+const hasJwtGuard = (target: object, method?: string): boolean =>
+  guardsFor(target, method).some(
+    (guard) => guard === JwtAuthGuard || guard === PassportJwtAuthGuard,
+  );
+
+const guardMetadata = (target: object): unknown[] => {
+  const value: unknown = Reflect.getMetadata(GUARDS_METADATA, target);
+  return Array.isArray(value) ? value : [];
+};
+
 const guardsFor = (target: object, method?: string): unknown[] => [
-  ...(Reflect.getMetadata(GUARDS_METADATA, target) ?? []),
+  ...guardMetadata(target),
   ...(method
-    ? (Reflect.getMetadata(
-        GUARDS_METADATA,
-        (target as { prototype: Record<string, unknown> }).prototype[method] as object,
-      ) ?? [])
+    ? guardMetadata(
+        (target as { prototype: Record<string, unknown> }).prototype[
+          method
+        ] as object,
+      )
     : []),
 ];
 
@@ -29,15 +44,15 @@ describe('authentication guards on user-scoped controllers', () => {
     ['NotificationPreferencesController', NotificationPreferencesController],
     ['ActivityFeedController', ActivityFeedController],
   ])('%s requires authentication for every route', (_name, controller) => {
-    expect(guardsFor(controller)).toContain(JwtAuthGuard);
+    expect(hasJwtGuard(controller)).toBe(true);
   });
 
-  it.each([
-    ['downloadStatement'],
-    ['downloadReceipt'],
-  ])('DocumentsController.%s requires authentication', (method) => {
-    expect(guardsFor(DocumentsController, method)).toContain(JwtAuthGuard);
-  });
+  it.each([['downloadStatement'], ['downloadReceipt']])(
+    'DocumentsController.%s requires authentication',
+    (method) => {
+      expect(hasJwtGuard(DocumentsController, method)).toBe(true);
+    },
+  );
 
   it.each([['qualify'], ['reward']])(
     'ReferralController.%s is restricted to admins',
@@ -50,11 +65,14 @@ describe('authentication guards on user-scoped controllers', () => {
 describe('handlers use the authenticated principal, not caller-supplied input', () => {
   const request = { user: { sub: 'caller-1' } };
 
-  it('KycController.submit binds the submission to the caller', () => {
-    const kycService = { submit: jest.fn() };
+  it('KycController.submit binds the submission to the caller', async () => {
+    const kycService = {
+      submit: jest.fn(),
+      toView: jest.fn((value: unknown): unknown => value),
+    };
     const controller = new KycController(kycService as any);
 
-    controller.submit(request, {
+    await controller.submit(request, {
       userId: 'victim-1',
       documentType: 'passport',
       documentNumber: 'X1',
@@ -66,11 +84,16 @@ describe('handlers use the authenticated principal, not caller-supplied input', 
     );
   });
 
-  it('KycController.appeal passes the caller through for the ownership check', () => {
-    const kycService = { appeal: jest.fn() };
+  it('KycController.appeal passes the caller through for the ownership check', async () => {
+    const kycService = {
+      appeal: jest.fn(),
+      toView: jest.fn((value: unknown): unknown => value),
+    };
     const controller = new KycController(kycService as any);
 
-    controller.appeal(request, 'doc-1', 'please reconsider');
+    await controller.appeal(request, 'doc-1', {
+      reason: 'please reconsider',
+    });
 
     expect(kycService.appeal).toHaveBeenCalledWith(
       'doc-1',
@@ -79,8 +102,11 @@ describe('handlers use the authenticated principal, not caller-supplied input', 
     );
   });
 
-  it("KycController.checkExpiry rejects another user's id", () => {
-    const kycService = { checkExpiry: jest.fn() };
+  it("KycController.checkExpiry rejects another user's id", async () => {
+    const kycService = {
+      checkExpiry: jest.fn(),
+      toView: jest.fn((value: unknown): unknown => value),
+    };
     const controller = new KycController(kycService as any);
 
     expect(() => controller.checkExpiry(request, 'victim-1')).toThrow(
@@ -88,12 +114,15 @@ describe('handlers use the authenticated principal, not caller-supplied input', 
     );
     expect(kycService.checkExpiry).not.toHaveBeenCalled();
 
-    controller.checkExpiry(request, 'caller-1');
+    await controller.checkExpiry(request, 'caller-1');
     expect(kycService.checkExpiry).toHaveBeenCalledWith('caller-1');
   });
 
   it('DevicesController.register binds the push token to the caller', () => {
-    const pushService = { registerToken: jest.fn(), deregisterToken: jest.fn() };
+    const pushService = {
+      registerToken: jest.fn(),
+      deregisterToken: jest.fn(),
+    };
     const controller = new DevicesController(pushService as any);
 
     controller.register(request, {
@@ -110,7 +139,10 @@ describe('handlers use the authenticated principal, not caller-supplied input', 
   });
 
   it("DevicesController.deregister scopes the delete to the caller's devices", async () => {
-    const pushService = { registerToken: jest.fn(), deregisterToken: jest.fn() };
+    const pushService = {
+      registerToken: jest.fn(),
+      deregisterToken: jest.fn(),
+    };
     const controller = new DevicesController(pushService as any);
 
     await controller.deregister(request, 'tok-1');
@@ -125,7 +157,9 @@ describe('handlers use the authenticated principal, not caller-supplied input', 
 describe('DocumentsController.downloadReceipt ownership', () => {
   const makeController = (transaction: unknown) => {
     const pdfService = { generateReceiptPdf: jest.fn() };
-    const transactionRepo = { findOne: jest.fn().mockResolvedValue(transaction) };
+    const transactionRepo = {
+      findOne: jest.fn().mockResolvedValue(transaction),
+    };
     return {
       pdfService,
       controller: new DocumentsController(
@@ -136,10 +170,10 @@ describe('DocumentsController.downloadReceipt ownership', () => {
   };
 
   // Readable.from(pdf).pipe(res) needs a real writable sink.
-  const res = () => {
+  const res = (): Response => {
     const sink = new Writable({ write: (_chunk, _enc, cb) => cb() });
     (sink as unknown as { setHeader: jest.Mock }).setHeader = jest.fn();
-    return sink as any;
+    return sink as unknown as Response;
   };
 
   it("rejects a receipt for another user's transaction", async () => {
@@ -164,11 +198,12 @@ describe('DocumentsController.downloadReceipt ownership', () => {
   });
 
   it('allows the counterparty of the transaction to download the receipt', async () => {
-    const { controller, pdfService } = makeController({
+    const found = {
       id: 'tx-1',
       senderId: 'other-1',
       receiverId: 'caller-1',
-    });
+    };
+    const { controller, pdfService } = makeController(found);
     pdfService.generateReceiptPdf.mockResolvedValue(Buffer.from('%PDF-1.7'));
 
     await controller.downloadReceipt(
@@ -177,6 +212,6 @@ describe('DocumentsController.downloadReceipt ownership', () => {
       res(),
     );
 
-    expect(pdfService.generateReceiptPdf).toHaveBeenCalledWith('tx-1');
+    expect(pdfService.generateReceiptPdf).toHaveBeenCalledWith(found);
   });
 });

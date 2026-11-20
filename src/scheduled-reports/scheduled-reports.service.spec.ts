@@ -25,6 +25,41 @@ describe('ScheduledReportsService', () => {
       ...overrides,
     };
   }
+  NotificationChannel,
+  NotificationEventType,
+} from '../notification-preferences/notification-preference.entity';
+import { ScheduledReportsService } from './scheduled-reports.service';
+import {
+  ReportType,
+  ReportFrequency,
+} from './entities/scheduled-report.entity';
+
+describe('NotificationPreferencesService', () => {
+  it('returns true when no preference row exists', async () => {
+    const repo = { findOne: jest.fn().mockResolvedValue(null) };
+    const service = new NotificationPreferencesService(repo as any);
+    await expect(
+      service.shouldNotify(
+        'u1',
+        NotificationChannel.EMAIL,
+        NotificationEventType.SECURITY,
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it('honors an explicit isEnabled flag', async () => {
+    const repo = {
+      findOne: jest.fn().mockResolvedValue({ isEnabled: false }),
+    };
+    const service = new NotificationPreferencesService(repo as any);
+    await expect(
+      service.shouldNotify(
+        'u1',
+        NotificationChannel.PUSH,
+        NotificationEventType.KYC,
+      ),
+    ).resolves.toBe(false);
+  });
 
   function makeService(
     options: {
@@ -51,6 +86,12 @@ describe('ScheduledReportsService', () => {
     };
     const config = {
       get: jest.fn((key: string) => options.config?.[key]),
+      create: jest.fn((dto: unknown) => ({
+        ...(dto as Record<string, unknown>),
+      })),
+      save: jest.fn((dto) => Promise.resolve({ ...created, ...dto })),
+      upsert: jest.fn().mockResolvedValue(undefined),
+      findOneOrFail: jest.fn().mockResolvedValue({ ...created }),
     };
     const generate =
       options.generate ??
@@ -89,6 +130,21 @@ describe('ScheduledReportsService', () => {
     const { service } = makeService({
       reports: { count: jest.fn().mockResolvedValue(10) },
       config: { 'scheduledReports.maxActivePerUser': 10 },
+describe('ScheduledReportsService', () => {
+  it('schedules the first run from the requested frequency', async () => {
+    const repo = {
+      create: jest.fn((row: unknown) => ({
+        ...(row as Record<string, unknown>),
+      })),
+      save: jest.fn((row) => Promise.resolve(row)),
+      find: jest.fn(),
+      findOne: jest.fn(),
+    };
+    const service = new ScheduledReportsService(repo as any);
+    const created = await service.create({
+      userId: 'u1',
+      reportType: ReportType.FEE_SUMMARY,
+      frequency: ReportFrequency.DAILY,
     });
 
     await expect(

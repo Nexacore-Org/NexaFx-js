@@ -297,6 +297,10 @@ export default () => {
       criticalValueThresholdUsd: parseFloat(
         process.env.AML_CRITICAL_VALUE_THRESHOLD_USD || '50000',
       ),
+      watchlistPath: process.env.AML_WATCHLIST_PATH || '',
+      screeningSimilarityThreshold: parseFloat(
+        process.env.AML_SCREENING_SIMILARITY_THRESHOLD || '0.92',
+      ),
     },
     // FX configuration
     fx: {

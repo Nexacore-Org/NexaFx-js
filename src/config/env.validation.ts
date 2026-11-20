@@ -386,6 +386,15 @@ export const envSchema = z.object({
     .transform(Number)
     .pipe(z.number().int().nonnegative())
     .default(() => 30),
+  AML_WATCHLIST_PATH: z
+    .string()
+    .optional()
+    .default(() => ''),
+  AML_SCREENING_SIMILARITY_THRESHOLD: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().min(0.5).max(1))
+    .default(() => 0.92),
 
   // ============================================
   // FX / Exchange Rates

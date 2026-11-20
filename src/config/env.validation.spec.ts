@@ -4,7 +4,8 @@ import { validateEnv, validateWalletEncryptionKey } from './env.validation';
 // Minimal valid config — every required field present, no optional fields.
 // Tests that need to break one field clone this and override the target key.
 // ---------------------------------------------------------------------------
-const VALID_KEY_64 = 'a'.repeat(64); // valid 64-char hex string
+const VALID_KEY_64 =
+  'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a12b';
 
 const VALID_ENV: Record<string, string> = {
   // App
@@ -22,15 +23,15 @@ const VALID_ENV: Record<string, string> = {
   DB_NAME: 'nexafx',
   DB_SSL: 'false',
   // JWT
-  JWT_SECRET: 'a'.repeat(32),
+  JWT_SECRET: 'Kx7Qm2Vp9Lr4Tn8Ws3Zb6Yc1Hj5Fd0Ag',
   JWT_EXPIRY: '3600',
   // Refresh token
-  REFRESH_TOKEN_SECRET: 'b'.repeat(32),
+  REFRESH_TOKEN_SECRET: 'Ae3Nh8Uq2Wz5Rp9Bv4Cm7Kx1Tj6Ys0Dg',
   REFRESH_TOKEN_EXPIRY: '604800',
   // OTP
-  OTP_SECRET: 'c'.repeat(32),
+  OTP_SECRET: 'Zm4Pl9Kc1Vx7Rq2Nb8Ht5Wy3As6Df0Gj',
   // Payment provider
-  PROVIDER_WEBHOOK_SECRET: 'd'.repeat(32),
+  PROVIDER_WEBHOOK_SECRET: 'Qn6Bv3Xm8Ls1Pw5Kt9Rd2Cf7Hy4Za0Ue',
   OTP_EXPIRY: '300',
   // Wallet Encryption Key
   WALLET_ENCRYPTION_KEY: VALID_KEY_64,
@@ -45,10 +46,13 @@ const VALID_ENV: Record<string, string> = {
   SLOW_QUERY_THRESHOLD_MS: '1000',
   // Stellar Hot Wallet
   STELLAR_HOT_WALLET_SECRET: 'S1234567890',
+  ALLOWED_ORIGINS: 'https://app.example.com',
 };
 
 /** Return a copy of VALID_ENV with the given overrides applied. */
-function env(overrides: Record<string, string | undefined> = {}): Record<string, unknown> {
+function env(
+  overrides: Record<string, string | undefined> = {},
+): Record<string, unknown> {
   const merged: Record<string, unknown> = { ...VALID_ENV };
   for (const [k, v] of Object.entries(overrides)) {
     if (v === undefined) {
@@ -72,8 +76,8 @@ describe('validateEnv', () => {
       const result = validateEnv(env());
       expect(result).toBeDefined();
       expect(result.NODE_ENV).toBe('test');
-      expect(result.PORT).toBe(3000);          // transformed to number
-      expect(result.JWT_SECRET).toBe('a'.repeat(32));
+      expect(result.PORT).toBe(3000); // transformed to number
+      expect(result.JWT_SECRET).toBe('Kx7Qm2Vp9Lr4Tn8Ws3Zb6Yc1Hj5Fd0Ag');
     });
 
     it('coerces PORT string to a number', () => {
@@ -146,13 +150,15 @@ describe('validateEnv', () => {
 
   describe('PROVIDER_WEBHOOK_SECRET', () => {
     it('fails startup validation when PROVIDER_WEBHOOK_SECRET is missing', () => {
-      expect(() => validateEnv(env({ PROVIDER_WEBHOOK_SECRET: undefined }))).toThrow(
-        'PROVIDER_WEBHOOK_SECRET',
-      );
+      expect(() =>
+        validateEnv(env({ PROVIDER_WEBHOOK_SECRET: undefined })),
+      ).toThrow('PROVIDER_WEBHOOK_SECRET');
     });
 
     it('fails when PROVIDER_WEBHOOK_SECRET is shorter than 32 characters', () => {
-      expect(() => validateEnv(env({ PROVIDER_WEBHOOK_SECRET: 'secret' }))).toThrow(
+      expect(() =>
+        validateEnv(env({ PROVIDER_WEBHOOK_SECRET: 'secret' })),
+      ).toThrow(
         'PROVIDER_WEBHOOK_SECRET must be at least 32 characters for security',
       );
     });
@@ -171,9 +177,9 @@ describe('validateEnv', () => {
     });
 
     it('fails when JWT_SECRET is shorter than 32 characters', () => {
-      expect(() =>
-        validateEnv(env({ JWT_SECRET: 'tooshort' })),
-      ).toThrow('JWT_SECRET must be at least 32 characters for security');
+      expect(() => validateEnv(env({ JWT_SECRET: 'tooshort' }))).toThrow(
+        'JWT_SECRET must be at least 32 characters for security',
+      );
     });
 
     it('accepts JWT_SECRET of exactly 32 characters', () => {
@@ -191,9 +197,9 @@ describe('validateEnv', () => {
 
   describe('MAIL_USER', () => {
     it('fails with a clear error when MAIL_USER is not a valid email', () => {
-      expect(() =>
-        validateEnv(env({ MAIL_USER: 'not-an-email' })),
-      ).toThrow('MAIL_USER must be a valid email');
+      expect(() => validateEnv(env({ MAIL_USER: 'not-an-email' }))).toThrow(
+        'MAIL_USER must be a valid email',
+      );
     });
 
     it('fails when MAIL_USER is an empty string', () => {
@@ -212,9 +218,9 @@ describe('validateEnv', () => {
 
   describe('MAIL_FROM', () => {
     it('fails when MAIL_FROM is not a valid email', () => {
-      expect(() =>
-        validateEnv(env({ MAIL_FROM: 'bad-value' })),
-      ).toThrow('MAIL_FROM must be a valid email');
+      expect(() => validateEnv(env({ MAIL_FROM: 'bad-value' }))).toThrow(
+        'MAIL_FROM must be a valid email',
+      );
     });
   });
 
@@ -247,9 +253,7 @@ describe('validateEnv', () => {
 
   describe('REFRESH_TOKEN_SECRET', () => {
     it('fails when shorter than 32 characters', () => {
-      expect(() =>
-        validateEnv(env({ REFRESH_TOKEN_SECRET: 'short' })),
-      ).toThrow(
+      expect(() => validateEnv(env({ REFRESH_TOKEN_SECRET: 'short' }))).toThrow(
         'REFRESH_TOKEN_SECRET must be at least 32 characters for security',
       );
     });
@@ -257,9 +261,9 @@ describe('validateEnv', () => {
 
   describe('OTP_SECRET', () => {
     it('fails when shorter than 32 characters', () => {
-      expect(() =>
-        validateEnv(env({ OTP_SECRET: 'short' })),
-      ).toThrow('OTP_SECRET must be at least 32 characters for security');
+      expect(() => validateEnv(env({ OTP_SECRET: 'short' }))).toThrow(
+        'OTP_SECRET must be at least 32 characters for security',
+      );
     });
   });
 
@@ -267,9 +271,9 @@ describe('validateEnv', () => {
 
   describe('WALLET_ENCRYPTION_KEY', () => {
     it('fails when WALLET_ENCRYPTION_KEY is missing', () => {
-      expect(() => validateEnv(env({ WALLET_ENCRYPTION_KEY: undefined }))).toThrow(
-        'Environment validation failed',
-      );
+      expect(() =>
+        validateEnv(env({ WALLET_ENCRYPTION_KEY: undefined })),
+      ).toThrow('Environment validation failed');
     });
 
     it('accepts a valid 64-character lowercase hex string', () => {
@@ -303,9 +307,9 @@ describe('validateEnv', () => {
     });
 
     it('fails when key is an empty string', () => {
-      expect(() =>
-        validateEnv(env({ WALLET_ENCRYPTION_KEY: '' })),
-      ).toThrow('WALLET_ENCRYPTION_KEY must be exactly 64 hex characters');
+      expect(() => validateEnv(env({ WALLET_ENCRYPTION_KEY: '' }))).toThrow(
+        'WALLET_ENCRYPTION_KEY must be exactly 64 hex characters',
+      );
     });
   });
 
@@ -357,7 +361,9 @@ describe('validateWalletEncryptionKey', () => {
   });
 
   it('returns true for a mixed-case 64-char hex string', () => {
-    expect(validateWalletEncryptionKey('aAbBcCdDeEfF1234'.repeat(4))).toBe(true);
+    expect(validateWalletEncryptionKey('aAbBcCdDeEfF1234'.repeat(4))).toBe(
+      true,
+    );
   });
 
   it('returns false for a 63-char hex string', () => {
@@ -387,7 +393,8 @@ describe('validateEnv secret hygiene (issue #1543)', () => {
     REFRESH_TOKEN_SECRET: 'Hn6Vb2Xc8Zq4Mw1Ke7Rt3Yu9Pi5Lo0As',
     OTP_SECRET: 'Tg4Jk8Df2Sa6Qw1Er7Ty3Ui9Op5Zx0Cv',
     PROVIDER_WEBHOOK_SECRET: 'Bn5Mk9Lj3Hg7Fd1Sa4Pq8Wo2Ei6Ru0Yt',
-    WALLET_ENCRYPTION_KEY: '9f3b7c1d5e8a2406b1d7c93e4f5a608c2d1e7b9a3c5f4e6d8b0a1c2d3e4f5a6b',
+    WALLET_ENCRYPTION_KEY:
+      '9f3b7c1d5e8a2406b1d7c93e4f5a608c2d1e7b9a3c5f4e6d8b0a1c2d3e4f5a6b',
   };
   const PROD = { ...VALID_ENV, ...RANDOM, NODE_ENV: 'production' };
 
@@ -403,30 +410,72 @@ describe('validateEnv secret hygiene (issue #1543)', () => {
 
   it('rejects the sequential example wallet key in production', () => {
     expect(() =>
-      validateEnv({ ...PROD, WALLET_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4) }),
+      validateEnv({
+        ...PROD,
+        WALLET_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4),
+      }),
     ).toThrow(/WALLET_ENCRYPTION_KEY/);
   });
 
   it('rejects the same value for two secrets in every environment', () => {
-    expect(() => validateEnv({ ...VALID_ENV, OTP_SECRET: VALID_ENV.JWT_SECRET })).toThrow(
-      /OTP_SECRET: must differ from JWT_SECRET/,
-    );
+    expect(() =>
+      validateEnv({ ...VALID_ENV, OTP_SECRET: VALID_ENV.JWT_SECRET }),
+    ).toThrow(/OTP_SECRET: must differ from JWT_SECRET/);
   });
 
   it('only warns about placeholders outside production', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    expect(() => validateEnv({ ...VALID_ENV, JWT_SECRET: 'change-me-to-a-long-random-string' })).not.toThrow();
+    const warn = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    expect(() =>
+      validateEnv({
+        ...VALID_ENV,
+        JWT_SECRET: 'change-me-to-a-long-random-string',
+      }),
+    ).not.toThrow();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('JWT_SECRET'));
     warn.mockRestore();
+  });
+});
+
+describe('validateEnv AML screening configuration (issue #1594)', () => {
+  it('defaults the watchlist path and similarity threshold', () => {
+    const result = validateEnv(env());
+    expect(result.AML_WATCHLIST_PATH).toBe('');
+    expect(result.AML_SCREENING_SIMILARITY_THRESHOLD).toBe(0.92);
+  });
+
+  it('accepts a custom watchlist path and threshold', () => {
+    const result = validateEnv(
+      env({
+        AML_WATCHLIST_PATH: '/etc/aml/watchlist.json',
+        AML_SCREENING_SIMILARITY_THRESHOLD: '0.95',
+      }),
+    );
+    expect(result.AML_WATCHLIST_PATH).toBe('/etc/aml/watchlist.json');
+    expect(result.AML_SCREENING_SIMILARITY_THRESHOLD).toBe(0.95);
+  });
+
+  it('rejects a threshold outside the 0.5 to 1 range', () => {
+    expect(() =>
+      validateEnv(env({ AML_SCREENING_SIMILARITY_THRESHOLD: '1.5' })),
+    ).toThrow(/AML_SCREENING_SIMILARITY_THRESHOLD/);
+  });
+});
+
 describe('validateEnv production network safety (issues #1540, #1541)', () => {
   const PROD = { ...VALID_ENV, NODE_ENV: 'production' };
 
   it('fails fast in production when ALLOWED_ORIGINS is empty', () => {
-    expect(() => validateEnv({ ...PROD, ALLOWED_ORIGINS: '' })).toThrow(/ALLOWED_ORIGINS/);
+    expect(() => validateEnv({ ...PROD, ALLOWED_ORIGINS: '' })).toThrow(
+      /ALLOWED_ORIGINS/,
+    );
   });
 
   it('accepts production with an explicit origin list', () => {
-    expect(() => validateEnv({ ...PROD, ALLOWED_ORIGINS: 'https://app.nexafx.io' })).not.toThrow();
+    expect(() =>
+      validateEnv({ ...PROD, ALLOWED_ORIGINS: 'https://app.nexafx.io' }),
+    ).not.toThrow();
   });
 
   it('rejects a wildcard origin in any environment', () => {
@@ -434,7 +483,9 @@ describe('validateEnv production network safety (issues #1540, #1541)', () => {
   });
 
   it('allows an empty ALLOWED_ORIGINS outside production', () => {
-    expect(() => validateEnv({ ...VALID_ENV, ALLOWED_ORIGINS: '' })).not.toThrow();
+    expect(() =>
+      validateEnv({ ...VALID_ENV, ALLOWED_ORIGINS: '' }),
+    ).not.toThrow();
   });
 
   it('refuses DB_SSL_REJECT_UNAUTHORIZED=false in production', () => {
@@ -450,7 +501,11 @@ describe('validateEnv production network safety (issues #1540, #1541)', () => {
 
   it('allows DB_SSL_REJECT_UNAUTHORIZED=false outside production', () => {
     expect(() =>
-      validateEnv({ ...VALID_ENV, DB_SSL: 'true', DB_SSL_REJECT_UNAUTHORIZED: 'false' }),
+      validateEnv({
+        ...VALID_ENV,
+        DB_SSL: 'true',
+        DB_SSL_REJECT_UNAUTHORIZED: 'false',
+      }),
     ).not.toThrow();
   });
 });

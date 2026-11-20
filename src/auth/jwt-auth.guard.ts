@@ -43,6 +43,16 @@ export class JwtAuthGuard implements CanActivate {
         context
           .switchToHttp()
           .getRequest<AuthenticatedRequest>()) as AuthenticatedRequest;
+      try {
+        return GqlExecutionContext.create(context).getContext()
+          .req as AuthenticatedRequest;
+      } catch {
+        const args = context.getArgs();
+        return (
+          (args[2]?.req as AuthenticatedRequest | undefined) ||
+          context.switchToHttp().getRequest<AuthenticatedRequest>()
+        );
+      }
     }
     return context.switchToHttp().getRequest<AuthenticatedRequest>();
   }
@@ -104,6 +114,14 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     request.user = buildPrincipal(payload);
+    // A signed token is not enough: suspended, deactivated and deleted users
+    // lose access immediately even though their token has not expired.
+    if (
+      this.accountStatus &&
+      !(await this.accountStatus.isAllowedToAuthenticate(payload.sub))
+    ) {
+      throw new UnauthorizedException('Account is not active');
+    }
 
     // "Log out" and "revoke this device" must end the session now, not when the (up to one hour)
     // access token expires: the token names its session (`sid`), which must still be active.
@@ -123,7 +141,6 @@ export class JwtAuthGuard implements CanActivate {
       isEmailVerified: payload.isEmailVerified,
       ...(payload.sid ? { sid: payload.sid } : {}),
       tokenVersion: payload.tv,
-      sid: payload.sid,
       authMethod: 'jwt',
       ...(payload.impersonation
         ? { impersonation: true, actorId: payload.act?.sub }
