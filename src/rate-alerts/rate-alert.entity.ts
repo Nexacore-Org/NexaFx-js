@@ -7,6 +7,10 @@ import {
 } from 'typeorm';
 
 @Entity('rate_alerts')
+@Index(['userId'])
+@Index(['currencyPair'])
+@Index(['userId', 'isActive'])
+@Index(['currencyPair', 'triggered', 'isActive'])
 @Index('IDX_rate_alerts_user', ['userId'])
 @Index('IDX_rate_alerts_currency_pair', ['currencyPair'])
 export class RateAlertEntity {
@@ -27,6 +31,15 @@ export class RateAlertEntity {
 
   @Column({ default: false })
   triggered: boolean;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  triggeredAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deactivatedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -11,19 +11,36 @@ class FakeRedis {
     return this.store.get(key);
   }
 
-  async set(key: string, value: string, _px: 'PX', ttl: number, _nx: 'NX') {
-    if (this.live(key)) return null;
+  set(
+    key: string,
+    value: string,
+    px: 'PX',
+    ttl: number,
+    nx: 'NX',
+  ): Promise<'OK' | null> {
+    void px;
+    void nx;
+    if (this.live(key)) return Promise.resolve(null);
     this.store.set(key, { value, expiresAt: this.now + ttl });
-    return 'OK';
+    return Promise.resolve('OK');
   }
 
-  async eval(_script: string, _n: number, key: string, token: string) {
+  eval(
+    script: string,
+    count: number,
+    key: string,
+    token: string,
+    ttl?: number,
+  ): Promise<number> {
+    void count;
     const entry = this.live(key);
-    if (entry && entry.value === token) {
-      this.store.delete(key);
-      return 1;
+    if (!entry || entry.value !== token) return Promise.resolve(0);
+    if (script.includes('pexpire')) {
+      entry.expiresAt = this.now + Number(ttl);
+      return Promise.resolve(1);
     }
-    return 0;
+    this.store.delete(key);
+    return Promise.resolve(1);
   }
 }
 
@@ -36,7 +53,7 @@ describe('DistributedLockService (issue #1550)', () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     const bodyA = jest.fn(() => gate.then(() => 'a'));
-    const bodyB = jest.fn(async () => 'b');
+    const bodyB = jest.fn(() => Promise.resolve('b'));
 
     const first = a.runExclusive('job', 1000, bodyA);
     await Promise.resolve();
@@ -53,8 +70,8 @@ describe('DistributedLockService (issue #1550)', () => {
     const redis = new FakeRedis();
     const svc = new DistributedLockService(redis as any);
 
-    await svc.runExclusive('job', 1000, async () => 1);
-    const next = await svc.runExclusive('job', 1000, async () => 2);
+    await svc.runExclusive('job', 1000, () => Promise.resolve(1));
+    const next = await svc.runExclusive('job', 1000, () => Promise.resolve(2));
 
     expect(next).toEqual({ ran: true, result: 2 });
   });
@@ -63,18 +80,65 @@ describe('DistributedLockService (issue #1550)', () => {
     const redis = new FakeRedis();
     const svc = new DistributedLockService(redis as any);
 
-    await expect(svc.runExclusive('job', 1000, async () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
-    await expect(svc.runExclusive('job', 1000, async () => 'ok')).resolves.toEqual({ ran: true, result: 'ok' });
+    await expect(
+      svc.runExclusive('job', 1000, async () =>
+        Promise.reject(new Error('boom')),
+      ),
+    ).rejects.toThrow('boom');
+    await expect(
+      svc.runExclusive('job', 1000, () => Promise.resolve('ok')),
+    ).resolves.toEqual({ ran: true, result: 'ok' });
   });
 
   it('lets a crashed holder expire after the TTL', async () => {
     const redis = new FakeRedis();
     const svc = new DistributedLockService(redis as any);
-    await redis.set('lock:cluster:job', 'crashed-instance-token', 'PX', 1000, 'NX');
+    await redis.set(
+      'lock:cluster:job',
+      'crashed-instance-token',
+      'PX',
+      1000,
+      'NX',
+    );
 
-    expect(await svc.runExclusive('job', 1000, async () => 'x')).toEqual({ ran: false });
+    expect(
+      await svc.runExclusive('job', 1000, () => Promise.resolve('x')),
+    ).toEqual({
+      ran: false,
+    });
     redis.now += 1001;
-    expect(await svc.runExclusive('job', 1000, async () => 'x')).toEqual({ ran: true, result: 'x' });
+    expect(
+      await svc.runExclusive('job', 1000, () => Promise.resolve('x')),
+    ).toEqual({
+      ran: true,
+      result: 'x',
+    });
+  });
+
+  it('renews the lock while a long body is running', async () => {
+    jest.useFakeTimers();
+    try {
+      const redis = new FakeRedis();
+      const svc = new DistributedLockService(redis as any);
+
+      const result = await svc.runExclusive(
+        'long-job',
+        1000,
+        () => {
+          redis.now += 600;
+          jest.advanceTimersByTime(600);
+          redis.now += 600;
+          jest.advanceTimersByTime(600);
+          return Promise.resolve('done');
+        },
+        { heartbeatMs: 500 },
+      );
+
+      expect(result).toEqual({ ran: true, result: 'done' });
+      expect(redis.store.get('lock:cluster:long-job')).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("does not release another holder's lock (token mismatch is a no-op)", async () => {
@@ -91,7 +155,10 @@ describe('DistributedLockService (issue #1550)', () => {
   });
 
   it('falls back to a Postgres advisory lock when Redis errors', async () => {
-    const redis = { set: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')), eval: jest.fn() };
+    const redis = {
+      set: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+      eval: jest.fn(),
+    };
     const runner = {
       connect: jest.fn(),
       release: jest.fn(),
@@ -100,11 +167,19 @@ describe('DistributedLockService (issue #1550)', () => {
     const ds = { createQueryRunner: jest.fn().mockReturnValue(runner) };
     const svc = new DistributedLockService(redis as any, ds as any);
 
-    const result = await svc.runExclusive('job', 1000, async () => 'ran');
+    const result = await svc.runExclusive('job', 1000, () =>
+      Promise.resolve('ran'),
+    );
 
     expect(result).toEqual({ ran: true, result: 'ran' });
-    expect(runner.query).toHaveBeenCalledWith(expect.stringContaining('pg_try_advisory_lock'), expect.any(Array));
-    expect(runner.query).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_unlock'), expect.any(Array));
+    expect(runner.query).toHaveBeenCalledWith(
+      expect.stringContaining('pg_try_advisory_lock'),
+      expect.any(Array),
+    );
+    expect(runner.query).toHaveBeenCalledWith(
+      expect.stringContaining('pg_advisory_unlock'),
+      expect.any(Array),
+    );
     expect(runner.release).toHaveBeenCalled();
   });
 
@@ -114,7 +189,9 @@ describe('DistributedLockService (issue #1550)', () => {
       release: jest.fn(),
       query: jest.fn().mockResolvedValue([{ locked: false }]),
     };
-    const svc = new DistributedLockService(undefined, { createQueryRunner: () => runner } as any);
+    const svc = new DistributedLockService(undefined, {
+      createQueryRunner: () => runner,
+    } as any);
     const body = jest.fn();
 
     expect(await svc.runExclusive('job', 1000, body)).toEqual({ ran: false });

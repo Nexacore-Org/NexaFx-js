@@ -23,6 +23,13 @@ describe('ExchangeRatesService rate broadcasting', () => {
     const cacheRepo = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((entity: unknown) => entity),
+      save: jest.fn((entity: unknown) => Promise.resolve(entity)),
+      count: jest.fn().mockResolvedValue(1),
+    };
+    const historyRepo = {
+      create: jest.fn((entity: unknown) => entity),
+      save: jest.fn((entity: unknown) => Promise.resolve(entity)),
       create: jest.fn((entity: object) => entity),
       save: jest.fn((entity: object) => Promise.resolve(entity)),
       count: jest.fn().mockResolvedValue(1),
@@ -63,6 +70,18 @@ describe('ExchangeRatesService rate broadcasting', () => {
     };
   };
 
+  const makeFxRateService = () => ({
+    getRate: jest.fn(() => Promise.resolve({ rate: 1.25, provider: 'test' })),
+  });
+
+  const makeRateAlerts = () => ({
+    checkThresholds: jest.fn().mockResolvedValue(undefined),
+  });
+
+  it('broadcasts every refreshed pair when the cron refreshes expired rates', async () => {
+    const { cacheRepo, historyRepo } = makeRepos();
+    const gateway = makeGateway();
+    const rateAlerts = makeRateAlerts();
   it('broadcasts provider rates for every refreshed pair', async () => {
     const { cacheRepo, historyRepo } = makeRepos();
     const { gateway, broadcastRateUpdate } = makeGateway();
@@ -71,11 +90,27 @@ describe('ExchangeRatesService rate broadcasting', () => {
       cacheRepo as any,
       historyRepo as any,
       gateway,
+      makeFxRateService() as any,
+      rateAlerts as any,
       fxRateService,
     );
 
     await service.refreshExpiredRates();
 
+    expect(gateway.broadcastRateUpdate.mock.calls.length).toBeGreaterThan(0);
+    expect(rateAlerts.checkThresholds).toHaveBeenCalledWith(
+      expect.objectContaining({ 'USD/NGN': 1.25 }),
+    );
+
+    const broadcastPairs = gateway.broadcastRateUpdate.mock.calls.map(
+      ([pair]) => pair,
+    );
+    expect(broadcastPairs).toEqual([
+      'USD/NGN',
+      'USD/EUR',
+      'USD/GBP',
+      'EUR/NGN',
+      'GBP/NGN',
     expect(getRate.mock.calls).toEqual([
       ['USD', 'NGN'],
       ['USD', 'EUR'],
@@ -97,11 +132,14 @@ describe('ExchangeRatesService rate broadcasting', () => {
       cacheRepo as any,
       historyRepo as any,
       gateway,
+      makeFxRateService() as any,
+      makeRateAlerts() as any,
       fxRateService,
     );
 
     await service.refreshExpiredRates();
 
+    expect(gateway.broadcastRateUpdate.mock.calls).toHaveLength(0);
     expect(broadcastRateUpdate).not.toHaveBeenCalled();
     expect(getRate).not.toHaveBeenCalled();
   });
@@ -118,11 +156,14 @@ describe('ExchangeRatesService rate broadcasting', () => {
       cacheRepo as any,
       historyRepo as any,
       gateway,
+      makeFxRateService() as any,
+      makeRateAlerts() as any,
       fxRateService,
     );
 
     await service.onModuleInit();
 
+    expect(gateway.seedCurrentRates.mock.calls[0][0]).toEqual([
     expect(seedCurrentRates).toHaveBeenCalledWith([
       { currencyPair: 'USD/NGN', rate: 1550 },
       { currencyPair: 'USD/EUR', rate: 0.92 },
@@ -138,6 +179,12 @@ describe('ExchangeRatesService rate broadcasting', () => {
       cacheRepo as any,
       historyRepo as any,
       gateway,
+      makeFxRateService() as any,
+      makeRateAlerts() as any,
+    );
+
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+    expect(gateway.seedCurrentRates.mock.calls).toHaveLength(0);
       fxRateService,
     );
 

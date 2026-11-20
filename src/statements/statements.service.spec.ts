@@ -5,6 +5,7 @@ import { StatementsService } from './statements.service';
 import { UsersService } from '../users/users.service';
 import { PdfService } from '../documents/pdf.service';
 import { MailService } from '../mail/mail.service';
+import { EmailQueueService } from '../mail/email-queue.service';
 import {
   Transaction,
   TransactionStatus,
@@ -52,6 +53,7 @@ describe('StatementsService', () => {
   let usersService: { findById: jest.Mock };
   let pdfService: { generateStatementPdf: jest.Mock };
   let mailService: { sendStatementReadyEmail: jest.Mock };
+  let emailQueue: { enqueue: jest.Mock };
   let queue: { add: jest.Mock };
   let service: StatementsService;
 
@@ -76,6 +78,7 @@ describe('StatementsService', () => {
       generateStatementPdf: jest.fn().mockResolvedValue(new Uint8Array([1])),
     };
     mailService = { sendStatementReadyEmail: jest.fn() };
+    emailQueue = { enqueue: jest.fn().mockResolvedValue(true) };
     queue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }) };
 
     service = new StatementsService(
@@ -84,6 +87,7 @@ describe('StatementsService', () => {
       usersService as unknown as UsersService,
       pdfService as unknown as PdfService,
       mailService as unknown as MailService,
+      emailQueue as unknown as EmailQueueService,
       queue as unknown as Queue,
     );
   });
@@ -233,7 +237,9 @@ describe('StatementsService', () => {
       });
 
       expect(statement.currency).toBe('USD');
-      const where = txRepository.find.mock.calls[0]![0].where;
+      const { where } = txRepository.find.mock.calls[0]![0] as {
+        where: Array<{ currency?: string; metadata?: unknown }>;
+      };
       expect(where[0].currency).toBe('USD');
       expect(where[1].currency).toBe('USD');
       expect(where[2].metadata).toBeInstanceOf(FindOperator);
@@ -244,7 +250,9 @@ describe('StatementsService', () => {
     it('pushes the date range and completed status into the transaction query', async () => {
       await service.buildStatement(BASE);
 
-      const options = txRepository.find.mock.calls[0]![0];
+      const options = txRepository.find.mock.calls[0]![0] as {
+        where: Array<{ createdAt: unknown; status: TransactionStatus }>;
+      };
       expect(options.where).toHaveLength(3);
       for (const clause of options.where) {
         expect(clause.createdAt).toBeInstanceOf(FindOperator);
@@ -255,19 +263,20 @@ describe('StatementsService', () => {
     it('filters fx trades by currency and date in SQL', async () => {
       await service.buildStatement(BASE);
 
-      const options = fxRepository.find.mock.calls[0]![0];
-      expect(options.where).toEqual([
-        expect.objectContaining({
-          userId: 'user-1',
-          fromCurrency: 'USD',
-          executedAt: expect.any(FindOperator),
-        }),
-        expect.objectContaining({
-          userId: 'user-1',
-          toCurrency: 'USD',
-          executedAt: expect.any(FindOperator),
-        }),
-      ]);
+      const options = fxRepository.find.mock.calls[0]![0] as {
+        where: unknown[];
+      };
+      expect(options.where).toHaveLength(2);
+      const [outbound, inbound] = options.where as Array<{
+        userId: string;
+        fromCurrency?: string;
+        toCurrency?: string;
+        executedAt: unknown;
+      }>;
+      expect(outbound).toMatchObject({ userId: 'user-1', fromCurrency: 'USD' });
+      expect(inbound).toMatchObject({ userId: 'user-1', toCurrency: 'USD' });
+      expect(outbound.executedAt).toBeInstanceOf(FindOperator);
+      expect(inbound.executedAt).toBeInstanceOf(FindOperator);
     });
 
     it('computes the opening balance with aggregates instead of row fetches', async () => {
@@ -352,9 +361,9 @@ describe('StatementsService', () => {
       ['over 366 days', { ...BASE, from: '2024-01-01', to: '2026-01-01' }],
       ['missing currency', { ...BASE, currency: '' }],
     ])('rejects %s with 400', async (_label, request) => {
-      await expect(
-        service.buildStatement(request as typeof BASE),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.buildStatement(request)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
     it('rejects an invalid range before enqueueing', async () => {

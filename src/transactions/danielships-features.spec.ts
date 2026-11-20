@@ -20,6 +20,7 @@ describe('danielships Features (Issues #984, #983, #982, #981)', () => {
       {} as any,
       { broadcastRateUpdate: jest.fn(), seedCurrentRates: jest.fn() } as any,
       {} as any,
+      {} as any,
     );
     jest
       .spyOn(service, 'getRates')
@@ -32,6 +33,9 @@ describe('danielships Features (Issues #984, #983, #982, #981)', () => {
   });
 
   it('PaymentProviderService supports multi-currency invoice generation', () => {
+    const service = new PaymentProviderService({
+      get: jest.fn().mockReturnValue('test-webhook-secret-min-32-chars'),
+    } as any);
     const { config } = makeConfig(WEBHOOK_SECRET);
     const service = new PaymentProviderService(config);
 
@@ -46,6 +50,14 @@ describe('danielships Features (Issues #984, #983, #982, #981)', () => {
     expect(invoice.id).toBeDefined();
     expect(invoice.status).toBe('UNPAID');
 
+    const fetched: unknown = service.getInvoice(invoice.id);
+    expect(fetched).toEqual(invoice);
+  });
+
+  it('PaymentProviderService supports recurring payment scheduling', () => {
+    const service = new PaymentProviderService({
+      get: jest.fn().mockReturnValue('test-webhook-secret-min-32-chars'),
+    } as any);
     expect(service.getInvoice(invoice.id)).toEqual(invoice);
   });
 

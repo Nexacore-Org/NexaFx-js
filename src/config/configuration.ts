@@ -327,6 +327,37 @@ export default () => {
         process.env.PENDING_TX_TIMEOUT_MINUTES || '30',
         10,
       ),
+      lockTtlMs: parseInt(
+        process.env.SCHEDULED_JOBS_LOCK_TTL_MS || '300000',
+        10,
+      ),
+      lockHeartbeatMs: parseInt(
+        process.env.SCHEDULED_JOBS_LOCK_HEARTBEAT_MS || '60000',
+        10,
+      ),
+      reconcileBatchSize: parseInt(
+        process.env.RECONCILE_BATCH_SIZE || '100',
+        10,
+      ),
+      reconcileTimeBudgetMs: parseInt(
+        process.env.RECONCILE_TIME_BUDGET_MS || String(4 * 60 * 1000),
+        10,
+      ),
+    },
+
+    rateAlerts: {
+      maxPerUser: parseInt(process.env.RATE_ALERTS_MAX_PER_USER || '20', 10),
+    },
+
+    scheduledReports: {
+      maxActivePerUser: parseInt(
+        process.env.SCHEDULED_REPORTS_MAX_ACTIVE_PER_USER || '10',
+        10,
+      ),
+      backoffMs: parseInt(
+        process.env.SCHEDULED_REPORTS_BACKOFF_MS || String(5 * 60 * 1000),
+        10,
+      ),
     },
 
     // Auth-specific throttle limit (validated via Zod — must be a positive integer)

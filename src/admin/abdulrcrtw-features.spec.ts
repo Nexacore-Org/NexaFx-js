@@ -16,54 +16,109 @@ import { MailService } from '../mail/mail.service';
  * Builds AdminService through Nest DI instead of positionally, so adding or
  * reordering constructor dependencies cannot silently put a mock in the wrong slot.
  */
-async function buildAdminService(overrides: { users?: object; audit?: object } = {}) {
-  const repo = () => ({ findOne: jest.fn(), find: jest.fn(), count: jest.fn(), save: jest.fn() });
+async function buildAdminService(
+  overrides: { users?: object; audit?: object } = {},
+) {
+  const repo = () => ({
+    findOne: jest.fn(),
+    find: jest.fn(),
+    count: jest.fn(),
+    save: jest.fn(),
+  });
   const module = await Test.createTestingModule({
     providers: [
       AdminService,
-      { provide: getRepositoryToken(User), useValue: overrides.users ?? repo() },
+      {
+        provide: getRepositoryToken(User),
+        useValue: overrides.users ?? repo(),
+      },
       { provide: getRepositoryToken(Transaction), useValue: repo() },
       { provide: getRepositoryToken(KycDocument), useValue: repo() },
       { provide: getRepositoryToken(SupportTicketEntity), useValue: repo() },
       { provide: getRepositoryToken(WebhookEndpoint), useValue: repo() },
       { provide: getRepositoryToken(AmlAlert), useValue: repo() },
       { provide: getRepositoryToken(AdminApproval), useValue: repo() },
-      { provide: AuditService, useValue: overrides.audit ?? { log: jest.fn().mockResolvedValue(undefined) } },
+      {
+        provide: AuditService,
+        useValue: overrides.audit ?? {
+          log: jest.fn().mockResolvedValue(undefined),
+        },
+      },
     ],
   }).compile();
   return module.get(AdminService);
 }
 
 describe('abdulrcrtw Features (Issues #992, #991, #990, #989)', () => {
-  it('AdminService supports spread configuration management and audit logging', async () => {
+  it('AdminService records audited admin actions', async () => {
     const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
-    const adminService = new AdminService({} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, mockAudit as any);
+    const adminService = await buildAdminService({ audit: mockAudit });
 
-    const spreads = adminService.getSpreads();
-    expect(spreads['USD/NGN']).toBeDefined();
+    await adminService.recordKycFileView(
+      'admin-1',
+      'user-1',
+      'v1',
+      'passport.pdf',
+    );
 
-    const updated = await adminService.updateSpread('USD/NGN', 0.02, 'admin-1');
-    expect(updated.spreadPercentage).toBe(0.02);
-    expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'admin.spread.update' }));
+    expect(mockAudit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'admin.kyc.file_viewed',
+        userId: 'admin-1',
+        entityId: 'user-1',
+      }),
+    );
   });
 
   it('AdminService impersonates user and logs audit trail', async () => {
-    const mockUsers = { findOne: jest.fn().mockResolvedValue({ id: 'target-user', email: 'user@example.com', role: 'user' }) };
+    const mockUsers = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'target-user',
+        email: 'user@example.com',
+        role: 'user',
+      }),
+    };
     const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
     const mockJwt = { sign: jest.fn().mockReturnValue('signed.jwt.token') };
     const adminService = new AdminService(
-      mockUsers as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, mockAudit as any, mockJwt as any,
+      mockUsers as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      mockAudit as any,
+      {} as any,
+      {} as any,
+      mockJwt as any,
     );
 
-    const res = await adminService.impersonateUser('target-user', 'admin-1', 'Investigating support ticket #1234');
+    const res = await adminService.impersonateUser(
+      'target-user',
+      'admin-1',
+      'Investigating support ticket #1234',
+    );
     expect(res.impersonatedUserId).toBe('target-user');
     expect(res.token).toBe('signed.jwt.token');
-    expect(mockAudit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'admin.user.impersonate', userId: 'admin-1' }));
+    expect(mockAudit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'admin.user.impersonate',
+        userId: 'admin-1',
+      }),
+    );
   });
 
   it('ExchangeRatesService provides lightweight currency conversion calculator', async () => {
-    const service = new ExchangeRatesService({} as any, {} as any, { broadcastRateUpdate: jest.fn(), seedCurrentRates: jest.fn() } as any);
-    jest.spyOn(service, 'getRateByPair').mockResolvedValue({ rate: 1500 } as any);
+    const service = new ExchangeRatesService(
+      {} as any,
+      {} as any,
+      { broadcastRateUpdate: jest.fn(), seedCurrentRates: jest.fn() } as any,
+      {} as any,
+      {} as any,
+    );
+    jest
+      .spyOn(service, 'getRateByPair')
+      .mockResolvedValue({ rate: 1500 } as any);
 
     const result = await service.calculateConversion('USD', 'NGN', 10);
     expect(result.convertedAmount).toBe(15000);

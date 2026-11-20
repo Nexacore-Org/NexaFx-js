@@ -3,11 +3,6 @@ import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { dateDiffInDays } from './date-diff';
 
 export { dateDiffInDays } from './date-diff';
-import {
-  BadRequestException,
-  Injectable,
-  Optional,
-} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, IsNull, Raw, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
@@ -86,7 +81,10 @@ export class StatementsService {
 
   async buildStatement(request: StatementRequest): Promise<StatementView> {
     const normalized = this.normalizeRequest(request);
-    const { fromDate, toDate } = this.parseRange(normalized.from, normalized.to);
+    const { fromDate, toDate } = this.parseRange(
+      normalized.from,
+      normalized.to,
+    );
     const user = await this.usersService.findById(normalized.userId);
 
     const lines = await this.collectStatementLines(
@@ -127,7 +125,8 @@ export class StatementsService {
     statement: StatementView,
   ): Promise<void> {
     const to = statement.user.email;
-    const fullName = `${statement.user.firstName} ${statement.user.lastName}`.trim();
+    const fullName =
+      `${statement.user.firstName} ${statement.user.lastName}`.trim();
     const subject = `Your ${statement.currency} statement is ready`;
     const summary =
       `${statement.currency} statement for ${statement.period.from} - ${statement.period.to}. ` +
@@ -172,10 +171,9 @@ export class StatementsService {
           senderId: userId,
           status: completed,
           createdAt: inRange,
-          metadata: Raw(
-            (alias) => `${alias}->>'toCurrency' = :toCurrency`,
-            { toCurrency: currency },
-          ),
+          metadata: Raw((alias) => `${alias}->>'toCurrency' = :toCurrency`, {
+            toCurrency: currency,
+          }),
         },
       ],
       order: { createdAt: 'ASC' },
@@ -207,9 +205,7 @@ export class StatementsService {
     });
 
     const lines: StatementLine[] = [
-      ...uniqueTxs.flatMap((tx) =>
-        this.mapTransaction(tx, userId, currency),
-      ),
+      ...uniqueTxs.flatMap((tx) => this.mapTransaction(tx, userId, currency)),
       ...fxTrades.flatMap((trade) => {
         const rows: StatementLine[] = [];
         if (trade.fromCurrency === currency) {
@@ -247,7 +243,7 @@ export class StatementsService {
     userId: string,
     currency: string,
   ): StatementLine[] {
-    const metadata = (tx.metadata ?? {}) as Record<string, unknown>;
+    const metadata = tx.metadata ?? {};
     const type = typeof metadata.type === 'string' ? metadata.type : 'transfer';
     const amount = Number(tx.amount);
     const fee = Number(tx.fee ?? 0);
@@ -259,11 +255,18 @@ export class StatementsService {
       description: string,
       value: number,
       source: StatementLine['source'] = 'transaction',
-    ): StatementLine => ({ date, description, amount: value, reference, source });
+    ): StatementLine => ({
+      date,
+      description,
+      amount: value,
+      reference,
+      source,
+    });
 
     if (type === 'deposit') {
       lines.push(line('Deposit', amount));
-      if (fee > 0) lines.push(line('Deposit fee', -Math.min(fee, amount), 'fee'));
+      if (fee > 0)
+        lines.push(line('Deposit fee', -Math.min(fee, amount), 'fee'));
       return lines;
     }
 
@@ -273,7 +276,10 @@ export class StatementsService {
           ? this.shortAddress(metadata.destinationAddress)
           : '';
       lines.push(
-        line(destination ? `Withdrawal to ${destination}` : 'Withdrawal', -amount),
+        line(
+          destination ? `Withdrawal to ${destination}` : 'Withdrawal',
+          -amount,
+        ),
       );
       if (fee > 0) lines.push(line('Withdrawal fee', -fee, 'fee'));
       return lines;
@@ -288,7 +294,11 @@ export class StatementsService {
         lines.push(line(description, -amount));
         if (fee > 0) lines.push(line('Swap fee', -fee, 'fee'));
       }
-      if (toCurrency === currency && Number.isFinite(toAmount) && toAmount !== 0) {
+      if (
+        toCurrency === currency &&
+        Number.isFinite(toAmount) &&
+        toAmount !== 0
+      ) {
         lines.push(line(description, toAmount));
       }
       return lines;
@@ -369,7 +379,10 @@ export class StatementsService {
     return Number(txRow?.total ?? 0) + Number(fxRow?.total ?? 0);
   }
 
-  private parseRange(from: string, to: string): {
+  private parseRange(
+    from: string,
+    to: string,
+  ): {
     fromDate: Date;
     toDate: Date;
     rangeDays: number;
@@ -378,9 +391,7 @@ export class StatementsService {
     const toDate = new Date(to);
 
     if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
-      throw new BadRequestException(
-        'from and to must be valid ISO-8601 dates',
-      );
+      throw new BadRequestException('from and to must be valid ISO-8601 dates');
     }
     if (toDate.getTime() < fromDate.getTime()) {
       throw new BadRequestException('to must be on or after from');

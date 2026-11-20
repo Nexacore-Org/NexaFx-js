@@ -9,14 +9,19 @@ import { ExchangeRatesService } from './exchange-rates.service';
 import { ExchangeRatesController } from './exchange-rates.controller';
 import { RatesModule } from '../rates/rates.module';
 import { FxModule } from '../fx/fx.module';
+import { RateAlertsModule } from '../rate-alerts/rate-alerts.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ExchangeRateCacheEntity, ExchangeRateHistoryEntity]),
+    TypeOrmModule.forFeature([
+      ExchangeRateCacheEntity,
+      ExchangeRateHistoryEntity,
+    ]),
     ScheduleModule.forRoot(),
     HttpModule,
     RatesModule,
     FxModule,
+    RateAlertsModule,
   ],
   controllers: [ExchangeRatesController],
   providers: [ExchangeRatesService, ExchangeRateCache],
